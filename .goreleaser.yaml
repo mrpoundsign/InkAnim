@@ -48,6 +48,7 @@ release:
     name: InkAnim
   draft: false
   prerelease: auto
+  mode: keep-existing
 
 snapshot:
   version_template: "{{ incpatch .Version }}-next"
