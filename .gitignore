@@ -4,4 +4,5 @@
 *.so
 *.dylib
 dist/
+gui-dist/
 fyne-cross/
