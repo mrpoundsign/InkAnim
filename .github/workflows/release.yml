@@ -10,8 +10,88 @@ permissions:
   contents: write
 
 jobs:
-  goreleaser:
-    name: Release CLI Binaries (GoReleaser on Linux)
+  test:
+    name: Run Test Suite & Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: true
+
+      - name: Install Linux GUI Dependencies for Tests
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libgl1-mesa-dev xorg-dev libxcursor-dev libxrandr-dev libxinerama-dev libxi-dev libxxf86vm-dev
+
+      - name: Run Full Test Suite
+        run: go test -v ./...
+
+      - name: Validate GoReleaser Config
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          args: check
+
+  build-gui:
+    name: Build Desktop GUI (Linux & Windows)
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: true
+
+      - name: Cache fyne-cross binary
+        id: cache-fyne-cross
+        uses: actions/cache@v4
+        with:
+          path: ~/go/bin/fyne-cross
+          key: ${{ runner.os }}-fyne-cross-bin
+
+      - name: Install fyne-cross
+        if: steps.cache-fyne-cross.outputs.cache-hit != 'true'
+        run: go install github.com/fyne-io/fyne-cross@latest
+
+      - name: Cross-Compile Desktop GUI for Windows
+        run: |
+          ~/go/bin/fyne-cross windows -arch=amd64,arm64 -app-id=com.inkanim.studio ./cmd/inkanim
+
+      - name: Cross-Compile Desktop GUI for Linux
+        run: |
+          ~/go/bin/fyne-cross linux -arch=amd64,arm64 -app-id=com.inkanim.studio ./cmd/inkanim
+
+      - name: Prepare GUI Packages
+        run: |
+          mkdir -p gui-dist
+          TAG="${{ github.ref_name }}"
+          if [ -z "$TAG" ] || [[ ! "$TAG" =~ ^v ]]; then
+            TAG="latest"
+          fi
+          cp fyne-cross/dist/windows-amd64/InkAnim.exe.zip "gui-dist/InkAnim_${TAG}_windows_amd64.zip"
+          cp fyne-cross/dist/windows-arm64/InkAnim.exe.zip "gui-dist/InkAnim_${TAG}_windows_arm64.zip"
+          cp fyne-cross/dist/linux-amd64/InkAnim.tar.xz "gui-dist/InkAnim_${TAG}_linux_amd64.tar.xz"
+          cp fyne-cross/dist/linux-arm64/InkAnim.tar.xz "gui-dist/InkAnim_${TAG}_linux_arm64.tar.xz"
+
+      - name: Upload GUI Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: gui-dist
+          path: gui-dist/
+
+  release:
+    name: Release Binaries (GoReleaser + Unified Checksums)
+    needs: [test, build-gui]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -23,6 +103,13 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.24'
+          cache: true
+
+      - name: Download GUI Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: gui-dist
+          path: gui-dist
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
@@ -33,45 +120,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  build-gui:
-    name: Build Multi-Platform Desktop GUI (fyne-cross)
-    needs: goreleaser
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.24'
-
-      - name: Install fyne-cross
-        run: go install github.com/fyne-io/fyne-cross@latest
-
-      - name: Cross-Compile Desktop GUI for Windows
-        run: |
-          fyne-cross windows -arch=amd64,arm64 -app-id=com.inkanim.studio ./cmd/inkanim
-
-      - name: Cross-Compile Desktop GUI for Linux
-        run: |
-          fyne-cross linux -arch=amd64,arm64 -app-id=com.inkanim.studio ./cmd/inkanim
-
-      - name: Cross-Compile Desktop GUI for macOS
-        continue-on-error: true
-        run: |
-          fyne-cross darwin -arch=amd64,arm64 -app-id=com.inkanim.studio ./cmd/inkanim
-
-      - name: Upload GUI Workflow Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: inkanim-desktop-binaries
-          path: fyne-cross/dist/
-
-      - name: Attach GUI Binaries to GitHub Release
+      - name: Update Checksums and Attach GUI to GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          find fyne-cross/dist -type f \( -name "*.zip" -o -name "*.tar.xz" -o -name "*.deb" -o -name "*.pkg" -o -name "*.dmg" -o -name "*.exe" \) -exec gh release upload ${{ github.ref_name }} {} --clobber +
+          cd gui-dist
+          sha256sum * >> ../dist/checksums.txt
+          cd ..
+          sort -k2 -o dist/checksums.txt dist/checksums.txt
+          gh release upload ${{ github.ref_name }} gui-dist/* dist/checksums.txt --clobber

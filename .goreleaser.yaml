@@ -15,7 +15,6 @@ builds:
     goos:
       - linux
       - windows
-      - darwin
     goarch:
       - amd64
       - arm64
@@ -38,8 +37,6 @@ archives:
       - README.md
       - DESIGN.md
       - LICENSE
-      - assets/icon.png
-      - testdata/preview.html
       - testdata/character_walk.svg
 
 checksum:
