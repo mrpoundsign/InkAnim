@@ -126,7 +126,7 @@ func (mw *MainWindow) promptOpenFile() {
 }
 
 func (mw *MainWindow) loadFilePath(path string) {
-	mw.statusLabel.SetText("Loading " + filepath.Base(path) + " ...")
+	mw.statusLabel.SetText("Loading: " + filepath.Base(path))
 	if err := mw.session.LoadSVG(path); err != nil {
 		dialog.ShowError(err, mw.window)
 		mw.statusLabel.SetText("Failed to load SVG.")

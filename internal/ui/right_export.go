@@ -46,7 +46,6 @@ func NewRightExportPanel(sess *app.Session, win fyne.Window, onOptionsChange fun
 
 	// Pre-allocate status label & progress bar first so callbacks are safe
 	p.twitchStatusLabel = widget.NewLabel("Twitch Status: Ready")
-	p.twitchStatusLabel.Wrapping = fyne.TextWrapWord
 
 	p.progressBar = widget.NewProgressBarInfinite()
 	p.progressBar.Hide()
@@ -229,14 +228,14 @@ func (p *RightExportPanel) validateTwitch() {
 
 	res := gif.ValidateTwitchEmote(frames, totalDurMs, w, h, estBytes)
 	if res.IsValid && len(res.Warnings) == 0 {
-		p.twitchStatusLabel.SetText(fmt.Sprintf("✓ Twitch Ready: %dx%d (%d frames, %0.1fs)", w, h, frames, float64(totalDurMs)/1000.0))
+		p.twitchStatusLabel.SetText(fmt.Sprintf("Ready for Twitch: %dx%d (%d frames, %0.1fs)", w, h, frames, float64(totalDurMs)/1000.0))
 	} else {
 		msg := "Twitch Emote Notice:"
 		for _, e := range res.Errors {
-			msg += "\n• " + e
+			msg += "\n- " + e
 		}
 		for _, wMsg := range res.Warnings {
-			msg += "\n• " + wMsg
+			msg += "\n- " + wMsg
 		}
 		p.twitchStatusLabel.SetText(msg)
 	}

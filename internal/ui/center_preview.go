@@ -163,6 +163,7 @@ func (p *CenterPreviewPanel) Refresh() {
 	frames := p.session.RenderedFrames
 	if len(frames) == 0 {
 		p.frameLabel.SetText("Frame: 0 / 0")
+		p.pauseLocked()
 		return
 	}
 
@@ -171,6 +172,13 @@ func (p *CenterPreviewPanel) Refresh() {
 	}
 
 	p.renderCurrentFrameLocked()
+
+	// Automatically start playback when animation frames are loaded
+	if len(frames) > 1 {
+		p.playLocked()
+	} else {
+		p.pauseLocked()
+	}
 }
 
 // StepFrame steps forward or backward by delta.
@@ -216,6 +224,13 @@ func (p *CenterPreviewPanel) playLocked() {
 	if len(frames) <= 1 {
 		return
 	}
+
+	// Stop any existing animation loop first
+	if p.stop != nil {
+		close(p.stop)
+		p.stop = nil
+	}
+
 	p.isPlaying = true
 	p.playPauseBtn.SetText("⏸ Pause")
 	p.stop = make(chan struct{})
@@ -233,10 +248,26 @@ func (p *CenterPreviewPanel) playLocked() {
 				durMs = 100
 			}
 
-			p.currentIdx = (p.currentIdx + 1) % len(p.session.RenderedFrames)
-			p.renderCurrentFrameLocked()
+			// Advance to next frame
+			nextIdx := (p.currentIdx + 1) % len(p.session.RenderedFrames)
+			if !p.loop && nextIdx == 0 {
+				// Reached end of animation without loop
+				p.pauseLocked()
+				p.mu.Unlock()
+				return
+			}
 
+			p.currentIdx = nextIdx
 			p.mu.Unlock()
+
+			// Use fyne.Do to dispatch repaint on the main UI thread (required for OpenGL/GLFW wake-up)
+			fyne.Do(func() {
+				p.mu.Lock()
+				defer p.mu.Unlock()
+				if p.isPlaying {
+					p.renderCurrentFrameLocked()
+				}
+			})
 
 			select {
 			case <-stopChan:
