@@ -10,7 +10,7 @@
 #   .\build.ps1 -Target clean  # Clean build artifacts
 
 param(
-    [ValidateSet("all", "gui", "cli", "test", "lint", "cross", "check", "clean")]
+    [ValidateSet("all", "gui", "cli", "wasm", "serve", "test", "lint", "cross", "check", "clean")]
     [string]$Target = "all"
 )
 
@@ -140,6 +140,52 @@ function Run-Lint {
     }
 }
 
+function Build-WASM {
+    Write-Host "`n==> Packaging WebAssembly studio & assembling GitHub Pages site..." -ForegroundColor Cyan
+    $pagesDir = Join-Path $BuildDir "gh-pages"
+    $wasmTemp = Join-Path $BuildDir "wasm-tmp"
+    if (Test-Path $pagesDir) { Remove-Item $pagesDir -Recurse -Force }
+    if (Test-Path $wasmTemp) { Remove-Item $wasmTemp -Recurse -Force }
+    New-Item -ItemType Directory -Path (Join-Path $pagesDir "demo") -Force | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $pagesDir "samples") -Force | Out-Null
+    New-Item -ItemType Directory -Path $wasmTemp -Force | Out-Null
+
+    Write-Host "Compiling WebAssembly binary via Fyne..." -ForegroundColor DarkGray
+    Push-Location $wasmTemp
+    try {
+        & $GoExe run fyne.io/fyne/v2/cmd/fyne@v2.8.1 package -os web --release `
+            --sourceDir (Join-Path $PSScriptRoot "cmd\inkanim") `
+            --icon (Join-Path $PSScriptRoot "assets\icon.png") `
+            --name InkAnim
+    } finally {
+        Pop-Location
+    }
+
+    Copy-Item (Join-Path $wasmTemp "wasm\*") (Join-Path $pagesDir "demo") -Force
+    Remove-Item $wasmTemp -Recurse -Force
+
+    # Overlay our custom demo template
+    Copy-Item (Join-Path $PSScriptRoot "web\demo\index.html") (Join-Path $pagesDir "demo\index.html") -Force
+
+    # Copy landing page assets to root
+    Copy-Item (Join-Path $PSScriptRoot "web\landing\*") $pagesDir -Recurse -Force
+
+    # Copy sample SVGs
+    Copy-Item (Join-Path $PSScriptRoot "web\samples\*") (Join-Path $pagesDir "samples") -Recurse -Force
+
+    Write-Host "[OK] WebAssembly demo and landing page assembled in $pagesDir" -ForegroundColor Green
+}
+
+function Serve-Web {
+    $pagesDir = Join-Path $BuildDir "gh-pages"
+    $wasmBinary = Join-Path $pagesDir "demo\InkAnim.wasm"
+    if (-not (Test-Path $wasmBinary)) {
+        Write-Host "Web site not built yet. Building first..." -ForegroundColor DarkGray
+        Build-WASM
+    }
+    & $GoExe run ./cmd/wasm-serve -dir $pagesDir -port 8080
+}
+
 function Clean-Artifacts {
     Write-Host "`n==> Cleaning build artifacts..." -ForegroundColor Yellow
     Remove-Item inkanim.exe, inkanim-cli.exe -ErrorAction SilentlyContinue
@@ -153,9 +199,12 @@ switch ($Target) {
     "all"   { Run-Lint; Run-Tests; Build-CLI; Build-GUI }
     "gui"   { Build-GUI }
     "cli"   { Build-CLI }
+    "wasm"  { Build-WASM }
+    "serve" { Serve-Web }
     "test"  { Run-Tests }
     "lint"  { Run-Lint }
     "cross" { Cross-Compile-CLI }
     "check" { Run-Check }
     "clean" { Clean-Artifacts }
 }
+

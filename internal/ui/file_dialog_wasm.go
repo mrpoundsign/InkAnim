@@ -81,6 +81,23 @@ func (mw *MainWindow) initPlatform() {
 		return nil
 	})
 	doc.Call("addEventListener", "drop", onDrop)
+
+	var loadBytes js.Func
+	loadBytes = js.FuncOf(func(this js.Value, args []js.Value) any {
+		if len(args) < 2 {
+			return nil
+		}
+		name := args[0].String()
+		uint8Array := args[1]
+		length := uint8Array.Length()
+		data := make([]byte, length)
+		js.CopyBytesToGo(data, uint8Array)
+		fyne.Do(func() {
+			mw.loadData(data, name)
+		})
+		return nil
+	})
+	js.Global().Set("inkanimLoadBytes", loadBytes)
 }
 
 func (mw *MainWindow) promptOpenFile() {

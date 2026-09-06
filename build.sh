@@ -11,7 +11,8 @@ set -euo pipefail
 #   ./build.sh clean    # Clean build outputs
 
 TARGET="${1:-all}"
-BUILD_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/build"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BUILD_DIR="$ROOT_DIR/build"
 mkdir -p "$BUILD_DIR"
 
 if ! command -v go &>/dev/null; then
@@ -48,6 +49,46 @@ build_gui() {
     echo "==> Building inkanim Desktop GUI..."
     CGO_ENABLED=1 go build -trimpath -ldflags="-s -w" -o "$BUILD_DIR/inkanim" ./cmd/inkanim
     echo "✓ Successfully built $BUILD_DIR/inkanim"
+}
+
+build_wasm() {
+    echo "==> Packaging WebAssembly studio & assembling GitHub Pages site..."
+    local PAGES_DIR="$BUILD_DIR/gh-pages"
+    local WASM_TEMP="$BUILD_DIR/wasm-tmp"
+    rm -rf "$PAGES_DIR" "$WASM_TEMP"
+    mkdir -p "$PAGES_DIR/demo" "$PAGES_DIR/samples" "$WASM_TEMP"
+
+    echo "==> Compiling WebAssembly binary..."
+    (
+        cd "$WASM_TEMP"
+        go run fyne.io/fyne/v2/cmd/fyne@v2.8.1 package -os web --release \
+            --sourceDir "$ROOT_DIR/cmd/inkanim" \
+            --icon "$ROOT_DIR/assets/icon.png" \
+            --name InkAnim
+    )
+
+    cp "$WASM_TEMP/wasm/"* "$PAGES_DIR/demo/"
+    rm -rf "$WASM_TEMP"
+
+    # Overlay our custom demo template
+    cp "$ROOT_DIR/web/demo/index.html" "$PAGES_DIR/demo/index.html"
+
+    # Copy landing page assets to root
+    cp -r "$ROOT_DIR/web/landing/"* "$PAGES_DIR/"
+
+    # Copy sample SVGs
+    cp -r "$ROOT_DIR/web/samples/"* "$PAGES_DIR/samples/"
+
+    echo "✓ WebAssembly demo and landing page assembled in $PAGES_DIR"
+}
+
+serve_web() {
+    local PAGES_DIR="$BUILD_DIR/gh-pages"
+    if [ ! -f "$PAGES_DIR/demo/InkAnim.wasm" ]; then
+        echo "Web site not built yet. Building first..."
+        build_wasm
+    fi
+    go run ./cmd/wasm-serve -dir "$PAGES_DIR" -port 8080
 }
 
 run_tests() {
@@ -94,6 +135,12 @@ case "$TARGET" in
     gui)
         build_gui
         ;;
+    wasm)
+        build_wasm
+        ;;
+    serve)
+        serve_web
+        ;;
     test)
         run_tests
         ;;
@@ -107,7 +154,8 @@ case "$TARGET" in
         clean_artifacts
         ;;
     *)
-        echo "Unknown target: $TARGET. Available: all, cli, gui, test, lint, cross, clean"
+        echo "Unknown target: $TARGET. Available: all, cli, gui, wasm, serve, test, lint, cross, clean"
         exit 1
         ;;
 esac
+

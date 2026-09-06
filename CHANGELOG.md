@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **GitHub Pages WebAssembly Demo & Landing Page**: Deployed an in-browser WebAssembly studio demo (`/demo`) and project landing page (`/`) via GitHub Actions artifact deployment. Includes live Twitch chat scale previews, desktop download links, CLI snippet, and pre-loaded sample animations ([#16](https://github.com/mrpoundsign/InkAnim/issues/16)).
+- **WebAssembly Build & Dev Server Tooling**: Added `wasm` and `serve` targets to `build.sh` and `build.ps1`, and created `cmd/wasm-serve` to serve the web application locally on `http://localhost:8080` with proper `application/wasm` MIME types ([#16](https://github.com/mrpoundsign/InkAnim/issues/16)).
+- **Programmatic Sample SVG Loader**: Added `window.inkanimLoadBytes` bridge in WebAssembly platform driver to enable 1-click sample animation loading in web browsers ([#16](https://github.com/mrpoundsign/InkAnim/issues/16)).
+
 ## [0.1.3] - 2026-09-06
 
 ### Added

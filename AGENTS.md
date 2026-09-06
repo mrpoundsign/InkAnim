@@ -81,12 +81,16 @@ Active issues and feature requests are tracked exclusively via **[GitHub Issues]
   }
   ```
   Returning `true` causes Fyne to silently drop the request without rendering any file picker.
-- **Solution for WASM**:
-  - Implement a web-specific file open bridge using `syscall/js` that triggers a browser `<input type="file" accept=".svg">`, reads the selected file using `FileReader`, and passes bytes to `mw.loadData(bytes, filename)`.
-  - Implement an export bridge using `syscall/js` that converts the encoded GIF bytes into a `Blob` and triggers a browser download via a temporary `<a>` element.
-  - Implement browser window drag-and-drop (`dragover`/`drop` listeners) to load SVGs directly when dropped into the canvas.
+- **Solution for WASM (Implemented in `internal/ui/file_dialog_wasm.go`)**:
+  - Implemented a web-specific file open bridge using `syscall/js` that triggers a browser `<input type="file" accept=".svg">`, reads the selected file using `FileReader`, and passes bytes to `mw.loadData(bytes, filename)`.
+  - Implemented an export bridge using `syscall/js` that converts the encoded GIF bytes into a `Blob` and triggers a browser download via a temporary `<a>` element.
+  - Implemented browser window drag-and-drop (`dragover`/`drop` listeners on `document`) to load SVGs directly when dropped into the canvas.
+  - Implemented programmatic sample loader bridge `window.inkanimLoadBytes(filename, uint8Array)` for instant sample loading in web demos.
 
-*(Note: Prototypes for these fixes are safely stored in `git stash` to be applied cleanly per the user's instructions).*
+### GitHub Pages & WebAssembly Deployment
+- **Model**: Automated modern GitHub Pages deployment (artifact-based, zero extra branches) managed by `.github/workflows/pages.yml`.
+- **Packaging**: `./build.sh wasm` (or `.\build.ps1 -Target wasm`) compiles the app into `build/gh-pages/demo/`, assembles the project landing page into `build/gh-pages/`, and copies sample assets into `build/gh-pages/samples/`.
+- **Local Testing**: Run `./build.sh serve` (or `.\build.ps1 -Target serve`) to launch a local Go static server with `application/wasm` MIME support at `http://localhost:8080`.
 
 ---
 

@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>InkAnim — Inkscape SVG to Twitch Animated GIF Studio</title>
+  <meta name="description" content="Transform layered or multi-page Inkscape SVGs into production-ready, perfectly quantized animated GIFs for Twitch, Discord, and the web. Native desktop apps and WebAssembly demo.">
+  <link rel="icon" type="image/png" href="icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="bg-glow-1"></div>
+  <div class="bg-glow-2"></div>
+
+  <!-- Navbar -->
+  <nav class="navbar">
+    <div class="container nav-container">
+      <a href="./" class="brand">
+        <img src="icon.png" alt="InkAnim Logo" class="brand-icon">
+        <span class="brand-gradient">InkAnim</span>
+      </a>
+      <ul class="nav-links">
+        <li><a href="#features" class="nav-link">Features</a></li>
+        <li><a href="#twitch" class="nav-link">Twitch Specs</a></li>
+        <li><a href="#downloads" class="nav-link">Downloads</a></li>
+        <li><a href="#cli" class="nav-link">CLI</a></li>
+      </ul>
+      <div class="nav-actions">
+        <a href="https://github.com/mrpoundsign/InkAnim" target="_blank" rel="noopener noreferrer" class="btn btn-secondary">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+          GitHub
+        </a>
+        <a href="./demo/" class="btn btn-primary">
+          <span>🚀 Launch Demo</span>
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero Section -->
+  <header class="hero">
+    <div class="container">
+      <div class="hero-badge">
+        <span>✨ Open-Source Inkscape Animation Studio</span>
+      </div>
+      <h1 class="hero-title">
+        Vector SVGs to Twitch Emotes. <br>
+        <span class="gradient-text">Instant, Crisp, Quantized.</span>
+      </h1>
+      <p class="hero-description">
+        Transform layered or multi-page Inkscape SVGs into optimized, production-ready animated GIFs in seconds. Re-rendered directly from vector mathematics to guarantee sharp edges at any scale.
+      </p>
+      <div class="hero-buttons">
+        <a href="./demo/" class="btn btn-primary btn-lg">
+          <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3" fill="currentColor"/></svg>
+          Try In-Browser Web Demo
+        </a>
+        <a href="#downloads" class="btn btn-secondary btn-lg">
+          <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          Download Desktop App
+        </a>
+      </div>
+
+      <!-- Hero Showcase Card -->
+      <div class="showcase-card">
+        <div class="showcase-grid">
+          <div class="showcase-info">
+            <h3>Designed for Emote Artists & Streamers</h3>
+            <p>
+              Export directly to Twitch animated emote specifications. Automatic 1:1 square aspect ratio padding, 256 neural color clustering, and live preview across all chat resolutions.
+            </p>
+            <div class="feature-pills">
+              <span class="pill">⚡ 100% Vector Crisp</span>
+              <span class="pill">🎨 Floyd-Steinberg Dithering</span>
+              <span class="pill">📐 Document / Page Boundary Modes</span>
+              <span class="pill">🔒 100% Client-Side Privacy</span>
+            </div>
+          </div>
+          <div class="showcase-visual">
+            <div class="twitch-chat-box">
+              <div class="chat-header">
+                <span>Twitch Emote Scale Preview</span>
+                <span>Sub-1MB Compliant</span>
+              </div>
+              <div class="chat-previews">
+                <div class="preview-col">
+                  <img src="character_walk.gif" alt="Emote 112px" width="112" height="112">
+                  <span>112 × 112</span>
+                </div>
+                <div class="preview-col">
+                  <img src="character_walk.gif" alt="Emote 56px" width="56" height="56">
+                  <span>56 × 56</span>
+                </div>
+                <div class="preview-col">
+                  <img src="character_walk.gif" alt="Emote 28px" width="28" height="28">
+                  <span>28 × 28</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Features Section -->
+  <section id="features" class="section">
+    <div class="container">
+      <div class="section-header">
+        <div class="section-subtitle">Core Capabilities</div>
+        <h2 class="section-title">Built for Precision Animation</h2>
+      </div>
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon">📑</div>
+          <h3 class="feature-title">Layers & Pages Modes</h3>
+          <p class="feature-desc">
+            Whether you organize frames into Inkscape layers (<code>inkscape:groupmode="layer"</code>) or modern multi-page documents, InkAnim detects and builds animation timelines effortlessly.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">🎯</div>
+          <h3 class="feature-title">Vector-Scale Rasterization</h3>
+          <p class="feature-desc">
+            No blurry upscaling. InkAnim re-rasterizes the underlying vector geometry at your exact chosen export dimensions (up to 4096px) so lines remain laser-sharp.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">🎨</div>
+          <h3 class="feature-title">High-Fidelity GIF Quantization</h3>
+          <p class="feature-desc">
+            Intelligent color reduction with custom palette sizing (2 to 256 colors) paired with optional Floyd-Steinberg error-diffusion dithering for silky gradients.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">📌</div>
+          <h3 class="feature-title">Pin Background Layers</h3>
+          <p class="feature-desc">
+            Keep your backdrop, static props, or reference frames locked in place while only animating dynamic foreground layers.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">⚡</div>
+          <h3 class="feature-title">Headless Automation</h3>
+          <p class="feature-desc">
+            Includes <code>inkanim-cli</code>, a pure-Go CLI with zero runtime dependencies for batch scripts, CI pipelines, and automated asset conversion.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">🔒</div>
+          <h3 class="feature-title">Complete Client-Side Privacy</h3>
+          <p class="feature-desc">
+            Our WebAssembly studio runs 100% inside your browser. Your SVGs, illustrations, and exported GIFs never touch an external server or cloud service.
+          </p>
+        </div>
+      </div>
+
+      <!-- Privacy Callout -->
+      <div class="privacy-banner">
+        <div class="privacy-icon">🛡️</div>
+        <div class="privacy-text">
+          <h4>Zero Uploads. Zero Telemetry. 100% Private.</h4>
+          <p>InkAnim WebAssembly runs the complete Go SVG parser and GIF encoder inside your browser's WebGL sandbox. Your artwork remains entirely on your machine.</p>
+        </div>
+      </div>
+
+      <!-- Sample SVG Source Files Callout -->
+      <div style="margin-top: 24px; background: rgba(24, 24, 29, 0.65); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: var(--radius-md); padding: 20px 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;">
+        <div>
+          <h4 style="font-size: 1.05rem; color: #fff; margin-bottom: 4px;">🎨 Inspect Inkscape Animation Source Files</h4>
+          <p style="font-size: 0.88rem; color: var(--text-muted); margin: 0;">Download our sample vector files to explore how layers and pages are organized in Inkscape:</p>
+        </div>
+        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+          <a href="samples/bouncing_walker.svg" download="bouncing_walker.svg" class="btn btn-secondary" style="font-size: 0.85rem; padding: 8px 14px;">
+            📥 Bouncing Walker (Layers SVG)
+          </a>
+          <a href="samples/multipage_walk.svg" download="multipage_walk.svg" class="btn btn-secondary" style="font-size: 0.85rem; padding: 8px 14px;">
+            📥 Walk Cycle (Pages SVG)
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Twitch Specifications -->
+  <section id="twitch" class="section">
+    <div class="container">
+      <div class="section-header">
+        <div class="section-subtitle">Twitch Ready</div>
+        <h2 class="section-title">Built-In Emote Validator</h2>
+      </div>
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon">📐</div>
+          <h3 class="feature-title">Auto-Square Padding</h3>
+          <p class="feature-desc">
+            Twitch requires animated emotes to be square (1:1). InkAnim centers your drawing automatically on transparent padding without stretching or distortion.
+          </p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">⚖️</div>
+          <h3 class="feature-title">1MB File Size Cap</h3>
+          <p class="feature-desc">
+            Real-time validation checks that the final compiled GIF remains well under Twitch's strict 1.0 MB limit, giving you instant warning if a palette reduction is needed.
+          </p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">⏱️</div>
+          <h3 class="feature-title">FPS & Frame Constraints</h3>
+          <p class="feature-desc">
+            Preset controls for standard emote frame rates (10–30 FPS) with automatic frame-budget warnings to avoid Twitch upload rejections.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Downloads Section -->
+  <section id="downloads" class="section">
+    <div class="container">
+      <div class="section-header">
+        <div class="section-subtitle">Get InkAnim</div>
+        <h2 class="section-title">Download for Native Desktop</h2>
+      </div>
+      <div class="download-cards">
+        <div class="download-card">
+          <div>
+            <div class="download-icon">🪟</div>
+            <div class="download-platform">Windows</div>
+            <div class="download-info">Standalone 64-bit executable (<code>inkanim.exe</code>) & GUI installer</div>
+          </div>
+          <a href="https://github.com/mrpoundsign/InkAnim/releases/latest" target="_blank" rel="noopener noreferrer" class="btn btn-primary">
+            Download for Windows
+          </a>
+        </div>
+
+        <div class="download-card">
+          <div>
+            <div class="download-icon">🐧</div>
+            <div class="download-platform">Linux</div>
+            <div class="download-info">Native packages (.deb, .rpm) and portable x86_64 binaries</div>
+          </div>
+          <a href="https://github.com/mrpoundsign/InkAnim/releases/latest" target="_blank" rel="noopener noreferrer" class="btn btn-secondary">
+            Download for Linux
+          </a>
+        </div>
+
+        <div class="download-card">
+          <div>
+            <div class="download-icon">🌐</div>
+            <div class="download-platform">WebAssembly</div>
+            <div class="download-info">Run in any modern browser without downloading or installing anything</div>
+          </div>
+          <a href="./demo/" class="btn btn-primary">
+            Launch Web Studio
+          </a>
+        </div>
+      </div>
+
+      <!-- CLI Snippet -->
+      <div id="cli" class="cli-box">
+        <div class="cli-code">
+          <span style="color: #a1a1aa;">$</span> inkanim-cli -i character.svg -o emote.gif -square -size 512 -fps 10
+        </div>
+        <button class="cli-copy" onclick="navigator.clipboard.writeText('inkanim-cli -i character.svg -o emote.gif -square -size 512 -fps 10'); this.innerText='Copied!'; setTimeout(() => this.innerText='Copy', 2000)">
+          Copy
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container footer-content">
+      <div>
+        <strong>InkAnim</strong> — Open source under the MIT License.
+      </div>
+      <ul class="footer-links">
+        <li><a href="./demo/" class="footer-link">Web Demo</a></li>
+        <li><a href="https://github.com/mrpoundsign/InkAnim" target="_blank" rel="noopener noreferrer" class="footer-link">GitHub</a></li>
+        <li><a href="https://github.com/mrpoundsign/InkAnim/issues" target="_blank" rel="noopener noreferrer" class="footer-link">Report Issue</a></li>
+        <li><a href="https://github.com/mrpoundsign/InkAnim/releases" target="_blank" rel="noopener noreferrer" class="footer-link">Releases</a></li>
+      </ul>
+    </div>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>InkAnim Studio — In-Browser WebAssembly Demo</title>
+  <meta name="description" content="Live in-browser WebAssembly demo of InkAnim. Convert layered and multi-page Inkscape SVGs to animated GIFs.">
+  <link rel="icon" type="image/png" href="icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="dark.css" media="(prefers-color-scheme: dark)">
+  <link rel="stylesheet" href="light.css" media="(prefers-color-scheme: light)">
+
+  <style>
+    :root {
+      --accent-purple: #9146ff;
+      --accent-purple-hover: #a970ff;
+      --bg-dark: #0e0e11;
+      --text-light: #f4f4f6;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background-color: var(--bg-dark);
+      color: var(--text-light);
+      text-align: center;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    /* Loading Screen Container */
+    .centered-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      background: radial-gradient(circle at center, #18181f 0%, #09090b 100%);
+    }
+
+    .loader-card {
+      background: rgba(24, 24, 29, 0.85);
+      border: 1px solid rgba(145, 70, 255, 0.3);
+      box-shadow: 0 12px 40px -10px rgba(0, 0, 0, 0.8), 0 0 30px -10px rgba(145, 70, 255, 0.35);
+      border-radius: 20px;
+      padding: 40px;
+      max-width: 400px;
+      width: 90%;
+      text-align: center;
+      backdrop-filter: blur(16px);
+    }
+
+    .app-icon {
+      width: 80px;
+      height: 80px;
+      border-radius: 18px;
+      margin-bottom: 16px;
+      box-shadow: 0 8px 24px rgba(145, 70, 255, 0.4);
+    }
+
+    .app-title {
+      font-size: 1.8rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 6px;
+      background: linear-gradient(135deg, #ffffff 40%, var(--accent-purple-hover) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .app-subtitle {
+      font-size: 0.9rem;
+      color: #a1a1aa;
+      margin-bottom: 24px;
+    }
+
+    .spinner-box {
+      margin: 16px 0;
+    }
+
+    .spinner-ring {
+      width: 40px;
+      height: 40px;
+      border: 3px solid rgba(145, 70, 255, 0.2);
+      border-top-color: var(--accent-purple);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .status-text {
+      font-size: 0.85rem;
+      color: #d4d4d8;
+      font-family: 'JetBrains Mono', monospace;
+      margin-top: 12px;
+    }
+
+    /* Floating Studio Toolbar */
+    #studio-toolbar {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10000;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: rgba(18, 18, 23, 0.88);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(145, 70, 255, 0.35);
+      border-radius: 9999px;
+      padding: 8px 18px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.7), 0 0 20px rgba(145, 70, 255, 0.25);
+      transition: all 0.3s ease;
+    }
+
+    #studio-toolbar:hover {
+      border-color: var(--accent-purple);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8), 0 0 28px rgba(145, 70, 255, 0.45);
+    }
+
+    .tool-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #f4f4f6;
+      font-size: 0.82rem;
+      font-weight: 600;
+      padding: 6px 12px;
+      border-radius: 9999px;
+      text-decoration: none;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+    }
+
+    .tool-btn:hover {
+      background: rgba(145, 70, 255, 0.25);
+      border-color: var(--accent-purple);
+      color: #fff;
+      transform: translateY(-1px);
+    }
+
+    .tool-btn-primary {
+      background: linear-gradient(135deg, var(--accent-purple) 0%, #772ce8 100%);
+      border-color: transparent;
+    }
+
+    .tool-btn-primary:hover {
+      background: linear-gradient(135deg, var(--accent-purple-hover) 0%, var(--accent-purple) 100%);
+    }
+
+    .tool-sep {
+      width: 1px;
+      height: 18px;
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    .tool-label {
+      font-size: 0.78rem;
+      color: #a1a1aa;
+      font-weight: 500;
+    }
+
+    .sample-group {
+      display: inline-flex;
+      align-items: center;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(145, 70, 255, 0.28);
+      border-radius: 9999px;
+      padding: 2px 4px 2px 2px;
+      gap: 2px;
+      transition: all 0.2s ease;
+    }
+
+    .sample-group:hover {
+      border-color: var(--accent-purple);
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .tool-btn-sub {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      background: transparent;
+      border: 1px solid transparent;
+      color: #a1a1aa;
+      font-size: 0.75rem;
+      font-weight: 500;
+      padding: 4px 8px;
+      border-radius: 9999px;
+      text-decoration: none;
+      transition: all 0.2s ease;
+    }
+
+    .tool-btn-sub:hover {
+      background: rgba(255, 255, 255, 0.12);
+      color: #fff;
+      border-color: rgba(255, 255, 255, 0.15);
+    }
+
+    @media (max-width: 680px) {
+      #studio-toolbar {
+        bottom: 10px;
+        padding: 6px 12px;
+        gap: 8px;
+        max-width: 95vw;
+        overflow-x: auto;
+      }
+      .tool-label {
+        display: none;
+      }
+    }
+  </style>
+
+  <script>
+    function getChromeVersion() {
+      var raw = navigator.userAgent.match(/Chrom(e|ium)\/([0-9]+)\./);
+      return raw ? parseInt(raw[2], 10) : 0;
+    }
+
+    var wasmBuild = true;
+    if (window.chrome && getChromeVersion() < 106) {
+      wasmBuild = false;
+    }
+
+    function async_load(file, cb) {
+      var d = document, t = 'script',
+          o = d.createElement(t),
+          s = d.getElementsByTagName(t)[0];
+      o.src = file;
+      o.addEventListener('load', function (e) { cb(e); }, false);
+      s.parentNode.insertBefore(o, s);
+    }
+
+    function webgl_support() {
+      try {
+        var canvas = document.createElement('canvas');
+        return !!window.WebGLRenderingContext &&
+          (canvas.getContext('webgl') || canvas.getContext('experimental-webgl'));
+      } catch(e) {
+        return false;
+      }
+    }
+
+    function download_application() {
+      var action = document.getElementById("action");
+      var main = document.getElementById("main");
+
+      if (webgl_support()) {
+        if (wasmBuild && WebAssembly) {
+          action.innerText = "Initializing runtime...";
+          async_load("wasm_exec.js", function() {
+            if (WebAssembly && !WebAssembly.instantiateStreaming) {
+              WebAssembly.instantiateStreaming = async (resp, importObject) => {
+                const source = await (await resp).arrayBuffer();
+                return await WebAssembly.instantiate(source, importObject);
+              };
+            }
+
+            action.innerText = "Loading InkAnim WebAssembly (~40MB)...";
+
+            const go = new Go();
+            WebAssembly.instantiateStreaming(fetch("InkAnim.wasm"), go.importObject).then((result) => {
+              main.style.display = "none";
+              go.run(result.instance);
+            }).catch((err) => {
+              action.innerText = "Error loading WebAssembly: " + err;
+              action.style.color = "#ef4444";
+            });
+          });
+        } else {
+          action.innerText = "WebAssembly is not supported in your browser.";
+          action.style.color = "#ef4444";
+        }
+      } else {
+        action.innerText = "WebGL is not supported in your browser.";
+        action.style.color = "#ef4444";
+      }
+    }
+
+    // Helper to load sample files programmatically into InkAnim
+    async function loadSampleSVG(url, filename, btn) {
+      var origText = btn ? btn.innerText : '';
+      if (btn) btn.innerText = "Loading...";
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const buf = await res.arrayBuffer();
+        if (window.inkanimLoadBytes) {
+          window.inkanimLoadBytes(filename, new Uint8Array(buf));
+          if (btn) {
+            btn.innerText = "✓ Loaded!";
+            setTimeout(function() { btn.innerText = origText; }, 2500);
+          }
+        } else {
+          alert("InkAnim is still starting up. Please try again in a few seconds!");
+          if (btn) btn.innerText = origText;
+        }
+      } catch(err) {
+        console.error("Failed to load sample SVG:", err);
+        alert("Could not load sample: " + err.message);
+        if (btn) btn.innerText = origText;
+      }
+    }
+  </script>
+</head>
+<body onload="download_application()">
+
+  <!-- Initial Loading Screen -->
+  <div id="main">
+    <div class="centered-container">
+      <div class="loader-card">
+        <img src="icon.png" alt="InkAnim Logo" class="app-icon">
+        <div class="app-title">InkAnim Studio</div>
+        <div class="app-subtitle">Client-Side WebAssembly Studio</div>
+        <div class="spinner-box">
+          <div class="spinner-ring"></div>
+        </div>
+        <div id="action" class="status-text">
+          <noscript>JavaScript is required to run InkAnim in the browser.</noscript>
+          Starting...
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Floating Utility Toolbar -->
+  <div id="studio-toolbar">
+    <a href="../" class="tool-btn">
+      <span>←</span> Home
+    </a>
+    <div class="tool-sep"></div>
+    <span class="tool-label">Quick Samples:</span>
+    <div class="sample-group">
+      <button type="button" class="tool-btn tool-btn-primary" onclick="loadSampleSVG('../samples/bouncing_walker.svg', 'bouncing_walker.svg', this)">
+        ⚡ Bounce (Layers)
+      </button>
+      <a href="../samples/bouncing_walker.svg" download="bouncing_walker.svg" class="tool-btn-sub" title="Download Source SVG">
+        📥 Source
+      </a>
+    </div>
+
+    <div class="sample-group">
+      <button type="button" class="tool-btn tool-btn-primary" onclick="loadSampleSVG('../samples/multipage_walk.svg', 'multipage_walk.svg', this)">
+        ⚡ Walk (Pages)
+      </button>
+      <a href="../samples/multipage_walk.svg" download="multipage_walk.svg" class="tool-btn-sub" title="Download Source SVG">
+        📥 Source
+      </a>
+    </div>
+    <div class="tool-sep"></div>
+    <a href="https://github.com/mrpoundsign/InkAnim" target="_blank" rel="noopener noreferrer" class="tool-btn">
+      ⭐ GitHub
+    </a>
+  </div>
+
+  <input id="dummyEntry" style="position: absolute; left: 0; top: -100pt; z-index: -10; font-size: 32pt;" />
+</body>
+</html>
