@@ -60,7 +60,7 @@ InkAnim/
 
 | Issue # | Title / Topic | Status | Summary & Notes |
 | :--- | :--- | :--- | :--- |
-| **#1** | [Load/Save dialog is too small and not resizable](https://github.com/mrpoundsign/InkAnim/issues/1) | Open | Default Fyne file dialog opens too small. Needs explicit resizing (`800x550`) in desktop file dialogs. |
+| **#1** | [Load/Save dialog is too small and not resizable](https://github.com/mrpoundsign/InkAnim/issues/1) | **Fixed** | Replaced Fyne in-canvas dialogs with native OS modal file dialogs via `ncruces/zenity` (Windows File Explorer / Linux zenity/kdialog). |
 | **#2** | [Allow frame loop to beginning](https://github.com/mrpoundsign/InkAnim/issues/2) | Open | Backlog feature request for loop control and wrapping. |
 | **#3** | [Clarify / Fix "Pin BG" behavior](https://github.com/mrpoundsign/InkAnim/issues/3) | **Closed** | Pinned background frames composite behind active animation frames. Committed in `212401f`. |
 | **#4** | [Toggling 'Pin BG' on layers other than first frame halts animation playback](https://github.com/mrpoundsign/InkAnim/issues/4) | Open | In `internal/ui/left_frames.go`, replacing boolean toggles with explicit `SetLayerPinned(idx, checked)` and `SetLayerActive(idx, checked)` prevents desync and playback halts. |
