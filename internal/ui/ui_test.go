@@ -237,4 +237,60 @@ func TestNoLoopPlaybackAndButtonStates(t *testing.T) {
 	mw.centerPanel.Pause()
 }
 
+func TestCropBoundaryUIAndGuides(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	mw := NewMainWindow(app)
+	if mw == nil {
+		t.Fatalf("expected NewMainWindow to succeed")
+	}
+
+	multiPagePath, err := filepath.Abs("../../testdata/multipage_walk.svg")
+	if err != nil {
+		t.Fatalf("failed to resolve multipage SVG path: %v", err)
+	}
+
+	mw.loadFilePath(multiPagePath)
+	mw.centerPanel.Pause()
+
+	// Initially in Page mode with BoundaryPage
+	if mw.session.CropBoundaryMode != "page" {
+		t.Errorf("expected page crop boundary, got %s", mw.session.CropBoundaryMode)
+	}
+	if mw.leftPanel.cropBoundaryRadio.Selected != "Page" {
+		t.Errorf("expected cropBoundaryRadio selected 'Page', got %s", mw.leftPanel.cropBoundaryRadio.Selected)
+	}
+
+	// Switch to Document boundary via radio group
+	mw.leftPanel.cropBoundaryRadio.SetSelected("Document")
+	if mw.session.CropBoundaryMode != "document" {
+		t.Errorf("expected document crop boundary, got %s", mw.session.CropBoundaryMode)
+	}
+	w, h := mw.session.GetActiveBoundaryDimensions()
+	if w != 560 || h != 256 {
+		t.Errorf("expected 560x256 document boundary, got %fx%f", w, h)
+	}
+
+	// Switch back to Page boundary
+	mw.leftPanel.cropBoundaryRadio.SetSelected("Page")
+	if mw.session.CropBoundaryMode != "page" {
+		t.Errorf("expected page crop boundary, got %s", mw.session.CropBoundaryMode)
+	}
+
+	// Toggle Crop Guides checkbox in center panel
+	if !mw.centerPanel.showCropGuides {
+		t.Errorf("expected showCropGuides to be true by default")
+	}
+	mw.centerPanel.cropGuidesCheck.SetChecked(false)
+	if mw.centerPanel.showCropGuides {
+		t.Errorf("expected showCropGuides to be false after toggle")
+	}
+	mw.centerPanel.cropGuidesCheck.SetChecked(true)
+	if !mw.centerPanel.showCropGuides {
+		t.Errorf("expected showCropGuides to be true after toggle")
+	}
+}
+
+
 

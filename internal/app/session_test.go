@@ -224,4 +224,61 @@ func TestRenderExportFramesVectorResolution(t *testing.T) {
 	}
 }
 
+func TestSessionCropBoundaryModes(t *testing.T) {
+	testSVGPath, err := filepath.Abs("../../testdata/multipage_walk.svg")
+	if err != nil {
+		t.Fatalf("failed to resolve test SVG path: %v", err)
+	}
+
+	sess := NewSession()
+	if err := sess.LoadSVG(testSVGPath); err != nil {
+		t.Fatalf("LoadSVG failed: %v", err)
+	}
+
+	// multipage_walk.svg has 2 pages (each 256x256), doc is 560x256
+	// Default mode for multipage_walk is ModePages
+	if sess.CurrentMode != "pages" {
+		t.Errorf("expected default mode pages, got %s", sess.CurrentMode)
+	}
+	if sess.CropBoundaryMode != "page" {
+		t.Errorf("expected default boundary mode page, got %s", sess.CropBoundaryMode)
+	}
+
+	// Active boundary dimensions should be 256x256
+	w, h := sess.GetActiveBoundaryDimensions()
+	if w != 256 || h != 256 {
+		t.Errorf("expected 256x256 boundary, got %fx%f", w, h)
+	}
+
+	// Switch to Document boundary in Page mode
+	if err := sess.SetCropBoundary("document", 0); err != nil {
+		t.Fatalf("SetCropBoundary document failed: %v", err)
+	}
+	docW, docH := sess.GetActiveBoundaryDimensions()
+	if docW != 560 || docH != 256 {
+		t.Errorf("expected 560x256 document boundary, got %fx%f", docW, docH)
+	}
+
+	// Switch to Layers mode (character_walk.svg)
+	charSVGPath, err := filepath.Abs("../../testdata/character_walk.svg")
+	if err != nil {
+		t.Fatalf("failed to resolve character_walk path: %v", err)
+	}
+	sessLayers := NewSession()
+	if err := sessLayers.LoadSVG(charSVGPath); err != nil {
+		t.Fatalf("LoadSVG character_walk failed: %v", err)
+	}
+	if sessLayers.CurrentMode != "layers" {
+		t.Errorf("expected layers mode, got %s", sessLayers.CurrentMode)
+	}
+	if sessLayers.CropBoundaryMode != "document" {
+		t.Errorf("expected document boundary for layers, got %s", sessLayers.CropBoundaryMode)
+	}
+	cW, cH := sessLayers.GetActiveBoundaryDimensions()
+	if cW != 256 || cH != 256 {
+		t.Errorf("expected 256x256 for character_walk, got %fx%f", cW, cH)
+	}
+}
+
+
 

@@ -12,6 +12,23 @@ const (
 	ModePages  FrameMode = "pages"
 )
 
+// BoundaryMode specifies the crop boundary used for framing animation.
+type BoundaryMode string
+
+const (
+	BoundaryDocument BoundaryMode = "document"
+	BoundaryPage     BoundaryMode = "page"
+)
+
+// Rect represents a 2D bounding rectangle in SVG user space.
+type Rect struct {
+	X      float64 `json:"x"`
+	Y      float64 `json:"y"`
+	Width  float64 `json:"width"`
+	Height float64 `json:"height"`
+}
+
+
 // Layer represents an Inkscape layer group in the SVG.
 type Layer struct {
 	ID          string `json:"id"`
@@ -81,6 +98,53 @@ type SVGDocument struct {
 	Pages       []Page
 	DefaultMode FrameMode
 }
+
+// GetDocumentRect returns the document's native viewBox or dimensions as a Rect.
+func (d *SVGDocument) GetDocumentRect() Rect {
+	if d == nil {
+		return Rect{X: 0, Y: 0, Width: 512, Height: 512}
+	}
+	if d.ViewBoxW > 0 && d.ViewBoxH > 0 {
+		return Rect{
+			X:      d.ViewBoxX,
+			Y:      d.ViewBoxY,
+			Width:  d.ViewBoxW,
+			Height: d.ViewBoxH,
+		}
+	}
+	w := d.Width
+	h := d.Height
+	if w <= 0 {
+		w = 512
+	}
+	if h <= 0 {
+		h = 512
+	}
+	return Rect{X: 0, Y: 0, Width: w, Height: h}
+}
+
+// GetPageRect returns the bounding rectangle of the page at the given index.
+func (d *SVGDocument) GetPageRect(index int) (Rect, bool) {
+	if d == nil || index < 0 || index >= len(d.Pages) {
+		return Rect{}, false
+	}
+	p := d.Pages[index]
+	w := p.Width
+	h := p.Height
+	if w <= 0 {
+		w = 512
+	}
+	if h <= 0 {
+		h = 512
+	}
+	return Rect{
+		X:      p.X,
+		Y:      p.Y,
+		Width:  w,
+		Height: h,
+	}, true
+}
+
 
 // RenderedFrame represents a single rasterized animation frame.
 type RenderedFrame struct {

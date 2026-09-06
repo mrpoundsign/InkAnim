@@ -14,24 +14,29 @@ import (
 
 // Session manages the loaded SVG, frame pipeline, preview buffers, and export settings.
 type Session struct {
-	FilePath       string
-	Document       *svg.SVGDocument
-	CurrentMode    svg.FrameMode
-	Layers         []svg.Layer
-	Pages          []svg.Page
-	ExportOptions  gif.ExportOptions
-	RenderedFrames []svg.RenderedFrame
-	PinnedLayers   map[string]bool
+	FilePath         string
+	Document         *svg.SVGDocument
+	CurrentMode      svg.FrameMode
+	CropBoundaryMode svg.BoundaryMode
+	CropPageIndex    int
+	Layers           []svg.Layer
+	Pages            []svg.Page
+	ExportOptions    gif.ExportOptions
+	RenderedFrames   []svg.RenderedFrame
+	PinnedLayers     map[string]bool
 }
 
 // NewSession creates an empty session with default options.
 func NewSession() *Session {
 	return &Session{
-		CurrentMode:   svg.ModeLayers,
-		ExportOptions: gif.DefaultOptions(),
-		PinnedLayers:  make(map[string]bool),
+		CurrentMode:      svg.ModeLayers,
+		CropBoundaryMode: svg.BoundaryDocument,
+		CropPageIndex:    0,
+		ExportOptions:    gif.DefaultOptions(),
+		PinnedLayers:     make(map[string]bool),
 	}
 }
+
 
 // LoadSVG loads and parses an SVG file from disk.
 func (s *Session) LoadSVG(filePath string) error {
@@ -58,6 +63,12 @@ func (s *Session) LoadSVGData(data []byte, filename string) error {
 	copy(s.Pages, doc.Pages)
 
 	s.CurrentMode = doc.DefaultMode
+	if doc.DefaultMode == svg.ModePages {
+		s.CropBoundaryMode = svg.BoundaryPage
+	} else {
+		s.CropBoundaryMode = svg.BoundaryDocument
+	}
+	s.CropPageIndex = 0
 	s.PinnedLayers = make(map[string]bool)
 
 	return s.RerenderAllFrames()
@@ -66,8 +77,107 @@ func (s *Session) LoadSVGData(data []byte, filename string) error {
 // SetMode switches between ModeLayers and ModePages and rerenders.
 func (s *Session) SetMode(mode svg.FrameMode) error {
 	s.CurrentMode = mode
+	if mode == svg.ModePages {
+		s.CropBoundaryMode = svg.BoundaryPage
+	} else {
+		s.CropBoundaryMode = svg.BoundaryDocument
+	}
 	return s.RerenderAllFrames()
 }
+
+// SetCropBoundary sets the boundary mode ("document" or "page") and target page index, then rerenders.
+func (s *Session) SetCropBoundary(mode svg.BoundaryMode, pageIndex int) error {
+	s.CropBoundaryMode = mode
+	if pageIndex < 0 {
+		pageIndex = 0
+	}
+	if s.Document != nil && len(s.Pages) > 0 && pageIndex >= len(s.Pages) {
+		pageIndex = 0
+	}
+	s.CropPageIndex = pageIndex
+	return s.RerenderAllFrames()
+}
+
+// GetActiveBoundaryDimensions returns the width and height of the active crop boundary.
+func (s *Session) GetActiveBoundaryDimensions() (float64, float64) {
+	if s.Document == nil {
+		return 512, 512
+	}
+
+	if s.CurrentMode == svg.ModeLayers {
+		if s.CropBoundaryMode == svg.BoundaryPage && len(s.Pages) > 0 {
+			pIdx := s.CropPageIndex
+			if pIdx < 0 || pIdx >= len(s.Pages) {
+				pIdx = 0
+			}
+			rect, ok := s.Document.GetPageRect(pIdx)
+			if ok && rect.Width > 0 && rect.Height > 0 {
+				return rect.Width, rect.Height
+			}
+		}
+		docRect := s.Document.GetDocumentRect()
+		return docRect.Width, docRect.Height
+	}
+
+	// ModePages
+	if s.CropBoundaryMode == svg.BoundaryDocument {
+		docRect := s.Document.GetDocumentRect()
+		return docRect.Width, docRect.Height
+	}
+
+	if len(s.Pages) > 0 {
+		pIdx := s.CropPageIndex
+		if pIdx >= 0 && pIdx < len(s.Pages) {
+			rect, ok := s.Document.GetPageRect(pIdx)
+			if ok && rect.Width > 0 && rect.Height > 0 {
+				return rect.Width, rect.Height
+			}
+		}
+		rect, ok := s.Document.GetPageRect(0)
+		if ok && rect.Width > 0 && rect.Height > 0 {
+			return rect.Width, rect.Height
+		}
+	}
+	docRect := s.Document.GetDocumentRect()
+	return docRect.Width, docRect.Height
+}
+
+// GetActiveBoundaryRect returns the bounding rectangle for the given frame index or active crop boundary.
+func (s *Session) GetActiveBoundaryRect(frameIndex int) svg.Rect {
+	if s.Document == nil {
+		return svg.Rect{X: 0, Y: 0, Width: 512, Height: 512}
+	}
+
+	if s.CurrentMode == svg.ModeLayers {
+		if s.CropBoundaryMode == svg.BoundaryPage && len(s.Pages) > 0 {
+			pIdx := s.CropPageIndex
+			if pIdx < 0 || pIdx >= len(s.Pages) {
+				pIdx = 0
+			}
+			rect, ok := s.Document.GetPageRect(pIdx)
+			if ok {
+				return rect
+			}
+		}
+		return s.Document.GetDocumentRect()
+	}
+
+	// ModePages
+	if s.CropBoundaryMode == svg.BoundaryDocument {
+		return s.Document.GetDocumentRect()
+	}
+
+	// In ModePages with BoundaryPage:
+	// Each page frame clips to its own page artboard coordinates
+	if frameIndex >= 0 && frameIndex < len(s.Pages) {
+		rect, ok := s.Document.GetPageRect(frameIndex)
+		if ok {
+			return rect
+		}
+	}
+	return s.Document.GetDocumentRect()
+}
+
 
 // ToggleLayerActive toggles whether a layer is included as a frame.
 func (s *Session) ToggleLayerActive(index int) error {
@@ -177,31 +287,31 @@ func (s *Session) RerenderAllFrames() error {
 	var frames []svg.RenderedFrame
 
 	if s.CurrentMode == svg.ModeLayers {
-		docW := s.Document.Width
-		docH := s.Document.Height
-		if docW <= 0 {
-			docW = 512
+		boundW, boundH := s.GetActiveBoundaryDimensions()
+		if boundW <= 0 {
+			boundW = 512
 		}
-		if docH <= 0 {
-			docH = 512
+		if boundH <= 0 {
+			boundH = 512
 		}
-		maxDim := docW
-		if docH > maxDim {
-			maxDim = docH
+		maxDim := boundW
+		if boundH > maxDim {
+			maxDim = boundH
 		}
 		// Display preview only needs to be large enough to render crisply on screen (512px max dimension).
 		// Full resolution (up to 4096px) is rasterized separately on export via RenderExportFrames().
 		const maxPreviewDim = 512.0
 		previewScale := maxPreviewDim / maxDim
-		renderW := int(math.Round(docW * previewScale))
-		renderH := int(math.Round(docH * previewScale))
+		renderW := int(math.Round(boundW * previewScale))
+		renderH := int(math.Round(boundH * previewScale))
+		boundaryRect := s.GetActiveBoundaryRect(0)
 
 		for i, layer := range s.Layers {
 			if !layer.IsActive || layer.IsPinned {
 				continue
 			}
 
-			frameSVG, err := svg.BuildLayerFrameSVG(s.Document, layer.ID, s.PinnedLayers)
+			frameSVG, err := svg.BuildLayerFrameSVG(s.Document, layer.ID, s.PinnedLayers, boundaryRect)
 			if err != nil {
 				return fmt.Errorf("failed to build frame for layer %s: %w", layer.Label, err)
 			}
@@ -226,26 +336,27 @@ func (s *Session) RerenderAllFrames() error {
 				continue
 			}
 
-			pageW := page.Width
-			pageH := page.Height
-			if pageW <= 0 {
-				pageW = 512
+			boundaryRect := s.GetActiveBoundaryRect(i)
+			boundW := boundaryRect.Width
+			boundH := boundaryRect.Height
+			if boundW <= 0 {
+				boundW = 512
 			}
-			if pageH <= 0 {
-				pageH = 512
+			if boundH <= 0 {
+				boundH = 512
 			}
-			maxDim := pageW
-			if pageH > maxDim {
-				maxDim = pageH
+			maxDim := boundW
+			if boundH > maxDim {
+				maxDim = boundH
 			}
 			// Display preview only needs to be large enough to render crisply on screen (512px max dimension).
 			// Full resolution (up to 4096px) is rasterized separately on export via RenderExportFrames().
 			const maxPreviewDim = 512.0
 			previewScale := maxPreviewDim / maxDim
-			renderW := int(math.Round(pageW * previewScale))
-			renderH := int(math.Round(pageH * previewScale))
+			renderW := int(math.Round(boundW * previewScale))
+			renderH := int(math.Round(boundH * previewScale))
 
-			frameSVG, err := svg.BuildPageFrameSVG(s.Document, page)
+			frameSVG, err := svg.BuildPageFrameSVG(s.Document, page, boundaryRect)
 			if err != nil {
 				return fmt.Errorf("failed to build frame for page %s: %w", page.Label, err)
 			}
@@ -280,14 +391,14 @@ func (s *Session) RenderExportFrames() ([]gif.FrameInput, error) {
 	var frameInputs []gif.FrameInput
 
 	if s.CurrentMode == svg.ModeLayers {
-		docW := s.Document.Width
-		docH := s.Document.Height
-		if docW <= 0 {
-			docW = 512
+		boundW, boundH := s.GetActiveBoundaryDimensions()
+		if boundW <= 0 {
+			boundW = 512
 		}
-		if docH <= 0 {
-			docH = 512
+		if boundH <= 0 {
+			boundH = 512
 		}
+		boundaryRect := s.GetActiveBoundaryRect(0)
 
 		// Calculate export dimensions
 		var exportSquare bool
@@ -298,9 +409,9 @@ func (s *Session) RenderExportFrames() ([]gif.FrameInput, error) {
 			exportSquare = true
 			targetSquare = s.ExportOptions.SquareSize
 			if targetSquare <= 0 {
-				maxSide := docW
-				if docH > maxSide {
-					maxSide = docH
+				maxSide := boundW
+				if boundH > maxSide {
+					maxSide = boundH
 				}
 				if maxSide < 512 {
 					targetSquare = 512
@@ -314,13 +425,13 @@ func (s *Session) RenderExportFrames() ([]gif.FrameInput, error) {
 				targetSquare = 4096
 			}
 
-			maxSide := docW
-			if docH > maxSide {
-				maxSide = docH
+			maxSide := boundW
+			if boundH > maxSide {
+				maxSide = boundH
 			}
 			scale := float64(targetSquare) / maxSide
-			fitW = int(math.Round(docW * scale))
-			fitH = int(math.Round(docH * scale))
+			fitW = int(math.Round(boundW * scale))
+			fitH = int(math.Round(boundH * scale))
 		} else {
 			if s.ExportOptions.TargetWidth > 0 && s.ExportOptions.TargetHeight > 0 {
 				fitW = s.ExportOptions.TargetWidth
@@ -332,21 +443,21 @@ func (s *Session) RenderExportFrames() ([]gif.FrameInput, error) {
 					fitH = 4096
 				}
 			} else {
-				maxSide := docW
-				if docH > maxSide {
-					maxSide = docH
+				maxSide := boundW
+				if boundH > maxSide {
+					maxSide = boundH
 				}
 				if maxSide < 512 {
 					scale := 512.0 / maxSide
-					fitW = int(math.Round(docW * scale))
-					fitH = int(math.Round(docH * scale))
+					fitW = int(math.Round(boundW * scale))
+					fitH = int(math.Round(boundH * scale))
 				} else if maxSide > 4096 {
 					scale := 4096.0 / maxSide
-					fitW = int(math.Round(docW * scale))
-					fitH = int(math.Round(docH * scale))
+					fitW = int(math.Round(boundW * scale))
+					fitH = int(math.Round(boundH * scale))
 				} else {
-					fitW = int(math.Round(docW))
-					fitH = int(math.Round(docH))
+					fitW = int(math.Round(boundW))
+					fitH = int(math.Round(boundH))
 				}
 			}
 		}
@@ -363,7 +474,7 @@ func (s *Session) RenderExportFrames() ([]gif.FrameInput, error) {
 				continue
 			}
 
-			frameSVG, err := svg.BuildLayerFrameSVG(s.Document, layer.ID, s.PinnedLayers)
+			frameSVG, err := svg.BuildLayerFrameSVG(s.Document, layer.ID, s.PinnedLayers, boundaryRect)
 			if err != nil {
 				return nil, fmt.Errorf("failed to build frame for layer %s: %w", layer.Label, err)
 			}
@@ -399,13 +510,14 @@ func (s *Session) RenderExportFrames() ([]gif.FrameInput, error) {
 				continue
 			}
 
-			pageW := page.Width
-			pageH := page.Height
-			if pageW <= 0 {
-				pageW = 512
+			boundaryRect := s.GetActiveBoundaryRect(i)
+			boundW := boundaryRect.Width
+			boundH := boundaryRect.Height
+			if boundW <= 0 {
+				boundW = 512
 			}
-			if pageH <= 0 {
-				pageH = 512
+			if boundH <= 0 {
+				boundH = 512
 			}
 
 			var exportSquare bool
@@ -416,9 +528,9 @@ func (s *Session) RenderExportFrames() ([]gif.FrameInput, error) {
 				exportSquare = true
 				targetSquare = s.ExportOptions.SquareSize
 				if targetSquare <= 0 {
-					maxSide := pageW
-					if pageH > maxSide {
-						maxSide = pageH
+					maxSide := boundW
+					if boundH > maxSide {
+						maxSide = boundH
 					}
 					if maxSide < 512 {
 						targetSquare = 512
@@ -432,13 +544,13 @@ func (s *Session) RenderExportFrames() ([]gif.FrameInput, error) {
 					targetSquare = 4096
 				}
 
-				maxSide := pageW
-				if pageH > maxSide {
-					maxSide = pageH
+				maxSide := boundW
+				if boundH > maxSide {
+					maxSide = boundH
 				}
 				scale := float64(targetSquare) / maxSide
-				fitW = int(math.Round(pageW * scale))
-				fitH = int(math.Round(pageH * scale))
+				fitW = int(math.Round(boundW * scale))
+				fitH = int(math.Round(boundH * scale))
 			} else {
 				if s.ExportOptions.TargetWidth > 0 && s.ExportOptions.TargetHeight > 0 {
 					fitW = s.ExportOptions.TargetWidth
@@ -450,21 +562,21 @@ func (s *Session) RenderExportFrames() ([]gif.FrameInput, error) {
 						fitH = 4096
 					}
 				} else {
-					maxSide := pageW
-					if pageH > maxSide {
-						maxSide = pageH
+					maxSide := boundW
+					if boundH > maxSide {
+						maxSide = boundH
 					}
 					if maxSide < 512 {
 						scale := 512.0 / maxSide
-						fitW = int(math.Round(pageW * scale))
-						fitH = int(math.Round(pageH * scale))
+						fitW = int(math.Round(boundW * scale))
+						fitH = int(math.Round(boundH * scale))
 					} else if maxSide > 4096 {
 						scale := 4096.0 / maxSide
-						fitW = int(math.Round(pageW * scale))
-						fitH = int(math.Round(pageH * scale))
+						fitW = int(math.Round(boundW * scale))
+						fitH = int(math.Round(boundH * scale))
 					} else {
-						fitW = int(math.Round(pageW))
-						fitH = int(math.Round(pageH))
+						fitW = int(math.Round(boundW))
+						fitH = int(math.Round(boundH))
 					}
 				}
 			}
@@ -476,7 +588,7 @@ func (s *Session) RenderExportFrames() ([]gif.FrameInput, error) {
 				fitH = 1
 			}
 
-			frameSVG, err := svg.BuildPageFrameSVG(s.Document, page)
+			frameSVG, err := svg.BuildPageFrameSVG(s.Document, page, boundaryRect)
 			if err != nil {
 				return nil, fmt.Errorf("failed to build frame for page %s: %w", page.Label, err)
 			}
@@ -507,6 +619,7 @@ func (s *Session) RenderExportFrames() ([]gif.FrameInput, error) {
 			})
 		}
 	}
+
 
 	return frameInputs, nil
 }

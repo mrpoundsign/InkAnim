@@ -202,8 +202,9 @@ func (p *RightExportPanel) validateTwitch() {
 	}
 
 	frames := len(p.session.RenderedFrames)
-	w := int(p.session.Document.Width)
-	h := int(p.session.Document.Height)
+	boundW, boundH := p.session.GetActiveBoundaryDimensions()
+	w := int(boundW)
+	h := int(boundH)
 	if p.session.ExportOptions.ExportSquare {
 		maxSide := w
 		if h > maxSide {

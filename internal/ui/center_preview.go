@@ -26,6 +26,7 @@ type CenterPreviewPanel struct {
 	frameLabel      *widget.Label
 	playPauseBtn    *widget.Button
 	loopCheck       *widget.Check
+	cropGuidesCheck *widget.Check
 
 	// Twitch Scale Emulation previews
 	twitch112Dark  *canvas.Image
@@ -35,10 +36,11 @@ type CenterPreviewPanel struct {
 	twitch56Light  *canvas.Image
 	twitch28Light  *canvas.Image
 
-	isPlaying   bool
-	loop        bool
-	currentIdx  int
-	speedFactor float64
+	isPlaying      bool
+	loop           bool
+	showCropGuides bool
+	currentIdx     int
+	speedFactor    float64
 
 	mu      sync.Mutex
 	stop    chan struct{}
@@ -48,9 +50,10 @@ type CenterPreviewPanel struct {
 // NewCenterPreviewPanel constructs the animation preview and Twitch inspector dock.
 func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 	p := &CenterPreviewPanel{
-		session:     sess,
-		loop:        true,
-		speedFactor: 1.0,
+		session:        sess,
+		loop:           true,
+		showCropGuides: true,
+		speedFactor:    1.0,
 	}
 
 	// Main Canvas Image
@@ -78,6 +81,14 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 	})
 	p.loopCheck.Checked = true
 
+	p.cropGuidesCheck = widget.NewCheck("Crop Guides", func(checked bool) {
+		p.mu.Lock()
+		p.showCropGuides = checked
+		p.renderCurrentFrameLocked()
+		p.mu.Unlock()
+	})
+	p.cropGuidesCheck.Checked = true
+
 	speedSelect := widget.NewSelect([]string{"0.25x", "0.5x", "1x", "1.5x", "2x"}, func(s string) {
 		p.mu.Lock()
 		defer p.mu.Unlock()
@@ -103,9 +114,11 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 		p.playPauseBtn,
 		nextBtn,
 		p.loopCheck,
+		p.cropGuidesCheck,
 		speedSelect,
 		p.frameLabel,
 	)
+
 
 	// Twitch Scale Emulation Dock
 	p.twitch112Dark = p.newScaledImage(112)
@@ -377,14 +390,27 @@ func (p *CenterPreviewPanel) renderCurrentFrameLocked() {
 
 	// If square mode is enabled, square-center the frame for display
 	displayImg := curr.Image
+	var contentRect image.Rectangle
 	if p.session.ExportOptions.ExportSquare {
 		displayImg = gif.MakeSquare(curr.Image, 0)
+		origB := curr.Image.Bounds()
+		sqB := displayImg.Bounds()
+		offsetX := (sqB.Dx() - origB.Dx()) / 2
+		offsetY := (sqB.Dy() - origB.Dy()) / 2
+		contentRect = image.Rect(offsetX, offsetY, offsetX+origB.Dx(), offsetY+origB.Dy())
+	} else {
+		contentRect = displayImg.Bounds()
 	}
 
-	p.mainCanvasImage.Image = displayImg
+	previewImg := displayImg
+	if p.showCropGuides {
+		previewImg = drawCropGuides(displayImg, contentRect)
+	}
+
+	p.mainCanvasImage.Image = previewImg
 	p.mainCanvasImage.Refresh()
 
-	// Update Twitch scale emulation images
+	// Update Twitch scale emulation images (clean without crop guides)
 	scaled112 := scaleImage(displayImg, 112, 112)
 	scaled56 := scaleImage(displayImg, 56, 56)
 	scaled28 := scaleImage(displayImg, 28, 28)
@@ -409,3 +435,118 @@ func scaleImage(src *image.RGBA, w, h int) *image.RGBA {
 	draw.BiLinear.Scale(dst, dst.Bounds(), src, src.Bounds(), draw.Src, nil)
 	return dst
 }
+
+// drawCropGuides overlays subtle crop boundary lines and corner L-brackets on a copy of the preview frame.
+func drawCropGuides(src *image.RGBA, contentRect image.Rectangle) *image.RGBA {
+	dst := image.NewRGBA(src.Bounds())
+	copy(dst.Pix, src.Pix)
+
+	x0 := contentRect.Min.X
+	y0 := contentRect.Min.Y
+	x1 := contentRect.Max.X - 1
+	y1 := contentRect.Max.Y - 1
+
+	b := dst.Bounds()
+	if x0 < b.Min.X {
+		x0 = b.Min.X
+	}
+	if y0 < b.Min.Y {
+		y0 = b.Min.Y
+	}
+	if x1 >= b.Max.X {
+		x1 = b.Max.X - 1
+	}
+	if y1 >= b.Max.Y {
+		y1 = b.Max.Y - 1
+	}
+	if x1 <= x0 || y1 <= y0 {
+		return dst
+	}
+
+	guideCol := color.RGBA{R: 145, G: 70, B: 255, A: 220}   // Twitch purple #9146FF
+	cornerCol := color.RGBA{R: 191, G: 148, B: 255, A: 255} // Bright accent #BF94FF
+	shadowCol := color.RGBA{R: 0, G: 0, B: 0, A: 140}
+
+	blendPixel := func(x, y int, c color.RGBA) {
+		if x < b.Min.X || x >= b.Max.X || y < b.Min.Y || y >= b.Max.Y {
+			return
+		}
+		offset := (y-b.Min.Y)*dst.Stride + (x-b.Min.X)*4
+		sr, sg, sb, sa := uint32(c.R), uint32(c.G), uint32(c.B), uint32(c.A)
+		dr, dg, db, da := uint32(dst.Pix[offset]), uint32(dst.Pix[offset+1]), uint32(dst.Pix[offset+2]), uint32(dst.Pix[offset+3])
+		a := sa
+		invA := 255 - a
+		dst.Pix[offset] = uint8((sr*a + dr*invA) / 255)
+		dst.Pix[offset+1] = uint8((sg*a + dg*invA) / 255)
+		dst.Pix[offset+2] = uint8((sb*a + db*invA) / 255)
+		if da < a {
+			dst.Pix[offset+3] = uint8(a)
+		}
+	}
+
+	// 1. Subtle dashed perimeter lines (dash 4px, space 4px)
+	for x := x0; x <= x1; x++ {
+		if (x/4)%2 == 0 {
+			blendPixel(x, y0, guideCol)
+			blendPixel(x, y1, guideCol)
+		} else {
+			blendPixel(x, y0, shadowCol)
+			blendPixel(x, y1, shadowCol)
+		}
+	}
+	for y := y0; y <= y1; y++ {
+		if (y/4)%2 == 0 {
+			blendPixel(x0, y, guideCol)
+			blendPixel(x1, y, guideCol)
+		} else {
+			blendPixel(x0, y, shadowCol)
+			blendPixel(x1, y, shadowCol)
+		}
+	}
+
+	// 2. Solid corner brackets (length = min(14, min(w, h)/4))
+	w := x1 - x0
+	h := y1 - y0
+	cornerLen := 14
+	if w/4 < cornerLen {
+		cornerLen = w / 4
+	}
+	if h/4 < cornerLen {
+		cornerLen = h / 4
+	}
+	if cornerLen < 4 {
+		cornerLen = 4
+	}
+
+	// Top-Left corner
+	for i := 0; i < cornerLen; i++ {
+		blendPixel(x0+i, y0, cornerCol)
+		blendPixel(x0+i, y0+1, cornerCol)
+		blendPixel(x0, y0+i, cornerCol)
+		blendPixel(x0+1, y0+i, cornerCol)
+	}
+	// Top-Right corner
+	for i := 0; i < cornerLen; i++ {
+		blendPixel(x1-i, y0, cornerCol)
+		blendPixel(x1-i, y0+1, cornerCol)
+		blendPixel(x1, y0+i, cornerCol)
+		blendPixel(x1-1, y0+i, cornerCol)
+	}
+	// Bottom-Left corner
+	for i := 0; i < cornerLen; i++ {
+		blendPixel(x0+i, y1, cornerCol)
+		blendPixel(x0+i, y1-1, cornerCol)
+		blendPixel(x0, y1-i, cornerCol)
+		blendPixel(x0+1, y1-i, cornerCol)
+	}
+	// Bottom-Right corner
+	for i := 0; i < cornerLen; i++ {
+		blendPixel(x1-i, y1, cornerCol)
+		blendPixel(x1-i, y1-1, cornerCol)
+		blendPixel(x1, y1-i, cornerCol)
+		blendPixel(x1-1, y1-i, cornerCol)
+	}
+
+	return dst
+}
+

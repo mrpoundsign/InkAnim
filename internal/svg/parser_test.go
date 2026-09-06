@@ -82,7 +82,7 @@ func TestBuildLayerFrameSVG(t *testing.T) {
 
 	// Make frame 2 active, pin background
 	pinned := map[string]bool{"layer_bg": true}
-	frame2Bytes, err := BuildLayerFrameSVG(doc, "layer_frame2", pinned)
+	frame2Bytes, err := BuildLayerFrameSVG(doc, "layer_frame2", pinned, Rect{})
 	if err != nil {
 		t.Fatalf("BuildLayerFrameSVG failed: %v", err)
 	}
@@ -105,7 +105,7 @@ func TestBuildLayerFrameSVG(t *testing.T) {
 	}
 
 	// Also build frame 1 (layer_frame1 should show red circle, layer_frame2 green circle should NOT be visible)
-	frame1Bytes, err := BuildLayerFrameSVG(doc, "layer_frame1", pinned)
+	frame1Bytes, err := BuildLayerFrameSVG(doc, "layer_frame1", pinned, Rect{})
 	if err != nil {
 		t.Fatalf("BuildLayerFrameSVG frame 1 failed: %v", err)
 	}
@@ -137,7 +137,7 @@ func TestBuildPageFrameSVG(t *testing.T) {
 		t.Fatalf("ParseSVG failed: %v", err)
 	}
 
-	page2Bytes, err := BuildPageFrameSVG(doc, doc.Pages[1])
+	page2Bytes, err := BuildPageFrameSVG(doc, doc.Pages[1], Rect{})
 	if err != nil {
 		t.Fatalf("BuildPageFrameSVG failed: %v", err)
 	}
@@ -172,7 +172,7 @@ func TestBuildLayerFrameSVG_PinnedBackgroundStackingOrder(t *testing.T) {
 	}
 
 	pinned := map[string]bool{"layer_bg": true}
-	frameBytes, err := BuildLayerFrameSVG(doc, "layer_walk1", pinned)
+	frameBytes, err := BuildLayerFrameSVG(doc, "layer_walk1", pinned, Rect{})
 	if err != nil {
 		t.Fatalf("BuildLayerFrameSVG failed: %v", err)
 	}
@@ -224,11 +224,11 @@ func TestCharacterWalkPinned(t *testing.T) {
 		t.Fatal(err)
 	}
 	pinned := map[string]bool{"layer_frame1": true}
-	f2, err := BuildLayerFrameSVG(doc, "layer_frame2", pinned)
+	f2, err := BuildLayerFrameSVG(doc, "layer_frame2", pinned, Rect{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	f3, err := BuildLayerFrameSVG(doc, "layer_frame3", pinned)
+	f3, err := BuildLayerFrameSVG(doc, "layer_frame3", pinned, Rect{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -253,5 +253,165 @@ func TestCharacterWalkPinned(t *testing.T) {
 		t.Errorf("expected frames 2 and 3 to be different with f1 pinned, but they are identical!")
 	}
 }
+
+func TestBoundaryCroppingAndClipping(t *testing.T) {
+	// 200x100 SVG with a circle at (50, 50) and a circle at (150, 50)
+	svgData := `<?xml version="1.0" encoding="UTF-8"?>
+<svg width="200" height="100" viewBox="0 0 200 100" xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape">
+  <inkscape:page x="0" y="0" width="100" height="100" id="page1" inkscape:label="Page Left" />
+  <inkscape:page x="100" y="0" width="100" height="100" id="page2" inkscape:label="Page Right" />
+  <g inkscape:groupmode="layer" id="layer_action" inkscape:label="Action">
+    <!-- Circle centered at (50, 50), r=40 (within page 1) -->
+    <circle cx="50" cy="50" r="40" fill="#ff0000" />
+    <!-- Circle centered at (150, 50), r=40 (within page 2) -->
+    <circle cx="150" cy="50" r="40" fill="#0000ff" />
+  </g>
+</svg>`
+
+	doc, err := ParseSVG([]byte(svgData))
+	if err != nil {
+		t.Fatalf("ParseSVG error: %v", err)
+	}
+
+	// 1. Crop to Page 1: boundary = (0, 0, 100, 100)
+	page1Rect, ok := doc.GetPageRect(0)
+	if !ok || page1Rect.Width != 100 {
+		t.Fatalf("expected page 1 rect of 100x100, got %+v", page1Rect)
+	}
+	fPage1, err := BuildLayerFrameSVG(doc, "layer_action", nil, page1Rect)
+	if err != nil {
+		t.Fatalf("BuildLayerFrameSVG error: %v", err)
+	}
+
+	imgPage1, err := RenderSVGToRGBA(fPage1, 100, 100)
+	if err != nil {
+		t.Fatalf("RenderSVGToRGBA error: %v", err)
+	}
+
+	// Center of page 1 (50, 50) must be red
+	pCenter1 := imgPage1.RGBAAt(50, 50)
+	if pCenter1.R < 200 || pCenter1.B > 50 {
+		t.Errorf("Page 1 center pixel expected red, got R=%d B=%d", pCenter1.R, pCenter1.B)
+	}
+
+	// 2. Crop to Page 2: boundary = (100, 0, 100, 100)
+	page2Rect, ok := doc.GetPageRect(1)
+	if !ok || page2Rect.X != 100 {
+		t.Fatalf("expected page 2 rect with X=100, got %+v", page2Rect)
+	}
+	fPage2, err := BuildLayerFrameSVG(doc, "layer_action", nil, page2Rect)
+	if err != nil {
+		t.Fatalf("BuildLayerFrameSVG error: %v", err)
+	}
+
+	imgPage2, err := RenderSVGToRGBA(fPage2, 100, 100)
+	if err != nil {
+		t.Fatalf("RenderSVGToRGBA error: %v", err)
+	}
+
+	// In page 2 viewport (100..200 maps to 0..100), (150, 50) maps to (50, 50) in the raster image
+	// and should be blue (#0000ff), not red
+	pCenter2 := imgPage2.RGBAAt(50, 50)
+	if pCenter2.B < 200 || pCenter2.R > 50 {
+		t.Errorf("Page 2 center pixel expected blue, got R=%d B=%d", pCenter2.R, pCenter2.B)
+	}
+
+	// 3. Document Boundary: 200x100
+	docRect := doc.GetDocumentRect()
+	fDoc, err := BuildLayerFrameSVG(doc, "layer_action", nil, docRect)
+	if err != nil {
+		t.Fatalf("BuildLayerFrameSVG error: %v", err)
+	}
+	imgDoc, err := RenderSVGToRGBA(fDoc, 200, 100)
+	if err != nil {
+		t.Fatalf("RenderSVGToRGBA error: %v", err)
+	}
+	if imgDoc.Bounds().Dx() != 200 || imgDoc.Bounds().Dy() != 100 {
+		t.Errorf("expected 200x100 document image, got %dx%d", imgDoc.Bounds().Dx(), imgDoc.Bounds().Dy())
+	}
+	// At (50, 50) is red, at (150, 50) is blue
+	if imgDoc.RGBAAt(50, 50).R < 200 {
+		t.Errorf("expected red at (50, 50)")
+	}
+	if imgDoc.RGBAAt(150, 50).B < 200 {
+		t.Errorf("expected blue at (150, 50)")
+	}
+}
+
+func TestBouncingWalkerSVGLoadAndCrop(t *testing.T) {
+	data, err := os.ReadFile("../../testdata/bouncing_walker.svg")
+	if err != nil {
+		t.Fatalf("failed to read bouncing_walker.svg: %v", err)
+	}
+
+	doc, err := ParseSVG(data)
+	if err != nil {
+		t.Fatalf("failed to parse bouncing_walker.svg: %v", err)
+	}
+
+	if len(doc.Layers) != 7 {
+		t.Errorf("expected 7 layers (1 bg + 6 frames), got %d", len(doc.Layers))
+	}
+	if len(doc.Pages) != 2 {
+		t.Errorf("expected 2 pages, got %d", len(doc.Pages))
+	}
+
+	// Test Frame 1 (cx=20, rx=48, extending to x = -28)
+	pinned := map[string]bool{"layer_bg_grid": true}
+	docRect := doc.GetDocumentRect()
+	f1Doc, err := BuildLayerFrameSVG(doc, "frame1_left_wall", pinned, docRect)
+	if err != nil {
+		t.Fatalf("BuildLayerFrameSVG f1 error: %v", err)
+	}
+
+	imgF1, err := RenderSVGToRGBA(f1Doc, 256, 256)
+	if err != nil {
+		t.Fatalf("RenderSVGToRGBA f1 error: %v", err)
+	}
+
+	// Leftmost pixel inside image bounds (0, 170) should be colored (purple slime)
+	pLeftEdge := imgF1.RGBAAt(0, 170)
+	if pLeftEdge.A == 0 {
+		t.Errorf("expected slime to touch left edge (x=0) where cx=20, rx=48, but got transparent pixel")
+	}
+
+	// Test Frame 5 (cx=236, rx=48, extending to x = 284)
+	f5Doc, err := BuildLayerFrameSVG(doc, "frame5_right_wall", pinned, docRect)
+	if err != nil {
+		t.Fatalf("BuildLayerFrameSVG f5 error: %v", err)
+	}
+
+	imgF5, err := RenderSVGToRGBA(f5Doc, 256, 256)
+	if err != nil {
+		t.Fatalf("RenderSVGToRGBA f5 error: %v", err)
+	}
+
+	// Rightmost pixel inside image bounds (255, 170) should be colored (purple slime)
+	pRightEdge := imgF5.RGBAAt(255, 170)
+	if pRightEdge.A == 0 {
+		t.Errorf("expected slime to touch right edge (x=255) where cx=236, rx=48, but got transparent pixel")
+	}
+
+	// Test Center Focus Crop (Page 2: 160x160)
+	page2Rect, ok := doc.GetPageRect(1)
+	if !ok || page2Rect.Width != 160 {
+		t.Fatalf("expected page 2 rect 160x160, got %+v", page2Rect)
+	}
+
+	f3Page2, err := BuildLayerFrameSVG(doc, "frame3_apex", pinned, page2Rect)
+	if err != nil {
+		t.Fatalf("BuildLayerFrameSVG f3 error: %v", err)
+	}
+
+	imgF3, err := RenderSVGToRGBA(f3Page2, 160, 160)
+	if err != nil {
+		t.Fatalf("RenderSVGToRGBA f3 error: %v", err)
+	}
+	if imgF3.Bounds().Dx() != 160 || imgF3.Bounds().Dy() != 160 {
+		t.Errorf("expected 160x160 cropped image, got %dx%d", imgF3.Bounds().Dx(), imgF3.Bounds().Dy())
+	}
+}
+
+
 
 

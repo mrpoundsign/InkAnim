@@ -8,10 +8,15 @@ import (
 	"strings"
 )
 
-// BuildLayerFrameSVG generates an SVG where only the target layer and any pinned layers are visible.
+// BuildLayerFrameSVG generates an SVG where only the target layer and any pinned layers are visible,
+// cropped to the specified boundary rectangle. If boundary has zero dimensions, the document's native rect is used.
 // Pinned background layers are always placed BEFORE the target layer in the SVG DOM,
 // guaranteeing that they render in the background regardless of their position in the source document.
-func BuildLayerFrameSVG(doc *SVGDocument, targetLayerID string, pinnedLayerIDs map[string]bool) ([]byte, error) {
+func BuildLayerFrameSVG(doc *SVGDocument, targetLayerID string, pinnedLayerIDs map[string]bool, boundary Rect) ([]byte, error) {
+	if boundary.Width <= 0 || boundary.Height <= 0 {
+		boundary = doc.GetDocumentRect()
+	}
+
 	decoder := xml.NewDecoder(bytes.NewReader(doc.RawContent))
 
 	var beforeLayers []xml.Token
@@ -24,6 +29,7 @@ func BuildLayerFrameSVG(doc *SVGDocument, targetLayerID string, pinnedLayerIDs m
 	var inLayer bool
 	var layerDepth int
 	var firstLayerSeen bool
+	var processedRoot bool
 
 	for {
 		token, err := decoder.Token()
@@ -37,6 +43,14 @@ func BuildLayerFrameSVG(doc *SVGDocument, targetLayerID string, pinnedLayerIDs m
 		if !inLayer {
 			switch elem := token.(type) {
 			case xml.StartElement:
+				if elem.Name.Local == "svg" && !processedRoot {
+					processedRoot = true
+					modifiedElem := elem.Copy()
+					applyBoundaryToSVG(&modifiedElem, boundary)
+					beforeLayers = append(beforeLayers, modifiedElem)
+					continue
+				}
+
 				if elem.Name.Local == "g" {
 					var isLayer bool
 					var layerID string
@@ -165,16 +179,28 @@ func ensureLayerVisible(elem *xml.StartElement) {
 	}
 }
 
-// BuildPageFrameSVG generates an SVG where the viewBox and dimensions correspond to the given page.
-func BuildPageFrameSVG(doc *SVGDocument, page Page) ([]byte, error) {
+// BuildPageFrameSVG generates an SVG where the viewBox and dimensions correspond to the given boundary.
+// If boundary has zero dimensions, the page's native (x, y, width, height) is used.
+func BuildPageFrameSVG(doc *SVGDocument, page Page, boundary Rect) ([]byte, error) {
+	if boundary.Width <= 0 || boundary.Height <= 0 {
+		boundary = Rect{
+			X:      page.X,
+			Y:      page.Y,
+			Width:  page.Width,
+			Height: page.Height,
+		}
+	}
+	if boundary.Width <= 0 {
+		boundary.Width = 512
+	}
+	if boundary.Height <= 0 {
+		boundary.Height = 512
+	}
+
 	decoder := xml.NewDecoder(bytes.NewReader(doc.RawContent))
 	var buf bytes.Buffer
 	encoder := xml.NewEncoder(&buf)
 	var processedRoot bool
-
-	newViewBox := fmt.Sprintf("%f %f %f %f", page.X, page.Y, page.Width, page.Height)
-	newW := fmt.Sprintf("%f", page.Width)
-	newH := fmt.Sprintf("%f", page.Height)
 
 	for {
 		token, err := decoder.Token()
@@ -189,29 +215,7 @@ func BuildPageFrameSVG(doc *SVGDocument, page Page) ([]byte, error) {
 		case xml.StartElement:
 			if elem.Name.Local == "svg" && !processedRoot {
 				processedRoot = true
-				var vbFound, wFound, hFound bool
-				for i := range elem.Attr {
-					switch elem.Attr[i].Name.Local {
-					case "viewBox":
-						elem.Attr[i].Value = newViewBox
-						vbFound = true
-					case "width":
-						elem.Attr[i].Value = newW
-						wFound = true
-					case "height":
-						elem.Attr[i].Value = newH
-						hFound = true
-					}
-				}
-				if !vbFound {
-					elem.Attr = append(elem.Attr, xml.Attr{Name: xml.Name{Local: "viewBox"}, Value: newViewBox})
-				}
-				if !wFound {
-					elem.Attr = append(elem.Attr, xml.Attr{Name: xml.Name{Local: "width"}, Value: newW})
-				}
-				if !hFound {
-					elem.Attr = append(elem.Attr, xml.Attr{Name: xml.Name{Local: "height"}, Value: newH})
-				}
+				applyBoundaryToSVG(&elem, boundary)
 			}
 			if err := encoder.EncodeToken(elem); err != nil {
 				return nil, err
@@ -229,6 +233,49 @@ func BuildPageFrameSVG(doc *SVGDocument, page Page) ([]byte, error) {
 
 	return buf.Bytes(), nil
 }
+
+// applyBoundaryToSVG applies viewBox, width, height, and overflow:hidden to the root SVG element.
+func applyBoundaryToSVG(elem *xml.StartElement, boundary Rect) {
+	newViewBox := fmt.Sprintf("%f %f %f %f", boundary.X, boundary.Y, boundary.Width, boundary.Height)
+	newW := fmt.Sprintf("%f", boundary.Width)
+	newH := fmt.Sprintf("%f", boundary.Height)
+
+	var vbFound, wFound, hFound, styleFound bool
+	for i := range elem.Attr {
+		switch elem.Attr[i].Name.Local {
+		case "viewBox":
+			elem.Attr[i].Value = newViewBox
+			vbFound = true
+		case "width":
+			elem.Attr[i].Value = newW
+			wFound = true
+		case "height":
+			elem.Attr[i].Value = newH
+			hFound = true
+		case "style":
+			styleFound = true
+			cleaned := removeStyleProp(elem.Attr[i].Value, "overflow")
+			if cleaned != "" {
+				elem.Attr[i].Value = cleaned + ";overflow:hidden"
+			} else {
+				elem.Attr[i].Value = "overflow:hidden"
+			}
+		}
+	}
+	if !vbFound {
+		elem.Attr = append(elem.Attr, xml.Attr{Name: xml.Name{Local: "viewBox"}, Value: newViewBox})
+	}
+	if !wFound {
+		elem.Attr = append(elem.Attr, xml.Attr{Name: xml.Name{Local: "width"}, Value: newW})
+	}
+	if !hFound {
+		elem.Attr = append(elem.Attr, xml.Attr{Name: xml.Name{Local: "height"}, Value: newH})
+	}
+	if !styleFound {
+		elem.Attr = append(elem.Attr, xml.Attr{Name: xml.Name{Local: "style"}, Value: "overflow:hidden"})
+	}
+}
+
 
 // removeStyleProp removes a CSS property from a style string, e.g. "display:none;opacity:1" -> "opacity:1"
 func removeStyleProp(style, prop string) string {
