@@ -28,6 +28,10 @@ func (m *StudioTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant)
 		return color.RGBA{R: 161, G: 161, B: 170, A: 255}
 	case theme.ColorNameScrollBar:
 		return color.RGBA{R: 82, G: 82, B: 91, A: 180}
+	case theme.ColorNameError:
+		return color.RGBA{R: 239, G: 68, B: 68, A: 255} // Red #EF4444
+	case theme.ColorNameSuccess:
+		return color.RGBA{R: 34, G: 197, B: 94, A: 255} // Green #22C55E
 	default:
 		return theme.DefaultTheme().Color(name, theme.VariantDark)
 	}

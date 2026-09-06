@@ -61,9 +61,10 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 
 	p.frameLabel = widget.NewLabel("Frame: 0 / 0")
 
-	p.playPauseBtn = widget.NewButton("▶ Play", func() {
+	p.playPauseBtn = widget.NewButton("Play", func() {
 		p.TogglePlay()
 	})
+	p.playPauseBtn.Importance = widget.DangerImportance
 
 	prevBtn := widget.NewButton("◀ Step", func() {
 		p.StepFrame(-1)
@@ -255,7 +256,9 @@ func (p *CenterPreviewPanel) pauseLocked() {
 	btn := p.playPauseBtn
 	if btn != nil {
 		fyne.Do(func() {
-			btn.SetText("▶ Play")
+			btn.SetText("Play")
+			btn.Importance = widget.DangerImportance
+			btn.Refresh()
 		})
 	}
 	if p.stop != nil {
@@ -270,6 +273,11 @@ func (p *CenterPreviewPanel) playLocked() {
 		return
 	}
 
+	// If loop is disabled or already on/past the last frame, restart from beginning
+	if !p.loop || p.currentIdx >= len(frames)-1 {
+		p.currentIdx = 0
+	}
+
 	// Stop any existing animation loop first
 	if p.stop != nil {
 		close(p.stop)
@@ -282,7 +290,9 @@ func (p *CenterPreviewPanel) playLocked() {
 	btn := p.playPauseBtn
 	if btn != nil {
 		fyne.Do(func() {
-			btn.SetText("⏸ Pause")
+			btn.SetText("Pause")
+			btn.Importance = widget.SuccessImportance
+			btn.Refresh()
 		})
 	}
 	p.stop = make(chan struct{})
@@ -316,12 +326,23 @@ func (p *CenterPreviewPanel) playLocked() {
 			}
 
 			// Advance to next frame
-			nextIdx := (p.currentIdx + 1) % totalFrames
-			if !p.loop && nextIdx == 0 {
-				// Reached end of animation without loop
-				p.pauseLocked()
-				p.mu.Unlock()
-				return
+			nextIdx := p.currentIdx + 1
+			if nextIdx >= totalFrames {
+				if !p.loop {
+					// Reached final frame with loop disabled:
+					// Display the final frame, set button back to Play (red), and pause gracefully
+					p.currentIdx = totalFrames - 1
+					p.pauseLocked()
+					p.mu.Unlock()
+
+					fyne.Do(func() {
+						p.mu.Lock()
+						defer p.mu.Unlock()
+						p.renderCurrentFrameLocked()
+					})
+					return
+				}
+				nextIdx = 0
 			}
 
 			p.currentIdx = nextIdx

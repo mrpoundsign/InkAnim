@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"fyne.io/fyne/v2/test"
+	"fyne.io/fyne/v2/widget"
 )
 
 func TestMainWindowInitAndLoad(t *testing.T) {
@@ -163,6 +164,77 @@ func TestCheckFrameDifferences(t *testing.T) {
 		}
 	}
 	t.Logf("Differences between frame 1 and frame 2: %d pixels", diff12)
+}
+
+func TestNoLoopPlaybackAndButtonStates(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	mw := NewMainWindow(app)
+	testSVGPath, err := filepath.Abs("../../testdata/character_walk.svg")
+	if err != nil {
+		t.Fatalf("failed to resolve test SVG path: %v", err)
+	}
+
+	mw.loadFilePath(testSVGPath)
+	mw.centerPanel.Pause()
+
+	// Initial stopped state: text is Play and Importance is DangerImportance (Red)
+	if mw.centerPanel.playPauseBtn.Text != "Play" {
+		t.Errorf("expected button text 'Play', got %s", mw.centerPanel.playPauseBtn.Text)
+	}
+	if mw.centerPanel.playPauseBtn.Importance != widget.DangerImportance {
+		t.Errorf("expected DangerImportance (Red), got %v", mw.centerPanel.playPauseBtn.Importance)
+	}
+
+	// Disable loop
+	mw.centerPanel.loopCheck.SetChecked(false)
+
+	// Start play from frame 0
+	mw.centerPanel.StepFrame(0)
+	mw.centerPanel.Play()
+
+	// While playing: text is Pause and Importance is SuccessImportance (Green)
+	if mw.centerPanel.playPauseBtn.Text != "Pause" {
+		t.Errorf("expected button text 'Pause' while playing, got %s", mw.centerPanel.playPauseBtn.Text)
+	}
+	if mw.centerPanel.playPauseBtn.Importance != widget.SuccessImportance {
+		t.Errorf("expected SuccessImportance (Green) while playing, got %v", mw.centerPanel.playPauseBtn.Importance)
+	}
+
+	// Wait for playback to complete (100ms * 3 frames = 300ms + buffer)
+	time.Sleep(450 * time.Millisecond)
+
+	mw.centerPanel.mu.Lock()
+	playing := mw.centerPanel.isPlaying
+	finalIdx := mw.centerPanel.currentIdx
+	mw.centerPanel.mu.Unlock()
+
+	if playing {
+		t.Errorf("expected playback to stop when reaching the end without loop")
+	}
+	if finalIdx != 2 {
+		t.Errorf("expected to stop on last frame (index 2), got %d", finalIdx)
+	}
+
+	// Button should automatically be back to Play and DangerImportance
+	if mw.centerPanel.playPauseBtn.Text != "Play" {
+		t.Errorf("expected button text 'Play' after stopping at end, got %s", mw.centerPanel.playPauseBtn.Text)
+	}
+	if mw.centerPanel.playPauseBtn.Importance != widget.DangerImportance {
+		t.Errorf("expected DangerImportance (Red) after stopping at end, got %v", mw.centerPanel.playPauseBtn.Importance)
+	}
+
+	// Pressing Play again should restart from frame 0
+	mw.centerPanel.Play()
+	mw.centerPanel.mu.Lock()
+	newIdx := mw.centerPanel.currentIdx
+	mw.centerPanel.mu.Unlock()
+
+	if newIdx != 0 {
+		t.Errorf("expected restart from frame 0, got %d", newIdx)
+	}
+	mw.centerPanel.Pause()
 }
 
 
