@@ -56,16 +56,12 @@ InkAnim/
 
 ---
 
-## 4. Current Issues & Backlog
+## 4. Issue Tracking & Backlog
 
-| Issue # | Title / Topic | Status | Summary & Notes |
-| :--- | :--- | :--- | :--- |
-| **#1** | [Load/Save dialog is too small and not resizable](https://github.com/mrpoundsign/InkAnim/issues/1) | **Fixed** | Replaced Fyne in-canvas dialogs with native OS modal file dialogs via `ncruces/zenity` (Windows File Explorer / Linux zenity/kdialog). |
-| **#2** | [Allow frame loop to beginning](https://github.com/mrpoundsign/InkAnim/issues/2) | Open | Backlog feature request for loop control and wrapping. |
-| **#3** | [Clarify / Fix "Pin BG" behavior](https://github.com/mrpoundsign/InkAnim/issues/3) | **Closed** | Pinned background frames composite behind active animation frames. Committed in `212401f`. |
-| **#4** | [Toggling 'Pin BG' on layers other than first frame halts animation playback](https://github.com/mrpoundsign/InkAnim/issues/4) | Open | In `internal/ui/left_frames.go`, replacing boolean toggles with explicit `SetLayerPinned(idx, checked)` and `SetLayerActive(idx, checked)` prevents desync and playback halts. |
-| **#5** | [Unchecking 'Loop' halts animation playback immediately](https://github.com/mrpoundsign/InkAnim/issues/5) | **Fixed** | Button state shows red 'Play' when stopped and green 'Pause' when playing. Non-looping playback finishes at end frame and pauses; next Play restarts from frame 0. |
-| **#6** | [Terminal spammed with fyne.Do threading warnings from center_preview.go](https://github.com/mrpoundsign/InkAnim/issues/6) | **Fixed** | Wrapped background animation ticker button updates in `fyne.Do(func() { ... })`. |
+Active issues and feature requests are tracked exclusively via **[GitHub Issues](https://github.com/mrpoundsign/InkAnim/issues)** (the single source of truth):
+- **Inspect Open Issues**: `gh issue list --state open`
+- **View Specific Issue Details**: `gh issue view <issue-number>`
+- **Historical Completed Work**: Documented in `CHANGELOG.md` with release tags.
 
 ---
 
