@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Vector Export Scaling**: Rasterize export frames directly from vector SVG at target export resolution (up to 4096px) to eliminate upscaling blurriness, while capping interactive preview rasterization to 512px max dimension for smooth playback ([#13](https://github.com/mrpoundsign/InkAnim/issues/13)).
+- **Boundary Crop Mode**: Added boundary crop mode toggle ("Document" viewBox bounds vs "Page" canvas bounds) with interactive dotted cyan preview crop guides and auto-squaring support ([#14](https://github.com/mrpoundsign/InkAnim/issues/14)).
+- **Developer Tooling & Scripts**: Added `build.sh` script, updated `build.ps1`, and integrated `golangci-lint-v2` into `.golangci.yml` and `.git/hooks/pre-push`.
+
+### Changed
+- **CLI Release Archive Naming**: Prefixed GoReleaser CLI release archives with `inkanim-cli_` (`inkanim-cli_<version>_<os>_<arch>.tar.gz` and `.zip`) to clearly distinguish CLI releases from desktop GUI releases ([#7](https://github.com/mrpoundsign/InkAnim/issues/7)).
+
+---
+
 ## [0.1.2] - 2026-09-06
 
 ### Added
