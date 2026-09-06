@@ -40,8 +40,9 @@ type CenterPreviewPanel struct {
 	currentIdx  int
 	speedFactor float64
 
-	mu   sync.Mutex
-	stop chan struct{}
+	mu      sync.Mutex
+	stop    chan struct{}
+	animGen int
 }
 
 // NewCenterPreviewPanel constructs the animation preview and Twitch inspector dock.
@@ -191,7 +192,10 @@ func (p *CenterPreviewPanel) StepFrame(delta int) {
 		return
 	}
 
-	p.currentIdx = (p.currentIdx + delta + len(frames)) % len(frames)
+	if p.currentIdx < 0 || p.currentIdx >= len(frames) {
+		p.currentIdx = 0
+	}
+	p.currentIdx = (p.currentIdx + delta%len(frames) + len(frames)) % len(frames)
 	p.renderCurrentFrameLocked()
 }
 
@@ -207,7 +211,15 @@ func (p *CenterPreviewPanel) TogglePlay() {
 	}
 }
 
+// Pause stops the animated playback.
+func (p *CenterPreviewPanel) Pause() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.pauseLocked()
+}
+
 func (p *CenterPreviewPanel) pauseLocked() {
+	p.animGen++
 	if !p.isPlaying {
 		return
 	}
@@ -231,16 +243,24 @@ func (p *CenterPreviewPanel) playLocked() {
 		p.stop = nil
 	}
 
+	p.animGen++
+	currentGen := p.animGen
 	p.isPlaying = true
 	p.playPauseBtn.SetText("⏸ Pause")
 	p.stop = make(chan struct{})
 
-	go func(stopChan chan struct{}) {
+	go func(stopChan chan struct{}, gen int) {
 		for {
 			p.mu.Lock()
-			if !p.isPlaying || len(p.session.RenderedFrames) == 0 {
+			totalFrames := len(p.session.RenderedFrames)
+			if !p.isPlaying || p.animGen != gen || totalFrames == 0 {
 				p.mu.Unlock()
 				return
+			}
+
+			// Ensure currentIdx is always within bounds if a new SVG was loaded
+			if p.currentIdx >= totalFrames {
+				p.currentIdx = 0
 			}
 
 			durMs := p.session.RenderedFrames[p.currentIdx].DurationMs
@@ -249,7 +269,7 @@ func (p *CenterPreviewPanel) playLocked() {
 			}
 
 			// Advance to next frame
-			nextIdx := (p.currentIdx + 1) % len(p.session.RenderedFrames)
+			nextIdx := (p.currentIdx + 1) % totalFrames
 			if !p.loop && nextIdx == 0 {
 				// Reached end of animation without loop
 				p.pauseLocked()
@@ -264,7 +284,7 @@ func (p *CenterPreviewPanel) playLocked() {
 			fyne.Do(func() {
 				p.mu.Lock()
 				defer p.mu.Unlock()
-				if p.isPlaying {
+				if p.isPlaying && p.animGen == gen {
 					p.renderCurrentFrameLocked()
 				}
 			})
@@ -275,7 +295,7 @@ func (p *CenterPreviewPanel) playLocked() {
 			case <-time.After(time.Duration(durMs) * time.Millisecond):
 			}
 		}
-	}(p.stop)
+	}(p.stop, currentGen)
 }
 
 func (p *CenterPreviewPanel) renderCurrentFrameLocked() {
