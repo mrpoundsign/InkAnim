@@ -12,7 +12,14 @@ import (
 	"inkanim/internal/svg"
 )
 
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
+
 func main() {
+	showVersion := flag.Bool("v", false, "Show version information")
 	inputFile := flag.String("i", "", "Input Inkscape SVG file path (required)")
 	outputFile := flag.String("o", "", "Output animated GIF file path (default: input with .gif extension)")
 	modeStr := flag.String("mode", "layers", "Frame extraction mode: 'layers' or 'pages'")
@@ -26,6 +33,11 @@ func main() {
 	checkTwitch := flag.Bool("check-twitch", true, "Validate output against Twitch animated emote specifications")
 
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Printf("inkanim-cli version %s (commit %s, built %s)\n", version, commit, date)
+		os.Exit(0)
+	}
 
 	if *inputFile == "" {
 		fmt.Println("InkAnim CLI — Convert Inkscape SVG layers/pages to a single animated GIF")

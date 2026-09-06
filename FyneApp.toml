@@ -1,6 +1,9 @@
+Website = "https://github.com/mrpoundsign/InkAnim"
+
 [Details]
 Icon = "assets/icon.png"
 Name = "InkAnim"
 ID = "com.inkanim.studio"
-Version = "1.0.0"
+Version = "0.1.0"
 Build = 1
+

@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   goreleaser:
-    name: Release CLI Binaries (GoReleaser)
+    name: Release CLI Binaries (GoReleaser on Linux)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -29,13 +29,15 @@ jobs:
         with:
           distribution: goreleaser
           version: '~> v2'
-          args: release --clean
+          args: ${{ startsWith(github.ref, 'refs/tags/v') && 'release --clean' || 'release --clean --snapshot' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-gui:
     name: Build Multi-Platform Desktop GUI (fyne-cross)
+    needs: goreleaser
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -57,11 +59,19 @@ jobs:
           fyne-cross linux -arch=amd64,arm64 -app-id=com.inkanim.studio ./cmd/inkanim
 
       - name: Cross-Compile Desktop GUI for macOS
+        continue-on-error: true
         run: |
           fyne-cross darwin -arch=amd64,arm64 -app-id=com.inkanim.studio ./cmd/inkanim
 
-      - name: Upload GUI Release Packages
+      - name: Upload GUI Workflow Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: inkanim-desktop-binaries
           path: fyne-cross/dist/
+
+      - name: Attach GUI Binaries to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          find fyne-cross/dist -type f \( -name "*.zip" -o -name "*.tar.xz" -o -name "*.deb" -o -name "*.pkg" -o -name "*.dmg" -o -name "*.exe" \) -exec gh release upload ${{ github.ref_name }} {} --clobber +

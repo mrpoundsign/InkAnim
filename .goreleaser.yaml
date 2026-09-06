@@ -37,6 +37,8 @@ archives:
     files:
       - README.md
       - DESIGN.md
+      - LICENSE
+      - assets/icon.png
       - testdata/preview.html
       - testdata/character_walk.svg
 
@@ -45,7 +47,7 @@ checksum:
 
 release:
   github:
-    owner: mrpou
+    owner: mrpoundsign
     name: InkAnim
   draft: false
   prerelease: auto
