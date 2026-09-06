@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-09-06
+
 ### Added
 - **About InkAnim Modal Dialog**: Added an "About InkAnim" modal dialog featuring the embedded app icon, version metadata, interactive GitHub Releases update checker with live status, project hyperlinks, and license credits ([#12](https://github.com/mrpoundsign/InkAnim/issues/12)).
 - **GitHub Releases Update Checker**: Added asynchronous version update checker querying GitHub Releases API with Semantic Version parsing, comparison, and rate-limit error handling ([#10](https://github.com/mrpoundsign/InkAnim/issues/10)).

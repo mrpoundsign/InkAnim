@@ -106,3 +106,6 @@ Active issues and feature requests are tracked exclusively via **[GitHub Issues]
    - Never commit code until the user has tested and confirmed the GUI works as expected.
 3. **Target Exclusions**:
    - macOS/Darwin builds must **never** be generated or included in release workflows.
+4. **Fyne GUI Thread Safety**:
+   - In Fyne v2, all UI mutations (such as `label.SetText()`, `button.Enable()`, `widget.Show()`, or canvas refreshes) triggered from background goroutines, tickers, or asynchronous callbacks **must** be dispatched on the main render thread via `fyne.Do(func() { ... })` or `fyne.DoAndWait(...)`.
+   - Never mutate Fyne widget state directly from background threads; doing so triggers runtime thread-safety warnings (`*** Error in Fyne call thread, this should have been called in fyne.Do[AndWait] ***`) and risks race conditions.
