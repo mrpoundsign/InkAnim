@@ -1,6 +1,7 @@
 package svg
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
@@ -212,4 +213,45 @@ func TestBuildLayerFrameSVG_PinnedBackgroundStackingOrder(t *testing.T) {
 			cornerPixel.R, cornerPixel.G, cornerPixel.B, cornerPixel.A)
 	}
 }
+
+func TestCharacterWalkPinned(t *testing.T) {
+	data, err := os.ReadFile("../../testdata/character_walk.svg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc, err := ParseSVG(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pinned := map[string]bool{"layer_frame1": true}
+	f2, err := BuildLayerFrameSVG(doc, "layer_frame2", pinned)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f3, err := BuildLayerFrameSVG(doc, "layer_frame3", pinned)
+	if err != nil {
+		t.Fatal(err)
+	}
+	img2, err := RenderSVGToRGBA(f2, 256, 256)
+	if err != nil {
+		t.Fatal(err)
+	}
+	img3, err := RenderSVGToRGBA(f3, 256, 256)
+	if err != nil {
+		t.Fatal(err)
+	}
+	diff := 0
+	for y := 0; y < 256; y++ {
+		for x := 0; x < 256; x++ {
+			if img2.RGBAAt(x, y) != img3.RGBAAt(x, y) {
+				diff++
+			}
+		}
+	}
+	t.Logf("Diff between f2 and f3 with f1 pinned: %d", diff)
+	if diff == 0 {
+		t.Errorf("expected frames 2 and 3 to be different with f1 pinned, but they are identical!")
+	}
+}
+
 

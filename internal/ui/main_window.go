@@ -148,6 +148,10 @@ func (mw *MainWindow) loadFilePath(path string) {
 	mw.leftPanel.Refresh()
 	mw.centerPanel.Refresh()
 	mw.rightPanel.syncOptions()
+
+	if len(mw.session.RenderedFrames) > 1 {
+		mw.centerPanel.Play()
+	}
 }
 
 // fixedWidthLayout locks a container to a fixed horizontal width while letting height stretch.

@@ -231,6 +231,13 @@ func (p *CenterPreviewPanel) TogglePlay() {
 	}
 }
 
+// Play starts the animated playback if there are multiple frames.
+func (p *CenterPreviewPanel) Play() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.playLocked()
+}
+
 // Pause stops the animated playback.
 func (p *CenterPreviewPanel) Pause() {
 	p.mu.Lock()
