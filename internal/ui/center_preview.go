@@ -252,7 +252,12 @@ func (p *CenterPreviewPanel) pauseLocked() {
 	}
 	p.isPlaying = false
 	p.animGen++
-	p.playPauseBtn.SetText("▶ Play")
+	btn := p.playPauseBtn
+	if btn != nil {
+		fyne.Do(func() {
+			btn.SetText("▶ Play")
+		})
+	}
 	if p.stop != nil {
 		close(p.stop)
 		p.stop = nil
@@ -274,7 +279,12 @@ func (p *CenterPreviewPanel) playLocked() {
 	p.animGen++
 	currentGen := p.animGen
 	p.isPlaying = true
-	p.playPauseBtn.SetText("⏸ Pause")
+	btn := p.playPauseBtn
+	if btn != nil {
+		fyne.Do(func() {
+			btn.SetText("⏸ Pause")
+		})
+	}
 	p.stop = make(chan struct{})
 
 	go func(stopChan chan struct{}, gen int) {

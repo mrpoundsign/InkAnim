@@ -65,7 +65,7 @@ InkAnim/
 | **#3** | [Clarify / Fix "Pin BG" behavior](https://github.com/mrpoundsign/InkAnim/issues/3) | **Closed** | Pinned background frames composite behind active animation frames. Committed in `212401f`. |
 | **#4** | [Toggling 'Pin BG' on layers other than first frame halts animation playback](https://github.com/mrpoundsign/InkAnim/issues/4) | Open | In `internal/ui/left_frames.go`, replacing boolean toggles with explicit `SetLayerPinned(idx, checked)` and `SetLayerActive(idx, checked)` prevents desync and playback halts. |
 | **#5** | [Unchecking 'Loop' halts animation playback immediately](https://github.com/mrpoundsign/InkAnim/issues/5) | Open | In `internal/ui/center_preview.go`, non-looping playback should play completely to the last frame, display the end frame, and pause gracefully. Pressing Play again should restart from frame 0. |
-| **#6** | [Terminal spammed with fyne.Do threading warnings from center_preview.go](https://github.com/mrpoundsign/InkAnim/issues/6) | Open | Background animation ticker goroutine was updating UI widgets off the main thread. All widget updates must be wrapped in `fyne.Do(func() { ... })`. |
+| **#6** | [Terminal spammed with fyne.Do threading warnings from center_preview.go](https://github.com/mrpoundsign/InkAnim/issues/6) | **Fixed** | Wrapped background animation ticker button updates in `fyne.Do(func() { ... })`. |
 
 ---
 
