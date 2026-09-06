@@ -30,7 +30,7 @@ type Session struct {
 func NewSession() *Session {
 	return &Session{
 		CurrentMode:      svg.ModeLayers,
-		CropBoundaryMode: svg.BoundaryDocument,
+		CropBoundaryMode: svg.BoundaryDrawing,
 		CropPageIndex:    0,
 		ExportOptions:    gif.DefaultOptions(),
 		PinnedLayers:     make(map[string]bool),
@@ -65,10 +65,15 @@ func (s *Session) LoadSVGData(data []byte, filename string) error {
 	s.CurrentMode = doc.DefaultMode
 	if doc.DefaultMode == svg.ModePages {
 		s.CropBoundaryMode = svg.BoundaryPage
+		if len(s.Pages) > 0 {
+			s.CropPageIndex = 1
+		} else {
+			s.CropPageIndex = 0
+		}
 	} else {
-		s.CropBoundaryMode = svg.BoundaryDocument
+		s.CropBoundaryMode = svg.BoundaryDrawing
+		s.CropPageIndex = 0
 	}
-	s.CropPageIndex = 0
 	s.PinnedLayers = make(map[string]bool)
 
 	return s.RerenderAllFrames()
@@ -79,23 +84,48 @@ func (s *Session) SetMode(mode svg.FrameMode) error {
 	s.CurrentMode = mode
 	if mode == svg.ModePages {
 		s.CropBoundaryMode = svg.BoundaryPage
+		if len(s.Pages) > 0 {
+			s.CropPageIndex = 1
+		} else {
+			s.CropPageIndex = 0
+		}
 	} else {
-		s.CropBoundaryMode = svg.BoundaryDocument
+		s.CropBoundaryMode = svg.BoundaryDrawing
+		s.CropPageIndex = 0
 	}
 	return s.RerenderAllFrames()
 }
 
-// SetCropBoundary sets the boundary mode ("document" or "page") and target page index, then rerenders.
+// SetCropBoundary sets the boundary mode ("drawing" or "page") and target page index, then rerenders.
+// pageIndex 0 represents "Document" (root viewBox), and pageIndex 1..N represent Pages[0..N-1].
 func (s *Session) SetCropBoundary(mode svg.BoundaryMode, pageIndex int) error {
 	s.CropBoundaryMode = mode
 	if pageIndex < 0 {
 		pageIndex = 0
 	}
-	if s.Document != nil && len(s.Pages) > 0 && pageIndex >= len(s.Pages) {
+	if s.Document != nil && pageIndex > len(s.Pages) {
 		pageIndex = 0
 	}
 	s.CropPageIndex = pageIndex
 	return s.RerenderAllFrames()
+}
+
+func (s *Session) resolvePageCropRect(pIdx int) svg.Rect {
+	if s.Document == nil {
+		return svg.Rect{X: 0, Y: 0, Width: 512, Height: 512}
+	}
+	// pIdx == 0 corresponds to "Document" (root viewBox)
+	if pIdx <= 0 || len(s.Pages) == 0 {
+		return s.Document.GetDocumentRect()
+	}
+	pageIdx := pIdx - 1
+	if pageIdx >= 0 && pageIdx < len(s.Pages) {
+		rect, ok := s.Document.GetPageRect(pageIdx)
+		if ok && rect.Width > 0 && rect.Height > 0 {
+			return rect
+		}
+	}
+	return s.Document.GetDocumentRect()
 }
 
 // GetActiveBoundaryDimensions returns the width and height of the active crop boundary.
@@ -104,42 +134,13 @@ func (s *Session) GetActiveBoundaryDimensions() (float64, float64) {
 		return 512, 512
 	}
 
-	if s.CurrentMode == svg.ModeLayers {
-		if s.CropBoundaryMode == svg.BoundaryPage && len(s.Pages) > 0 {
-			pIdx := s.CropPageIndex
-			if pIdx < 0 || pIdx >= len(s.Pages) {
-				pIdx = 0
-			}
-			rect, ok := s.Document.GetPageRect(pIdx)
-			if ok && rect.Width > 0 && rect.Height > 0 {
-				return rect.Width, rect.Height
-			}
-		}
-		docRect := s.Document.GetDocumentRect()
-		return docRect.Width, docRect.Height
+	if s.CropBoundaryMode == svg.BoundaryDrawing {
+		rect := s.Document.GetDrawingRect()
+		return rect.Width, rect.Height
 	}
 
-	// ModePages
-	if s.CropBoundaryMode == svg.BoundaryDocument {
-		docRect := s.Document.GetDocumentRect()
-		return docRect.Width, docRect.Height
-	}
-
-	if len(s.Pages) > 0 {
-		pIdx := s.CropPageIndex
-		if pIdx >= 0 && pIdx < len(s.Pages) {
-			rect, ok := s.Document.GetPageRect(pIdx)
-			if ok && rect.Width > 0 && rect.Height > 0 {
-				return rect.Width, rect.Height
-			}
-		}
-		rect, ok := s.Document.GetPageRect(0)
-		if ok && rect.Width > 0 && rect.Height > 0 {
-			return rect.Width, rect.Height
-		}
-	}
-	docRect := s.Document.GetDocumentRect()
-	return docRect.Width, docRect.Height
+	rect := s.resolvePageCropRect(s.CropPageIndex)
+	return rect.Width, rect.Height
 }
 
 // GetActiveBoundaryRect returns the bounding rectangle for the given frame index or active crop boundary.
@@ -148,34 +149,39 @@ func (s *Session) GetActiveBoundaryRect(frameIndex int) svg.Rect {
 		return svg.Rect{X: 0, Y: 0, Width: 512, Height: 512}
 	}
 
+	if s.CropBoundaryMode == svg.BoundaryDrawing {
+		return s.Document.GetDrawingRect()
+	}
+
+	// ModeLayers with BoundaryPage:
 	if s.CurrentMode == svg.ModeLayers {
-		if s.CropBoundaryMode == svg.BoundaryPage && len(s.Pages) > 0 {
-			pIdx := s.CropPageIndex
-			if pIdx < 0 || pIdx >= len(s.Pages) {
-				pIdx = 0
-			}
-			rect, ok := s.Document.GetPageRect(pIdx)
-			if ok {
-				return rect
-			}
-		}
+		return s.resolvePageCropRect(s.CropPageIndex)
+	}
+
+	// ModePages:
+	// If CropPageIndex == 0, user specifically selected "Document" (root viewBox)
+	if s.CropPageIndex == 0 {
 		return s.Document.GetDocumentRect()
 	}
 
-	// ModePages
-	if s.CropBoundaryMode == svg.BoundaryDocument {
-		return s.Document.GetDocumentRect()
-	}
-
-	// In ModePages with BoundaryPage:
-	// Each page frame clips to its own page artboard coordinates
+	// If frameIndex >= 0 and within pages count, each frame clips to its own page artboard
 	if frameIndex >= 0 && frameIndex < len(s.Pages) {
 		rect, ok := s.Document.GetPageRect(frameIndex)
-		if ok {
+		if ok && rect.Width > 0 && rect.Height > 0 {
 			return rect
 		}
 	}
-	return s.Document.GetDocumentRect()
+	return s.resolvePageCropRect(s.CropPageIndex)
+}
+
+// GetPreviewBoundaryRect returns the base canvas boundary for interactive preview rendering.
+// It always returns the full unclipped Drawing bounding box so animators can see all objects
+// entering and exiting the frame, with the active crop boundary overlaid.
+func (s *Session) GetPreviewBoundaryRect() svg.Rect {
+	if s.Document == nil {
+		return svg.Rect{X: 0, Y: 0, Width: 512, Height: 512}
+	}
+	return s.Document.GetDrawingRect()
 }
 
 
@@ -286,32 +292,33 @@ func (s *Session) RerenderAllFrames() error {
 
 	var frames []svg.RenderedFrame
 
-	if s.CurrentMode == svg.ModeLayers {
-		boundW, boundH := s.GetActiveBoundaryDimensions()
-		if boundW <= 0 {
-			boundW = 512
-		}
-		if boundH <= 0 {
-			boundH = 512
-		}
-		maxDim := boundW
-		if boundH > maxDim {
-			maxDim = boundH
-		}
-		// Display preview only needs to be large enough to render crisply on screen (512px max dimension).
-		// Full resolution (up to 4096px) is rasterized separately on export via RenderExportFrames().
-		const maxPreviewDim = 512.0
-		previewScale := maxPreviewDim / maxDim
-		renderW := int(math.Round(boundW * previewScale))
-		renderH := int(math.Round(boundH * previewScale))
-		boundaryRect := s.GetActiveBoundaryRect(0)
+	previewRect := s.GetPreviewBoundaryRect()
+	boundW := previewRect.Width
+	boundH := previewRect.Height
+	if boundW <= 0 {
+		boundW = 512
+	}
+	if boundH <= 0 {
+		boundH = 512
+	}
+	maxDim := boundW
+	if boundH > maxDim {
+		maxDim = boundH
+	}
+	// Display preview only needs to be large enough to render crisply on screen (512px max dimension).
+	// Full resolution (up to 4096px) is rasterized separately on export via RenderExportFrames().
+	const maxPreviewDim = 512.0
+	previewScale := maxPreviewDim / maxDim
+	renderW := int(math.Round(boundW * previewScale))
+	renderH := int(math.Round(boundH * previewScale))
 
+	if s.CurrentMode == svg.ModeLayers {
 		for i, layer := range s.Layers {
 			if !layer.IsActive || layer.IsPinned {
 				continue
 			}
 
-			frameSVG, err := svg.BuildLayerFrameSVG(s.Document, layer.ID, s.PinnedLayers, boundaryRect)
+			frameSVG, err := svg.BuildLayerFrameSVG(s.Document, layer.ID, s.PinnedLayers, previewRect)
 			if err != nil {
 				return fmt.Errorf("failed to build frame for layer %s: %w", layer.Label, err)
 			}
@@ -336,27 +343,7 @@ func (s *Session) RerenderAllFrames() error {
 				continue
 			}
 
-			boundaryRect := s.GetActiveBoundaryRect(i)
-			boundW := boundaryRect.Width
-			boundH := boundaryRect.Height
-			if boundW <= 0 {
-				boundW = 512
-			}
-			if boundH <= 0 {
-				boundH = 512
-			}
-			maxDim := boundW
-			if boundH > maxDim {
-				maxDim = boundH
-			}
-			// Display preview only needs to be large enough to render crisply on screen (512px max dimension).
-			// Full resolution (up to 4096px) is rasterized separately on export via RenderExportFrames().
-			const maxPreviewDim = 512.0
-			previewScale := maxPreviewDim / maxDim
-			renderW := int(math.Round(boundW * previewScale))
-			renderH := int(math.Round(boundH * previewScale))
-
-			frameSVG, err := svg.BuildPageFrameSVG(s.Document, page, boundaryRect)
+			frameSVG, err := svg.BuildPageFrameSVG(s.Document, page, previewRect)
 			if err != nil {
 				return fmt.Errorf("failed to build frame for page %s: %w", page.Label, err)
 			}

@@ -410,6 +410,15 @@ func TestBouncingWalkerSVGLoadAndCrop(t *testing.T) {
 	if imgF3.Bounds().Dx() != 160 || imgF3.Bounds().Dy() != 160 {
 		t.Errorf("expected 160x160 cropped image, got %dx%d", imgF3.Bounds().Dx(), imgF3.Bounds().Dy())
 	}
+
+	// Test Drawing Rect (unclipped bounding box encompassing ground line from -50 to 306)
+	drawingRect := doc.GetDrawingRect()
+	if drawingRect.X > -49 || drawingRect.X < -51 {
+		t.Errorf("expected drawing min X around -50, got %f", drawingRect.X)
+	}
+	if drawingRect.Width < 350 {
+		t.Errorf("expected drawing width >= 350, got %f", drawingRect.Width)
+	}
 }
 
 

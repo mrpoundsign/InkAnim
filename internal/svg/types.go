@@ -16,6 +16,7 @@ const (
 type BoundaryMode string
 
 const (
+	BoundaryDrawing  BoundaryMode = "drawing"
 	BoundaryDocument BoundaryMode = "document"
 	BoundaryPage     BoundaryMode = "page"
 )
@@ -94,9 +95,22 @@ type SVGDocument struct {
 	ViewBoxY    float64
 	ViewBoxW    float64
 	ViewBoxH    float64
+	DrawingRect Rect
 	Layers      []Layer
 	Pages       []Page
 	DefaultMode FrameMode
+}
+
+// GetDrawingRect returns the bounding rectangle of all rendered paths/elements in the SVG,
+// falling back to GetDocumentRect if DrawingRect has non-positive dimensions.
+func (d *SVGDocument) GetDrawingRect() Rect {
+	if d == nil {
+		return Rect{X: 0, Y: 0, Width: 512, Height: 512}
+	}
+	if d.DrawingRect.Width > 0 && d.DrawingRect.Height > 0 {
+		return d.DrawingRect
+	}
+	return d.GetDocumentRect()
 }
 
 // GetDocumentRect returns the document's native viewBox or dimensions as a Rect.

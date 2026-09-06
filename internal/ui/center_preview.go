@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"math"
 	"sync"
 	"time"
 
@@ -388,8 +389,22 @@ func (p *CenterPreviewPanel) renderCurrentFrameLocked() {
 	curr := frames[p.currentIdx]
 	p.frameLabel.SetText(fmt.Sprintf("Frame %d of %d - %s - %dms", p.currentIdx+1, len(frames), curr.Label, curr.DurationMs))
 
-	// If square mode is enabled, square-center the frame for display
+	// displayImg contains the full document/drawing canvas for the preview
 	displayImg := curr.Image
+	previewRect := p.session.GetPreviewBoundaryRect()
+	activeRect := p.session.GetActiveBoundaryRect(p.currentIdx)
+
+	scaleX := float64(curr.Image.Bounds().Dx()) / previewRect.Width
+	scaleY := float64(curr.Image.Bounds().Dy()) / previewRect.Height
+	cropX0 := int(math.Round((activeRect.X - previewRect.X) * scaleX))
+	cropY0 := int(math.Round((activeRect.Y - previewRect.Y) * scaleY))
+	cropW := int(math.Round(activeRect.Width * scaleX))
+	cropH := int(math.Round(activeRect.Height * scaleY))
+	cropRect := image.Rect(cropX0, cropY0, cropX0+cropW, cropY0+cropH)
+
+	// Crop for Twitch preview
+	croppedForTwitch := cropImage(curr.Image, cropRect)
+
 	var contentRect image.Rectangle
 	if p.session.ExportOptions.ExportSquare {
 		displayImg = gif.MakeSquare(curr.Image, 0)
@@ -397,9 +412,9 @@ func (p *CenterPreviewPanel) renderCurrentFrameLocked() {
 		sqB := displayImg.Bounds()
 		offsetX := (sqB.Dx() - origB.Dx()) / 2
 		offsetY := (sqB.Dy() - origB.Dy()) / 2
-		contentRect = image.Rect(offsetX, offsetY, offsetX+origB.Dx(), offsetY+origB.Dy())
+		contentRect = cropRect.Add(image.Pt(offsetX, offsetY))
 	} else {
-		contentRect = displayImg.Bounds()
+		contentRect = cropRect
 	}
 
 	previewImg := displayImg
@@ -410,10 +425,17 @@ func (p *CenterPreviewPanel) renderCurrentFrameLocked() {
 	p.mainCanvasImage.Image = previewImg
 	p.mainCanvasImage.Refresh()
 
-	// Update Twitch scale emulation images (clean without crop guides)
-	scaled112 := scaleImage(displayImg, 112, 112)
-	scaled56 := scaleImage(displayImg, 56, 56)
-	scaled28 := scaleImage(displayImg, 28, 28)
+	// Update Twitch scale emulation images (clean without crop guides, cropped to active boundary)
+	var twitchDisplayImg *image.RGBA
+	if p.session.ExportOptions.ExportSquare {
+		twitchDisplayImg = gif.MakeSquare(croppedForTwitch, 0)
+	} else {
+		twitchDisplayImg = croppedForTwitch
+	}
+
+	scaled112 := scaleImage(twitchDisplayImg, 112, 112)
+	scaled56 := scaleImage(twitchDisplayImg, 56, 56)
+	scaled28 := scaleImage(twitchDisplayImg, 28, 28)
 
 	p.twitch112Dark.Image = scaled112
 	p.twitch112Dark.Refresh()
@@ -430,23 +452,46 @@ func (p *CenterPreviewPanel) renderCurrentFrameLocked() {
 	p.twitch28Light.Refresh()
 }
 
+func cropImage(src *image.RGBA, r image.Rectangle) *image.RGBA {
+	intersect := r.Intersect(src.Bounds())
+	if intersect.Empty() || intersect.Dx() <= 0 || intersect.Dy() <= 0 {
+		return src
+	}
+	dst := image.NewRGBA(image.Rect(0, 0, intersect.Dx(), intersect.Dy()))
+	draw.Draw(dst, dst.Bounds(), src, intersect.Min, draw.Src)
+	return dst
+}
+
 func scaleImage(src *image.RGBA, w, h int) *image.RGBA {
 	dst := image.NewRGBA(image.Rect(0, 0, w, h))
 	draw.BiLinear.Scale(dst, dst.Bounds(), src, src.Bounds(), draw.Src, nil)
 	return dst
 }
 
-// drawCropGuides overlays subtle crop boundary lines and corner L-brackets on a copy of the preview frame.
+// drawCropGuides overlays subtle crop boundary lines, outer margin dimming, and corner L-brackets.
 func drawCropGuides(src *image.RGBA, contentRect image.Rectangle) *image.RGBA {
 	dst := image.NewRGBA(src.Bounds())
 	copy(dst.Pix, src.Pix)
 
+	b := dst.Bounds()
 	x0 := contentRect.Min.X
 	y0 := contentRect.Min.Y
 	x1 := contentRect.Max.X - 1
 	y1 := contentRect.Max.Y - 1
 
-	b := dst.Bounds()
+	// Subtle darkening outside the crop rectangle (if crop is smaller than canvas)
+	if x0 > b.Min.X || y0 > b.Min.Y || x1 < b.Max.X-1 || y1 < b.Max.Y-1 {
+		for y := b.Min.Y; y < b.Max.Y; y++ {
+			for x := b.Min.X; x < b.Max.X; x++ {
+				if x < x0 || x > x1 || y < y0 || y > y1 {
+					offset := (y-b.Min.Y)*dst.Stride + (x-b.Min.X)*4
+					dst.Pix[offset] = uint8(float64(dst.Pix[offset]) * 0.6)
+					dst.Pix[offset+1] = uint8(float64(dst.Pix[offset+1]) * 0.6)
+					dst.Pix[offset+2] = uint8(float64(dst.Pix[offset+2]) * 0.6)
+				}
+			}
+		}
+	}
 	if x0 < b.Min.X {
 		x0 = b.Min.X
 	}

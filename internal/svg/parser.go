@@ -5,8 +5,12 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"math"
 	"strconv"
 	"strings"
+
+	"github.com/srwiley/oksvg"
+	"github.com/srwiley/rasterx"
 )
 
 // ParseSVG parses an Inkscape SVG document from raw bytes.
@@ -128,7 +132,71 @@ func ParseSVG(data []byte) (*SVGDocument, error) {
 		doc.DefaultMode = ModeLayers
 	}
 
+	doc.DrawingRect = ComputeDrawingRect(data)
+
 	return doc, nil
+}
+
+// ComputeDrawingRect calculates the bounding box of all paths in the SVG drawing.
+// Returns a Rect with 0 width/height if no paths are present or if an error occurs.
+func ComputeDrawingRect(data []byte) Rect {
+	icon, err := oksvg.ReadIconStream(bytes.NewReader(data))
+	if err != nil || len(icon.SVGPaths) == 0 {
+		return Rect{}
+	}
+
+	minX, minY := math.MaxFloat64, math.MaxFloat64
+	maxX, maxY := -math.MaxFloat64, -math.MaxFloat64
+	var found bool
+
+	for _, p := range icon.SVGPaths {
+		for i := 0; i < len(p.Path); {
+			cmd := rasterx.PathCommand(p.Path[i])
+			i++
+			var numPts int
+			switch cmd {
+			case rasterx.PathMoveTo, rasterx.PathLineTo:
+				numPts = 1
+			case rasterx.PathQuadTo:
+				numPts = 2
+			case rasterx.PathCubicTo:
+				numPts = 3
+			case rasterx.PathClose:
+				numPts = 0
+			default:
+				numPts = 0
+			}
+			for pIdx := 0; pIdx < numPts && i+1 < len(p.Path); pIdx++ {
+				x := float64(p.Path[i]) / 64.0
+				y := float64(p.Path[i+1]) / 64.0
+				i += 2
+				if x < minX {
+					minX = x
+				}
+				if x > maxX {
+					maxX = x
+				}
+				if y < minY {
+					minY = y
+				}
+				if y > maxY {
+					maxY = y
+				}
+				found = true
+			}
+		}
+	}
+
+	if !found || maxX <= minX || maxY <= minY {
+		return Rect{}
+	}
+
+	return Rect{
+		X:      minX,
+		Y:      minY,
+		Width:  maxX - minX,
+		Height: maxY - minY,
+	}
 }
 
 func parseSVGAttributes(attrs []xml.Attr, doc *SVGDocument) {

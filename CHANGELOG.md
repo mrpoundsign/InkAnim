@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Vector Export Scaling**: Rasterize export frames directly from vector SVG at target export resolution (up to 4096px) to eliminate upscaling blurriness, while capping interactive preview rasterization to 512px max dimension for smooth playback ([#13](https://github.com/mrpoundsign/InkAnim/issues/13)).
-- **Boundary Crop Mode**: Added boundary crop mode toggle ("Document" viewBox bounds vs "Page" canvas bounds) with interactive dotted cyan preview crop guides and auto-squaring support ([#14](https://github.com/mrpoundsign/InkAnim/issues/14)).
+- **Drawing Crop Boundary Mode**: Added unclipped "Drawing" crop boundary mode computing the bounding box of all SVG vector paths/elements (matching Inkscape's verbage), and included "Document" (root viewBox) as the primary option in the Page selection dropdown ([#15](https://github.com/mrpoundsign/InkAnim/issues/15)).
+- **Boundary Crop Mode**: Added boundary crop mode toggle with interactive dotted cyan preview crop guides and auto-squaring support ([#14](https://github.com/mrpoundsign/InkAnim/issues/14)).
 - **Developer Tooling & Scripts**: Added `build.sh` script, updated `build.ps1`, and integrated `golangci-lint-v2` into `.golangci.yml` and `.git/hooks/pre-push`.
 
 ### Changed

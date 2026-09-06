@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"inkanim/internal/svg"
 )
 
 func TestSessionGlobalAndOverrideDurations(t *testing.T) {
@@ -250,13 +252,22 @@ func TestSessionCropBoundaryModes(t *testing.T) {
 		t.Errorf("expected 256x256 boundary, got %fx%f", w, h)
 	}
 
-	// Switch to Document boundary in Page mode
-	if err := sess.SetCropBoundary("document", 0); err != nil {
-		t.Fatalf("SetCropBoundary document failed: %v", err)
+	// Switch to Document boundary in Page mode (pageIndex 0 = Document)
+	if err := sess.SetCropBoundary(svg.BoundaryPage, 0); err != nil {
+		t.Fatalf("SetCropBoundary page/document failed: %v", err)
 	}
 	docW, docH := sess.GetActiveBoundaryDimensions()
 	if docW != 560 || docH != 256 {
 		t.Errorf("expected 560x256 document boundary, got %fx%f", docW, docH)
+	}
+
+	// Switch to Drawing boundary mode
+	if err := sess.SetCropBoundary(svg.BoundaryDrawing, 0); err != nil {
+		t.Fatalf("SetCropBoundary drawing failed: %v", err)
+	}
+	drawW, drawH := sess.GetActiveBoundaryDimensions()
+	if drawW <= 0 || drawH <= 0 {
+		t.Errorf("expected positive dimensions for drawing boundary, got %fx%f", drawW, drawH)
 	}
 
 	// Switch to Layers mode (character_walk.svg)
@@ -268,15 +279,44 @@ func TestSessionCropBoundaryModes(t *testing.T) {
 	if err := sessLayers.LoadSVG(charSVGPath); err != nil {
 		t.Fatalf("LoadSVG character_walk failed: %v", err)
 	}
-	if sessLayers.CurrentMode != "layers" {
+	if sessLayers.CurrentMode != svg.ModeLayers {
 		t.Errorf("expected layers mode, got %s", sessLayers.CurrentMode)
 	}
-	if sessLayers.CropBoundaryMode != "document" {
-		t.Errorf("expected document boundary for layers, got %s", sessLayers.CropBoundaryMode)
+	if sessLayers.CropBoundaryMode != svg.BoundaryDrawing {
+		t.Errorf("expected drawing boundary for layers, got %s", sessLayers.CropBoundaryMode)
 	}
-	cW, cH := sessLayers.GetActiveBoundaryDimensions()
-	if cW != 256 || cH != 256 {
-		t.Errorf("expected 256x256 for character_walk, got %fx%f", cW, cH)
+
+	// Test bouncing_walker.svg with Drawing vs Page (Document vs Focus Page)
+	bouncePath, err := filepath.Abs("../../testdata/bouncing_walker.svg")
+	if err != nil {
+		t.Fatalf("failed to resolve bouncing_walker path: %v", err)
+	}
+	sessBounce := NewSession()
+	if err := sessBounce.LoadSVG(bouncePath); err != nil {
+		t.Fatalf("LoadSVG bouncing_walker failed: %v", err)
+	}
+	// Default mode for bouncing_walker (7 layers, 2 pages) is ModeLayers, CropBoundaryMode is Drawing
+	bDrawW, _ := sessBounce.GetActiveBoundaryDimensions()
+	if bDrawW < 350 {
+		t.Errorf("expected drawing width >= 350 in bouncing_walker, got %f", bDrawW)
+	}
+
+	// Select Page mode with Document (index 0)
+	if err := sessBounce.SetCropBoundary(svg.BoundaryPage, 0); err != nil {
+		t.Fatalf("SetCropBoundary Page Document failed: %v", err)
+	}
+	bDocW, bDocH := sessBounce.GetActiveBoundaryDimensions()
+	if bDocW != 256 || bDocH != 256 {
+		t.Errorf("expected 256x256 for Document page option, got %fx%f", bDocW, bDocH)
+	}
+
+	// Select Page mode with Page 2 (index 2: Focus 160x160)
+	if err := sessBounce.SetCropBoundary(svg.BoundaryPage, 2); err != nil {
+		t.Fatalf("SetCropBoundary Page 2 failed: %v", err)
+	}
+	bP2W, bP2H := sessBounce.GetActiveBoundaryDimensions()
+	if bP2W != 160 || bP2H != 160 {
+		t.Errorf("expected 160x160 for Page 2 option, got %fx%f", bP2W, bP2H)
 	}
 }
 

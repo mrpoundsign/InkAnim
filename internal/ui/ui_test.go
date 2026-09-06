@@ -262,20 +262,29 @@ func TestCropBoundaryUIAndGuides(t *testing.T) {
 		t.Errorf("expected cropBoundaryRadio selected 'Page', got %s", mw.leftPanel.cropBoundaryRadio.Selected)
 	}
 
-	// Switch to Document boundary via radio group
-	mw.leftPanel.cropBoundaryRadio.SetSelected("Document")
-	if mw.session.CropBoundaryMode != "document" {
-		t.Errorf("expected document crop boundary, got %s", mw.session.CropBoundaryMode)
+	// Switch to Drawing boundary via radio group
+	mw.leftPanel.cropBoundaryRadio.SetSelected("Drawing")
+	if mw.session.CropBoundaryMode != "drawing" {
+		t.Errorf("expected drawing crop boundary, got %s", mw.session.CropBoundaryMode)
 	}
-	w, h := mw.session.GetActiveBoundaryDimensions()
-	if w != 560 || h != 256 {
-		t.Errorf("expected 560x256 document boundary, got %fx%f", w, h)
+	if !mw.leftPanel.cropPageSelect.Disabled() {
+		t.Errorf("expected cropPageSelect to be disabled in Drawing mode")
 	}
 
 	// Switch back to Page boundary
 	mw.leftPanel.cropBoundaryRadio.SetSelected("Page")
 	if mw.session.CropBoundaryMode != "page" {
 		t.Errorf("expected page crop boundary, got %s", mw.session.CropBoundaryMode)
+	}
+	if mw.leftPanel.cropPageSelect.Disabled() {
+		t.Errorf("expected cropPageSelect to be enabled in Page mode")
+	}
+
+	// Select Document (1st option) in cropPageSelect
+	mw.leftPanel.cropPageSelect.SetSelected("Document (560x256)")
+	w, h := mw.session.GetActiveBoundaryDimensions()
+	if w != 560 || h != 256 {
+		t.Errorf("expected 560x256 document boundary, got %fx%f", w, h)
 	}
 
 	// Toggle Crop Guides checkbox in center panel

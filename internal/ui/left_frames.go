@@ -50,32 +50,38 @@ func NewLeftFramesPanel(sess *app.Session, onFramesChange func()) *LeftFramesPan
 	})
 	p.modeRadio.Selected = "Layers"
 
-	p.cropBoundaryRadio = widget.NewRadioGroup([]string{"Document", "Page"}, func(selected string) {
+	p.cropBoundaryRadio = widget.NewRadioGroup([]string{"Drawing", "Page"}, func(selected string) {
 		if p.isUpdating {
 			return
 		}
 		if selected == "Page" {
 			_ = p.session.SetCropBoundary(svg.BoundaryPage, p.session.CropPageIndex)
 		} else {
-			_ = p.session.SetCropBoundary(svg.BoundaryDocument, p.session.CropPageIndex)
+			_ = p.session.SetCropBoundary(svg.BoundaryDrawing, p.session.CropPageIndex)
 		}
 		p.Refresh()
 		if p.onFramesChange != nil {
 			p.onFramesChange()
 		}
 	})
-	p.cropBoundaryRadio.Selected = "Document"
+	p.cropBoundaryRadio.Selected = "Drawing"
 
-	p.cropPageSelect = widget.NewSelect([]string{"(No pages in SVG)"}, func(selected string) {
+	p.cropPageSelect = widget.NewSelect([]string{"(No document loaded)"}, func(selected string) {
 		if p.isUpdating || p.session == nil || p.session.Document == nil {
 			return
 		}
 		pageIdx := 0
-		for i, pg := range p.session.Pages {
-			optLabel := fmt.Sprintf("%d. %s (%0.0fx%0.0f)", i+1, pg.Label, pg.Width, pg.Height)
-			if optLabel == selected {
-				pageIdx = i
-				break
+		docRect := p.session.Document.GetDocumentRect()
+		docLabel := fmt.Sprintf("Document (%0.0fx%0.0f)", docRect.Width, docRect.Height)
+		if selected == docLabel {
+			pageIdx = 0
+		} else {
+			for i, pg := range p.session.Pages {
+				optLabel := fmt.Sprintf("%d. %s (%0.0fx%0.0f)", i+1, pg.Label, pg.Width, pg.Height)
+				if optLabel == selected {
+					pageIdx = i + 1
+					break
+				}
 			}
 		}
 		_ = p.session.SetCropBoundary(p.session.CropBoundaryMode, pageIdx)
@@ -197,8 +203,8 @@ func (p *LeftFramesPanel) Refresh() {
 	p.listContainer.Objects = nil
 
 	if p.session.Document == nil {
-		p.cropPageSelect.Options = []string{"(No pages in SVG)"}
-		p.cropPageSelect.SetSelected("(No pages in SVG)")
+		p.cropPageSelect.Options = []string{"(No document loaded)"}
+		p.cropPageSelect.SetSelected("(No document loaded)")
 		p.cropPageSelect.Disable()
 		p.listContainer.Add(widget.NewLabel("No SVG loaded.\nUse 'Open SVG' above."))
 		p.listContainer.Refresh()
@@ -211,32 +217,28 @@ func (p *LeftFramesPanel) Refresh() {
 			p.cropBoundaryRadio.SetSelected("Page")
 		}
 	} else {
-		if p.cropBoundaryRadio.Selected != "Document" {
-			p.cropBoundaryRadio.SetSelected("Document")
+		if p.cropBoundaryRadio.Selected != "Drawing" {
+			p.cropBoundaryRadio.SetSelected("Drawing")
 		}
 	}
 
-	if len(p.session.Pages) == 0 {
-		p.cropPageSelect.Options = []string{"(No pages in SVG)"}
-		p.cropPageSelect.SetSelected("(No pages in SVG)")
-		p.cropPageSelect.Disable()
-	} else {
-		var pageOptions []string
-		for i, pg := range p.session.Pages {
-			pageOptions = append(pageOptions, fmt.Sprintf("%d. %s (%0.0fx%0.0f)", i+1, pg.Label, pg.Width, pg.Height))
-		}
-		p.cropPageSelect.Options = pageOptions
-		selectedIdx := p.session.CropPageIndex
-		if selectedIdx < 0 || selectedIdx >= len(pageOptions) {
-			selectedIdx = 0
-		}
-		p.cropPageSelect.SetSelected(pageOptions[selectedIdx])
+	docRect := p.session.Document.GetDocumentRect()
+	var pageOptions []string
+	pageOptions = append(pageOptions, fmt.Sprintf("Document (%0.0fx%0.0f)", docRect.Width, docRect.Height))
+	for i, pg := range p.session.Pages {
+		pageOptions = append(pageOptions, fmt.Sprintf("%d. %s (%0.0fx%0.0f)", i+1, pg.Label, pg.Width, pg.Height))
+	}
+	p.cropPageSelect.Options = pageOptions
+	selectedIdx := p.session.CropPageIndex
+	if selectedIdx < 0 || selectedIdx >= len(pageOptions) {
+		selectedIdx = 0
+	}
+	p.cropPageSelect.SetSelected(pageOptions[selectedIdx])
 
-		if p.session.CropBoundaryMode == svg.BoundaryPage {
-			p.cropPageSelect.Enable()
-		} else {
-			p.cropPageSelect.Disable()
-		}
+	if p.session.CropBoundaryMode == svg.BoundaryPage {
+		p.cropPageSelect.Enable()
+	} else {
+		p.cropPageSelect.Disable()
 	}
 
 
