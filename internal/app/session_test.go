@@ -93,7 +93,9 @@ func TestSessionToggleLayerPinnedAndActive(t *testing.T) {
 
 	// Pin frame 2
 	sess2 := NewSession()
-	sess2.LoadSVG(testSVGPath)
+	if err := sess2.LoadSVG(testSVGPath); err != nil {
+		t.Fatalf("LoadSVG failed: %v", err)
+	}
 	if err := sess2.ToggleLayerPinned(2); err != nil {
 		t.Fatalf("ToggleLayerPinned(2) failed: %v", err)
 	}
@@ -104,7 +106,9 @@ func TestSessionToggleLayerPinnedAndActive(t *testing.T) {
 
 	// Disable frame 1
 	sess3 := NewSession()
-	sess3.LoadSVG(testSVGPath)
+	if err := sess3.LoadSVG(testSVGPath); err != nil {
+		t.Fatalf("LoadSVG failed: %v", err)
+	}
 	if err := sess3.ToggleLayerActive(1); err != nil {
 		t.Fatalf("ToggleLayerActive(1) failed: %v", err)
 	}
@@ -144,4 +148,80 @@ func TestSessionLoadSVGDataAndExportWriter(t *testing.T) {
 		t.Errorf("expected non-empty output buffer, got %d bytes", written)
 	}
 }
+
+func TestRenderExportFramesVectorResolution(t *testing.T) {
+	testSVGPath, err := filepath.Abs("../../testdata/character_walk.svg")
+	if err != nil {
+		t.Fatalf("failed to resolve test SVG path: %v", err)
+	}
+
+	sess := NewSession()
+	if err := sess.LoadSVG(testSVGPath); err != nil {
+		t.Fatalf("failed to load SVG: %v", err)
+	}
+
+	// 1. Test square export at 512x512
+	sess.ExportOptions.ExportSquare = true
+	sess.ExportOptions.SquareSize = 512
+
+	frames512, err := sess.RenderExportFrames()
+	if err != nil {
+		t.Fatalf("RenderExportFrames(512) failed: %v", err)
+	}
+	if len(frames512) != 3 {
+		t.Fatalf("expected 3 frames, got %d", len(frames512))
+	}
+	for i, f := range frames512 {
+		b := f.Image.Bounds()
+		if b.Dx() != 512 || b.Dy() != 512 {
+			t.Errorf("frame %d expected 512x512, got %dx%d", i, b.Dx(), b.Dy())
+		}
+	}
+
+	// 2. Test square export at 1024x1024
+	sess.ExportOptions.SquareSize = 1024
+	frames1024, err := sess.RenderExportFrames()
+	if err != nil {
+		t.Fatalf("RenderExportFrames(1024) failed: %v", err)
+	}
+	for i, f := range frames1024 {
+		b := f.Image.Bounds()
+		if b.Dx() != 1024 || b.Dy() != 1024 {
+			t.Errorf("frame %d expected 1024x1024, got %dx%d", i, b.Dx(), b.Dy())
+		}
+	}
+
+	// 3. Test non-square custom resolution
+	sess.ExportOptions.ExportSquare = false
+	sess.ExportOptions.TargetWidth = 384
+	sess.ExportOptions.TargetHeight = 192
+	framesCustom, err := sess.RenderExportFrames()
+	if err != nil {
+		t.Fatalf("RenderExportFrames(non-square) failed: %v", err)
+	}
+	for i, f := range framesCustom {
+		b := f.Image.Bounds()
+		if b.Dx() != 384 || b.Dy() != 192 {
+			t.Errorf("frame %d expected 384x192, got %dx%d", i, b.Dx(), b.Dy())
+		}
+	}
+
+	// 4. Test file export
+	tmpDir := t.TempDir()
+	outGIF := filepath.Join(tmpDir, "exported_512.gif")
+	sess.ExportOptions.ExportSquare = true
+	sess.ExportOptions.SquareSize = 512
+	sizeBytes, err := sess.ExportGIF(outGIF)
+	if err != nil {
+		t.Fatalf("ExportGIF failed: %v", err)
+	}
+	if sizeBytes <= 0 {
+		t.Errorf("expected positive exported file size, got %d", sizeBytes)
+	}
+	fi, err := os.Stat(outGIF)
+	if err != nil || fi.Size() == 0 {
+		t.Fatalf("exported file does not exist or is empty: %v", err)
+	}
+}
+
 

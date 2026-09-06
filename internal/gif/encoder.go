@@ -108,8 +108,12 @@ func WriteGIFToFile(outputPath string, frames []FrameInput, opts ExportOptions) 
 	if err != nil {
 		return 0, fmt.Errorf("failed to create output file: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
-	return WriteGIFToWriter(f, frames, opts)
+	n, err := WriteGIFToWriter(f, frames, opts)
+	if err != nil {
+		return n, err
+	}
+	return n, f.Close()
 }
 

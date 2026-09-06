@@ -5,6 +5,7 @@
 *.dylib
 dist/
 gui-dist/
+build/
 fyne-cross/
 wasm/
 *.wasm

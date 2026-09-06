@@ -92,13 +92,15 @@ Active issues and feature requests are tracked exclusively via **[GitHub Issues]
 
 ## 6. Testing & Quality Requirements
 
-1. **Mandatory Pre-Push Test**:
+1. **Mandatory Pre-Push Checks**:
    - Install and keep `.git/hooks/pre-push` active.
-   - Run tests before pushing:
+   - Run linter (`golangci-lint-v2`) and tests before pushing:
      ```bash
-     & "C:\Program Files\Git\bin\sh.exe" .git/hooks/pre-push
+     ./build.sh lint && ./build.sh test
      # or
-     go test ./...
+     .git/hooks/pre-push
+     # or on Windows PowerShell:
+     .\build.ps1 -Target lint; .\build.ps1 -Target test
      ```
 2. **Mandatory GUI Verification**:
    - Never commit code until the user has tested and confirmed the GUI works as expected.

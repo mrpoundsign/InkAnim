@@ -108,8 +108,8 @@ func NewMainWindow(appInstance fyne.App) *MainWindow {
 			if u.Extension() == ".svg" {
 				reader, err := storage.Reader(u)
 				if err == nil {
-					defer reader.Close()
 					data, readErr := io.ReadAll(reader)
+					_ = reader.Close()
 					if readErr == nil {
 						mw.loadData(data, u.Name())
 						break
