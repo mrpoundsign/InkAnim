@@ -9,11 +9,21 @@ import (
 )
 
 // BuildLayerFrameSVG generates an SVG where only the target layer and any pinned layers are visible.
+// Pinned background layers are always placed BEFORE the target layer in the SVG DOM,
+// guaranteeing that they render in the background regardless of their position in the source document.
 func BuildLayerFrameSVG(doc *SVGDocument, targetLayerID string, pinnedLayerIDs map[string]bool) ([]byte, error) {
 	decoder := xml.NewDecoder(bytes.NewReader(doc.RawContent))
-	var buf bytes.Buffer
-	encoder := xml.NewEncoder(&buf)
-	skipDepth := 0
+
+	var beforeLayers []xml.Token
+	var pinnedLayers [][]xml.Token
+	var targetLayer []xml.Token
+	var afterLayers []xml.Token
+
+	var currentLayerTokens []xml.Token
+	var currentLayerID string
+	var inLayer bool
+	var layerDepth int
+	var firstLayerSeen bool
 
 	for {
 		token, err := decoder.Token()
@@ -24,56 +34,104 @@ func BuildLayerFrameSVG(doc *SVGDocument, targetLayerID string, pinnedLayerIDs m
 			return nil, fmt.Errorf("xml transform error: %w", err)
 		}
 
-		switch elem := token.(type) {
-		case xml.StartElement:
-			if skipDepth > 0 {
-				skipDepth++
-				continue
-			}
-
-			if elem.Name.Local == "g" {
-				var isLayer bool
-				var layerID string
-
-				for _, attr := range elem.Attr {
-					if attr.Name.Local == "groupmode" && attr.Value == "layer" {
-						isLayer = true
+		if !inLayer {
+			switch elem := token.(type) {
+			case xml.StartElement:
+				if elem.Name.Local == "g" {
+					var isLayer bool
+					var layerID string
+					for _, attr := range elem.Attr {
+						if attr.Name.Local == "groupmode" && attr.Value == "layer" {
+							isLayer = true
+						}
+						if attr.Name.Local == "id" {
+							layerID = attr.Value
+						}
 					}
-					if attr.Name.Local == "id" {
-						layerID = attr.Value
-					}
-				}
 
-				if isLayer {
-					shouldShow := (layerID == targetLayerID) || (pinnedLayerIDs != nil && pinnedLayerIDs[layerID])
-					if !shouldShow {
-						// Skip this layer subtree entirely so oksvg doesn't render hidden elements
-						skipDepth = 1
+					if isLayer {
+						inLayer = true
+						layerDepth = 1
+						currentLayerID = layerID
+						firstLayerSeen = true
+
+						// Ensure layer is visible (override display:none if present)
+						modifiedElem := elem.Copy()
+						ensureLayerVisible(&modifiedElem)
+						currentLayerTokens = []xml.Token{modifiedElem}
 						continue
 					}
 				}
-			}
 
-			if err := encoder.EncodeToken(elem); err != nil {
+				if !firstLayerSeen {
+					beforeLayers = append(beforeLayers, xml.CopyToken(token))
+				} else {
+					afterLayers = append(afterLayers, xml.CopyToken(token))
+				}
+
+			default:
+				if !firstLayerSeen {
+					beforeLayers = append(beforeLayers, xml.CopyToken(token))
+				} else {
+					afterLayers = append(afterLayers, xml.CopyToken(token))
+				}
+			}
+		} else {
+			// Inside a layer subtree
+			switch elem := token.(type) {
+			case xml.StartElement:
+				layerDepth++
+				currentLayerTokens = append(currentLayerTokens, xml.CopyToken(elem))
+			case xml.EndElement:
+				layerDepth--
+				currentLayerTokens = append(currentLayerTokens, xml.CopyToken(elem))
+				if layerDepth == 0 {
+					inLayer = false
+					if currentLayerID == targetLayerID {
+						targetLayer = currentLayerTokens
+					} else if pinnedLayerIDs != nil && pinnedLayerIDs[currentLayerID] {
+						pinnedLayers = append(pinnedLayers, currentLayerTokens)
+					}
+					currentLayerTokens = nil
+					currentLayerID = ""
+				}
+			default:
+				currentLayerTokens = append(currentLayerTokens, xml.CopyToken(token))
+			}
+		}
+	}
+
+	// Now serialize the resulting SVG in correct painter's order:
+	// 1. Tokens before the layers (SVG header, defs, metadata)
+	// 2. All pinned background layers
+	// 3. The active target layer
+	// 4. Tokens after the layers (closing </svg>, etc.)
+	var buf bytes.Buffer
+	encoder := xml.NewEncoder(&buf)
+
+	for _, tok := range beforeLayers {
+		if err := encoder.EncodeToken(tok); err != nil {
+			return nil, err
+		}
+	}
+
+	for _, layerToks := range pinnedLayers {
+		for _, tok := range layerToks {
+			if err := encoder.EncodeToken(tok); err != nil {
 				return nil, err
 			}
+		}
+	}
 
-		case xml.EndElement:
-			if skipDepth > 0 {
-				skipDepth--
-				continue
-			}
-			if err := encoder.EncodeToken(elem); err != nil {
-				return nil, err
-			}
+	for _, tok := range targetLayer {
+		if err := encoder.EncodeToken(tok); err != nil {
+			return nil, err
+		}
+	}
 
-		default:
-			if skipDepth > 0 {
-				continue
-			}
-			if err := encoder.EncodeToken(token); err != nil {
-				return nil, err
-			}
+	for _, tok := range afterLayers {
+		if err := encoder.EncodeToken(tok); err != nil {
+			return nil, err
 		}
 	}
 
@@ -82,6 +140,29 @@ func BuildLayerFrameSVG(doc *SVGDocument, targetLayerID string, pinnedLayerIDs m
 	}
 
 	return buf.Bytes(), nil
+}
+
+func ensureLayerVisible(elem *xml.StartElement) {
+	var foundStyle bool
+	for i, attr := range elem.Attr {
+		if attr.Name.Local == "style" {
+			foundStyle = true
+			cleaned := removeStyleProp(attr.Value, "display")
+			if cleaned != "" {
+				elem.Attr[i].Value = cleaned + ";display:inline"
+			} else {
+				elem.Attr[i].Value = "display:inline"
+			}
+		} else if attr.Name.Local == "display" && attr.Value == "none" {
+			elem.Attr[i].Value = "inline"
+		}
+	}
+	if !foundStyle {
+		elem.Attr = append(elem.Attr, xml.Attr{
+			Name:  xml.Name{Local: "style"},
+			Value: "display:inline",
+		})
+	}
 }
 
 // BuildPageFrameSVG generates an SVG where the viewBox and dimensions correspond to the given page.

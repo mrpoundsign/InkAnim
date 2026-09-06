@@ -146,3 +146,70 @@ func TestBuildPageFrameSVG(t *testing.T) {
 		t.Errorf("unexpected viewBox in page frame: %s", page2Str)
 	}
 }
+
+func TestBuildLayerFrameSVG_PinnedBackgroundStackingOrder(t *testing.T) {
+	// An SVG where the background layer is positioned AFTER the animation frame layer in XML
+	svgData := `<?xml version="1.0" encoding="UTF-8"?>
+<svg width="100" height="100" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape">
+  <!-- Animation layer defined first -->
+  <g inkscape:groupmode="layer" id="layer_walk1" inkscape:label="Walk 1">
+    <rect x="25" y="25" width="50" height="50" fill="#ff0000" />
+  </g>
+  <!-- Other animation layer -->
+  <g inkscape:groupmode="layer" id="layer_walk2" inkscape:label="Walk 2">
+    <rect x="25" y="25" width="50" height="50" fill="#00ff00" />
+  </g>
+  <!-- Background layer defined AFTER animation layers in source XML -->
+  <g inkscape:groupmode="layer" id="layer_bg" inkscape:label="Background">
+    <rect x="0" y="0" width="100" height="100" fill="#0000ff" />
+  </g>
+</svg>`
+
+	doc, err := ParseSVG([]byte(svgData))
+	if err != nil {
+		t.Fatalf("ParseSVG failed: %v", err)
+	}
+
+	pinned := map[string]bool{"layer_bg": true}
+	frameBytes, err := BuildLayerFrameSVG(doc, "layer_walk1", pinned)
+	if err != nil {
+		t.Fatalf("BuildLayerFrameSVG failed: %v", err)
+	}
+
+	frameStr := string(frameBytes)
+
+	// 1. Structural check: layer_bg MUST appear before layer_walk1 in the resulting XML
+	bgIdx := strings.Index(frameStr, `id="layer_bg"`)
+	walkIdx := strings.Index(frameStr, `id="layer_walk1"`)
+
+	if bgIdx == -1 {
+		t.Fatalf("expected layer_bg in generated SVG")
+	}
+	if walkIdx == -1 {
+		t.Fatalf("expected layer_walk1 in generated SVG")
+	}
+	if bgIdx >= walkIdx {
+		t.Fatalf("expected pinned background layer (idx %d) to appear BEFORE target animation layer (idx %d)", bgIdx, walkIdx)
+	}
+
+	// 2. Visual rendering check: The red rectangle at center (50, 50) must be drawn on TOP of the blue background
+	img, err := RenderSVGToRGBA(frameBytes, 100, 100)
+	if err != nil {
+		t.Fatalf("RenderSVGToRGBA failed: %v", err)
+	}
+
+	centerPixel := img.RGBAAt(50, 50)
+	// Must be red (#ff0000), not blue (#0000ff)
+	if centerPixel.R < 200 || centerPixel.B > 50 {
+		t.Errorf("center pixel was obscured by background! Expected red, got R=%d G=%d B=%d A=%d",
+			centerPixel.R, centerPixel.G, centerPixel.B, centerPixel.A)
+	}
+
+	// Corner pixel (10, 10) must be blue background (#0000ff)
+	cornerPixel := img.RGBAAt(10, 10)
+	if cornerPixel.B < 200 || cornerPixel.R > 50 {
+		t.Errorf("corner pixel expected blue background, got R=%d G=%d B=%d A=%d",
+			cornerPixel.R, cornerPixel.G, cornerPixel.B, cornerPixel.A)
+	}
+}
+
