@@ -52,4 +52,23 @@ func TestMainWindowInitAndLoad(t *testing.T) {
 		mw.centerPanel.StepFrame(1)
 	}
 	mw.centerPanel.Pause()
+
+	// Test changing global speed
+	mw.loadFilePath(testSVGPath)
+	mw.leftPanel.speedPresetSelect.SetSelected("20 FPS (50ms)")
+	if mw.session.ExportOptions.DefaultDurationMs != 50 {
+		t.Errorf("expected global duration 50ms, got %d", mw.session.ExportOptions.DefaultDurationMs)
+	}
+	if mw.session.RenderedFrames[0].DurationMs != 50 {
+		t.Errorf("expected frame 0 duration 50ms, got %d", mw.session.RenderedFrames[0].DurationMs)
+	}
+
+	// Test per-frame override
+	mw.session.SetFrameOverride(0, true, 200)
+	if mw.session.RenderedFrames[0].DurationMs != 200 {
+		t.Errorf("expected frame 0 overridden to 200ms, got %d", mw.session.RenderedFrames[0].DurationMs)
+	}
+	if mw.session.RenderedFrames[1].DurationMs != 50 {
+		t.Errorf("expected frame 1 to remain 50ms, got %d", mw.session.RenderedFrames[1].DurationMs)
+	}
 }

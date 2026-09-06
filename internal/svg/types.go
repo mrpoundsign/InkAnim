@@ -14,26 +14,58 @@ const (
 
 // Layer represents an Inkscape layer group in the SVG.
 type Layer struct {
-	ID        string `json:"id"`
-	Label     string `json:"label"`
-	Index     int    `json:"index"`
-	Visible   bool   `json:"visible"`   // original visibility in SVG
-	IsActive  bool   `json:"isActive"`  // included in current animation
-	IsPinned  bool   `json:"isPinned"`  // if true, rendered across all frames as background
-	DurationMs int   `json:"durationMs"` // per-frame duration in milliseconds
+	ID          string `json:"id"`
+	Label       string `json:"label"`
+	Index       int    `json:"index"`
+	Visible     bool   `json:"visible"`     // original visibility in SVG
+	IsActive    bool   `json:"isActive"`    // included in current animation
+	IsPinned    bool   `json:"isPinned"`    // if true, rendered across all frames as background
+	HasOverride bool   `json:"hasOverride"` // if true, uses OverrideMs instead of global duration
+	OverrideMs  int    `json:"overrideMs"`  // per-frame override duration in milliseconds
+	DurationMs  int    `json:"durationMs"`  // effective duration in milliseconds
+}
+
+// EffectiveDuration returns the override duration if set, otherwise the global default.
+func (l Layer) EffectiveDuration(globalDefault int) int {
+	if l.HasOverride && l.OverrideMs > 0 {
+		return l.OverrideMs
+	}
+	if globalDefault > 0 {
+		return globalDefault
+	}
+	if l.DurationMs > 0 {
+		return l.DurationMs
+	}
+	return 100
 }
 
 // Page represents an Inkscape 1.2+ multi-page artboard.
 type Page struct {
-	ID         string  `json:"id"`
-	Label      string  `json:"label"`
-	Index      int     `json:"index"`
-	X          float64 `json:"x"`
-	Y          float64 `json:"y"`
-	Width      float64 `json:"width"`
-	Height     float64 `json:"height"`
-	IsActive   bool    `json:"isActive"`
-	DurationMs int     `json:"durationMs"`
+	ID          string  `json:"id"`
+	Label       string  `json:"label"`
+	Index       int     `json:"index"`
+	X           float64 `json:"x"`
+	Y           float64 `json:"y"`
+	Width       float64 `json:"width"`
+	Height      float64 `json:"height"`
+	IsActive    bool    `json:"isActive"`
+	HasOverride bool    `json:"hasOverride"`
+	OverrideMs  int     `json:"overrideMs"`
+	DurationMs  int     `json:"durationMs"`
+}
+
+// EffectiveDuration returns the override duration if set, otherwise the global default.
+func (p Page) EffectiveDuration(globalDefault int) int {
+	if p.HasOverride && p.OverrideMs > 0 {
+		return p.OverrideMs
+	}
+	if globalDefault > 0 {
+		return globalDefault
+	}
+	if p.DurationMs > 0 {
+		return p.DurationMs
+	}
+	return 100
 }
 
 // SVGDocument holds parsed SVG metadata and elements.

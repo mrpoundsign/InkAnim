@@ -14,11 +14,14 @@ import (
 
 // LeftFramesPanel builds the frame management sidebar.
 type LeftFramesPanel struct {
-	session        *app.Session
-	container      *fyne.Container
-	listContainer  *fyne.Container
-	modeRadio      *widget.RadioGroup
-	onFramesChange func()
+	session           *app.Session
+	container         *fyne.Container
+	listContainer     *fyne.Container
+	modeRadio         *widget.RadioGroup
+	speedPresetSelect *widget.Select
+	globalMsEntry     *widget.Entry
+	onFramesChange    func()
+	isUpdating        bool
 }
 
 // NewLeftFramesPanel creates the left sidebar widget.
@@ -45,10 +48,81 @@ func NewLeftFramesPanel(sess *app.Session, onFramesChange func()) *LeftFramesPan
 	header := widget.NewLabelWithStyle("Animation Frames", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	modeLabel := widget.NewLabel("Frame Source:")
 
+	// Global Speed Master Bar
+	speedLabel := widget.NewLabelWithStyle("Global Speed:", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	p.globalMsEntry = widget.NewEntry()
+	p.globalMsEntry.SetText(fmt.Sprintf("%d", sess.ExportOptions.DefaultDurationMs))
+
+	p.speedPresetSelect = widget.NewSelect([]string{
+		"10 FPS (100ms)",
+		"12 FPS (83ms)",
+		"15 FPS (66ms)",
+		"20 FPS (50ms)",
+		"24 FPS (41ms)",
+		"30 FPS (33ms)",
+		"Custom",
+	}, func(selected string) {
+		if p.isUpdating {
+			return
+		}
+		ms := 0
+		switch selected {
+		case "10 FPS (100ms)":
+			ms = 100
+		case "12 FPS (83ms)":
+			ms = 83
+		case "15 FPS (66ms)":
+			ms = 66
+		case "20 FPS (50ms)":
+			ms = 50
+		case "24 FPS (41ms)":
+			ms = 41
+		case "30 FPS (33ms)":
+			ms = 33
+		}
+		if ms > 0 {
+			p.isUpdating = true
+			p.globalMsEntry.SetText(fmt.Sprintf("%d", ms))
+			p.session.SetGlobalDuration(ms)
+			p.isUpdating = false
+			p.Refresh()
+			if p.onFramesChange != nil {
+				p.onFramesChange()
+			}
+		}
+	})
+	p.speedPresetSelect.SetSelected("10 FPS (100ms)")
+
+	p.globalMsEntry.OnChanged = func(val string) {
+		if p.isUpdating {
+			return
+		}
+		if ms, err := strconv.Atoi(val); err == nil && ms > 0 {
+			p.isUpdating = true
+			p.speedPresetSelect.SetSelected("Custom")
+			p.session.SetGlobalDuration(ms)
+			p.isUpdating = false
+			p.Refresh()
+			if p.onFramesChange != nil {
+				p.onFramesChange()
+			}
+		}
+	}
+
+	globalSpeedRow := container.NewBorder(
+		nil, nil,
+		widget.NewLabel("ms:"), nil,
+		p.globalMsEntry,
+	)
+
 	topControls := container.NewVBox(
 		header,
 		modeLabel,
 		p.modeRadio,
+		widget.NewSeparator(),
+		speedLabel,
+		p.speedPresetSelect,
+		globalSpeedRow,
 		widget.NewSeparator(),
 	)
 
@@ -84,7 +158,7 @@ func (p *LeftFramesPanel) Refresh() {
 
 		for i, page := range p.session.Pages {
 			idx := i
-			activeCheck := widget.NewCheck("", func(checked bool) {
+			activeCheck := widget.NewCheck(fmt.Sprintf("%d. %s", idx+1, page.Label), func(checked bool) {
 				p.session.Pages[idx].IsActive = checked
 				_ = p.session.RerenderAllFrames()
 				if p.onFramesChange != nil {
@@ -93,26 +167,55 @@ func (p *LeftFramesPanel) Refresh() {
 			})
 			activeCheck.Checked = page.IsActive
 
-			nameLabel := widget.NewLabel(fmt.Sprintf("%d. %s", idx+1, page.Label))
-
 			durEntry := widget.NewEntry()
-			durEntry.SetText(fmt.Sprintf("%d", page.DurationMs))
+			durVal := p.session.ExportOptions.DefaultDurationMs
+			if page.HasOverride && page.OverrideMs > 0 {
+				durVal = page.OverrideMs
+			}
+			durEntry.SetText(fmt.Sprintf("%d", durVal))
+			if !page.HasOverride {
+				durEntry.Disable()
+			}
+
 			durEntry.OnChanged = func(val string) {
 				if ms, err := strconv.Atoi(val); err == nil && ms > 0 {
-					p.session.SetFrameDuration(idx, ms)
+					p.session.SetFrameOverride(idx, true, ms)
 					if p.onFramesChange != nil {
 						p.onFramesChange()
 					}
 				}
 			}
 
-			row := container.NewHBox(
-				activeCheck,
-				nameLabel,
+			overrideCheck := widget.NewCheck("Override", func(checked bool) {
+				if checked {
+					durEntry.Enable()
+					ms := p.session.ExportOptions.DefaultDurationMs
+					if parsed, err := strconv.Atoi(durEntry.Text); err == nil && parsed > 0 {
+						ms = parsed
+					}
+					p.session.SetFrameOverride(idx, true, ms)
+				} else {
+					durEntry.Disable()
+					durEntry.SetText(fmt.Sprintf("%d", p.session.ExportOptions.DefaultDurationMs))
+					p.session.SetFrameOverride(idx, false, 0)
+				}
+				if p.onFramesChange != nil {
+					p.onFramesChange()
+				}
+			})
+			overrideCheck.Checked = page.HasOverride
+
+			bottomRow := container.NewHBox(
+				overrideCheck,
 				widget.NewLabel("ms:"),
-				container.NewGridWrap(fyne.NewSize(50, 32), durEntry),
+				container.NewGridWrap(fyne.NewSize(50, 30), durEntry),
 			)
-			p.listContainer.Add(row)
+			card := container.NewVBox(
+				activeCheck,
+				bottomRow,
+				widget.NewSeparator(),
+			)
+			p.listContainer.Add(card)
 		}
 	} else {
 		p.modeRadio.SetSelected("Layers")
@@ -124,7 +227,7 @@ func (p *LeftFramesPanel) Refresh() {
 
 		for i, layer := range p.session.Layers {
 			idx := i
-			activeCheck := widget.NewCheck("", func(checked bool) {
+			activeCheck := widget.NewCheck(fmt.Sprintf("%d. %s", idx+1, layer.Label), func(checked bool) {
 				_ = p.session.ToggleLayerActive(idx)
 				p.Refresh()
 				if p.onFramesChange != nil {
@@ -142,18 +245,43 @@ func (p *LeftFramesPanel) Refresh() {
 			})
 			pinCheck.Checked = layer.IsPinned
 
-			nameLabel := widget.NewLabel(fmt.Sprintf("%d. %s", idx+1, layer.Label))
-
 			durEntry := widget.NewEntry()
-			durEntry.SetText(fmt.Sprintf("%d", layer.DurationMs))
+			durVal := p.session.ExportOptions.DefaultDurationMs
+			if layer.HasOverride && layer.OverrideMs > 0 {
+				durVal = layer.OverrideMs
+			}
+			durEntry.SetText(fmt.Sprintf("%d", durVal))
+			if !layer.HasOverride {
+				durEntry.Disable()
+			}
+
 			durEntry.OnChanged = func(val string) {
 				if ms, err := strconv.Atoi(val); err == nil && ms > 0 {
-					p.session.SetFrameDuration(idx, ms)
+					p.session.SetFrameOverride(idx, true, ms)
 					if p.onFramesChange != nil {
 						p.onFramesChange()
 					}
 				}
 			}
+
+			overrideCheck := widget.NewCheck("Override", func(checked bool) {
+				if checked {
+					durEntry.Enable()
+					ms := p.session.ExportOptions.DefaultDurationMs
+					if parsed, err := strconv.Atoi(durEntry.Text); err == nil && parsed > 0 {
+						ms = parsed
+					}
+					p.session.SetFrameOverride(idx, true, ms)
+				} else {
+					durEntry.Disable()
+					durEntry.SetText(fmt.Sprintf("%d", p.session.ExportOptions.DefaultDurationMs))
+					p.session.SetFrameOverride(idx, false, 0)
+				}
+				if p.onFramesChange != nil {
+					p.onFramesChange()
+				}
+			})
+			overrideCheck.Checked = layer.HasOverride
 
 			upBtn := widget.NewButton("▲", func() {
 				if idx > 0 {
@@ -174,16 +302,23 @@ func (p *LeftFramesPanel) Refresh() {
 				}
 			})
 
-			row := container.NewHBox(
+			topRow := container.NewHBox(
 				activeCheck,
-				nameLabel,
 				pinCheck,
-				widget.NewLabel("ms:"),
-				container.NewGridWrap(fyne.NewSize(45, 32), durEntry),
-				container.NewGridWrap(fyne.NewSize(30, 32), upBtn),
-				container.NewGridWrap(fyne.NewSize(30, 32), downBtn),
 			)
-			p.listContainer.Add(row)
+			bottomRow := container.NewHBox(
+				container.NewGridWrap(fyne.NewSize(28, 28), upBtn),
+				container.NewGridWrap(fyne.NewSize(28, 28), downBtn),
+				overrideCheck,
+				widget.NewLabel("ms:"),
+				container.NewGridWrap(fyne.NewSize(50, 30), durEntry),
+			)
+			card := container.NewVBox(
+				topRow,
+				bottomRow,
+				widget.NewSeparator(),
+			)
+			p.listContainer.Add(card)
 		}
 	}
 

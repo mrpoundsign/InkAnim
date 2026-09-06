@@ -93,15 +93,67 @@ func (s *Session) MoveLayer(fromIndex, toIndex int) error {
 	return s.RerenderAllFrames()
 }
 
-// SetFrameDuration sets the duration (in milliseconds) for a specific frame.
-func (s *Session) SetFrameDuration(index int, ms int) {
+// SetGlobalDuration updates the fallback/global frame duration and updates all non-overridden frames.
+func (s *Session) SetGlobalDuration(ms int) {
+	if ms <= 0 {
+		ms = 100
+	}
+	s.ExportOptions.DefaultDurationMs = ms
+	s.UpdateFrameDurations()
+}
+
+// SetFrameOverride enables or disables a custom duration override for a layer/page.
+func (s *Session) SetFrameOverride(index int, hasOverride bool, ms int) {
 	if s.CurrentMode == svg.ModeLayers {
 		if index >= 0 && index < len(s.Layers) {
-			s.Layers[index].DurationMs = ms
+			s.Layers[index].HasOverride = hasOverride
+			if hasOverride && ms > 0 {
+				s.Layers[index].OverrideMs = ms
+				s.Layers[index].DurationMs = ms
+			}
 		}
 	} else {
 		if index >= 0 && index < len(s.Pages) {
-			s.Pages[index].DurationMs = ms
+			s.Pages[index].HasOverride = hasOverride
+			if hasOverride && ms > 0 {
+				s.Pages[index].OverrideMs = ms
+				s.Pages[index].DurationMs = ms
+			}
+		}
+	}
+	s.UpdateFrameDurations()
+}
+
+// SetFrameDuration sets the override duration (in milliseconds) for a specific frame.
+func (s *Session) SetFrameDuration(index int, ms int) {
+	s.SetFrameOverride(index, true, ms)
+}
+
+// UpdateFrameDurations synchronizes the effective duration on all RenderedFrames without re-rasterizing.
+func (s *Session) UpdateFrameDurations() {
+	if s.CurrentMode == svg.ModeLayers {
+		frameIdx := 0
+		for _, layer := range s.Layers {
+			if !layer.IsActive || layer.IsPinned {
+				continue
+			}
+			if frameIdx < len(s.RenderedFrames) {
+				eff := layer.EffectiveDuration(s.ExportOptions.DefaultDurationMs)
+				s.RenderedFrames[frameIdx].DurationMs = eff
+				frameIdx++
+			}
+		}
+	} else {
+		frameIdx := 0
+		for _, page := range s.Pages {
+			if !page.IsActive {
+				continue
+			}
+			if frameIdx < len(s.RenderedFrames) {
+				eff := page.EffectiveDuration(s.ExportOptions.DefaultDurationMs)
+				s.RenderedFrames[frameIdx].DurationMs = eff
+				frameIdx++
+			}
 		}
 	}
 }
@@ -131,10 +183,7 @@ func (s *Session) RerenderAllFrames() error {
 				return fmt.Errorf("failed to render layer %s: %w", layer.Label, err)
 			}
 
-			dur := layer.DurationMs
-			if dur <= 0 {
-				dur = s.ExportOptions.DefaultDurationMs
-			}
+			dur := layer.EffectiveDuration(s.ExportOptions.DefaultDurationMs)
 
 			frames = append(frames, svg.RenderedFrame{
 				Index:      i,
@@ -159,10 +208,7 @@ func (s *Session) RerenderAllFrames() error {
 				return fmt.Errorf("failed to render page %s: %w", page.Label, err)
 			}
 
-			dur := page.DurationMs
-			if dur <= 0 {
-				dur = s.ExportOptions.DefaultDurationMs
-			}
+			dur := page.EffectiveDuration(s.ExportOptions.DefaultDurationMs)
 
 			frames = append(frames, svg.RenderedFrame{
 				Index:      i,

@@ -75,21 +75,27 @@ func NewMainWindow(appInstance fyne.App) *MainWindow {
 		nil,
 	)
 
-	// 3-Panel Layout using split containers for resizability
-	// Center and Right
-	rightSplit := container.NewHSplit(mw.centerPanel.Container(), mw.rightPanel.Container())
-	rightSplit.Offset = 0.72
+	// Fixed-width sidebars that cannot be shifted or twitched by center animation or frame sizes
+	leftWrapper := container.New(&fixedWidthLayout{width: 275}, mw.leftPanel.Container())
+	rightWrapper := container.New(&fixedWidthLayout{width: 295}, mw.rightPanel.Container())
 
-	// Left and (Center+Right)
-	mainSplit := container.NewHSplit(mw.leftPanel.Container(), rightSplit)
-	mainSplit.Offset = 0.22
+	leftSection := container.NewBorder(nil, nil, nil, widget.NewSeparator(), leftWrapper)
+	rightSection := container.NewBorder(nil, nil, widget.NewSeparator(), nil, rightWrapper)
+
+	body := container.NewBorder(
+		nil,
+		nil,
+		leftSection,
+		rightSection,
+		mw.centerPanel.Container(),
+	)
 
 	root := container.NewBorder(
 		container.NewVBox(topToolbar, widget.NewSeparator()),
 		container.NewVBox(widget.NewSeparator(), bottomBar),
 		nil,
 		nil,
-		mainSplit,
+		body,
 	)
 
 	win.SetContent(root)
@@ -142,4 +148,31 @@ func (mw *MainWindow) loadFilePath(path string) {
 	mw.leftPanel.Refresh()
 	mw.centerPanel.Refresh()
 	mw.rightPanel.syncOptions()
+}
+
+// fixedWidthLayout locks a container to a fixed horizontal width while letting height stretch.
+type fixedWidthLayout struct {
+	width float32
+}
+
+func (l *fixedWidthLayout) MinSize(objects []fyne.CanvasObject) fyne.Size {
+	h := float32(0)
+	for _, o := range objects {
+		if o.Visible() {
+			ms := o.MinSize()
+			if ms.Height > h {
+				h = ms.Height
+			}
+		}
+	}
+	return fyne.NewSize(l.width, h)
+}
+
+func (l *fixedWidthLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) {
+	for _, o := range objects {
+		if o.Visible() {
+			o.Resize(size)
+			o.Move(fyne.NewPos(0, 0))
+		}
+	}
 }

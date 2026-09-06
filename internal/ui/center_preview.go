@@ -57,7 +57,7 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 	blank := image.NewRGBA(image.Rect(0, 0, 300, 300))
 	p.mainCanvasImage = canvas.NewImageFromImage(blank)
 	p.mainCanvasImage.FillMode = canvas.ImageFillContain
-	p.mainCanvasImage.SetMinSize(fyne.NewSize(300, 300))
+	p.mainCanvasImage.SetMinSize(fyne.NewSize(150, 150))
 
 	p.frameLabel = widget.NewLabel("Frame: 0 / 0")
 
@@ -77,11 +77,32 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 	})
 	p.loopCheck.Checked = true
 
+	speedSelect := widget.NewSelect([]string{"0.25x", "0.5x", "1x", "1.5x", "2x"}, func(s string) {
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		switch s {
+		case "0.25x":
+			p.speedFactor = 0.25
+		case "0.5x":
+			p.speedFactor = 0.5
+		case "1x":
+			p.speedFactor = 1.0
+		case "1.5x":
+			p.speedFactor = 1.5
+		case "2x":
+			p.speedFactor = 2.0
+		default:
+			p.speedFactor = 1.0
+		}
+	})
+	speedSelect.SetSelected("1x")
+
 	playbackControls := container.NewHBox(
 		prevBtn,
 		p.playPauseBtn,
 		nextBtn,
 		p.loopCheck,
+		speedSelect,
 		p.frameLabel,
 	)
 
@@ -123,7 +144,7 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 		playbackControls,
 		nil,
 		nil,
-		container.NewCenter(p.mainCanvasImage),
+		p.mainCanvasImage,
 	)
 
 	p.container = container.NewBorder(
@@ -268,6 +289,15 @@ func (p *CenterPreviewPanel) playLocked() {
 				durMs = 100
 			}
 
+			speed := p.speedFactor
+			if speed <= 0 {
+				speed = 1.0
+			}
+			tickDelay := time.Duration(float64(durMs)/speed) * time.Millisecond
+			if tickDelay < 10*time.Millisecond {
+				tickDelay = 10 * time.Millisecond
+			}
+
 			// Advance to next frame
 			nextIdx := (p.currentIdx + 1) % totalFrames
 			if !p.loop && nextIdx == 0 {
@@ -292,7 +322,7 @@ func (p *CenterPreviewPanel) playLocked() {
 			select {
 			case <-stopChan:
 				return
-			case <-time.After(time.Duration(durMs) * time.Millisecond):
+			case <-time.After(tickDelay):
 			}
 		}
 	}(p.stop, currentGen)
@@ -305,7 +335,7 @@ func (p *CenterPreviewPanel) renderCurrentFrameLocked() {
 	}
 
 	curr := frames[p.currentIdx]
-	p.frameLabel.SetText(fmt.Sprintf("Frame: %d / %d (%s, %dms)", p.currentIdx+1, len(frames), curr.Label, curr.DurationMs))
+	p.frameLabel.SetText(fmt.Sprintf("Frame: %d / %d - %s - %dms", p.currentIdx+1, len(frames), curr.Label, curr.DurationMs))
 
 	// If square mode is enabled, square-center the frame for display
 	displayImg := curr.Image

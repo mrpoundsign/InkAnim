@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -228,16 +229,12 @@ func (p *RightExportPanel) validateTwitch() {
 
 	res := gif.ValidateTwitchEmote(frames, totalDurMs, w, h, estBytes)
 	if res.IsValid && len(res.Warnings) == 0 {
-		p.twitchStatusLabel.SetText(fmt.Sprintf("Ready for Twitch: %dx%d (%d frames, %0.1fs)", w, h, frames, float64(totalDurMs)/1000.0))
+		p.twitchStatusLabel.SetText(fmt.Sprintf("Twitch: %dx%d - %d frames - %0.1fs", w, h, frames, float64(totalDurMs)/1000.0))
 	} else {
-		msg := "Twitch Emote Notice:"
-		for _, e := range res.Errors {
-			msg += "\n- " + e
-		}
-		for _, wMsg := range res.Warnings {
-			msg += "\n- " + wMsg
-		}
-		p.twitchStatusLabel.SetText(msg)
+		var parts []string
+		parts = append(parts, res.Errors...)
+		parts = append(parts, res.Warnings...)
+		p.twitchStatusLabel.SetText("Twitch: " + strings.Join(parts, "; "))
 	}
 }
 
