@@ -195,8 +195,7 @@ func (p *CenterPreviewPanel) Refresh() {
 
 	p.renderCurrentFrameLocked()
 
-	// Automatically start playback when animation frames are loaded
-	if len(frames) > 1 {
+	if p.isPlaying && len(frames) > 1 {
 		p.playLocked()
 	} else {
 		p.pauseLocked()

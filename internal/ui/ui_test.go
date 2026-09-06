@@ -23,6 +23,7 @@ func TestMainWindowInitAndLoad(t *testing.T) {
 	}
 
 	mw.loadFilePath(testSVGPath)
+	mw.centerPanel.Pause()
 
 	if len(mw.session.Layers) != 3 {
 		t.Errorf("expected 3 layers, got %d", len(mw.session.Layers))
@@ -38,6 +39,7 @@ func TestMainWindowInitAndLoad(t *testing.T) {
 	}
 
 	mw.loadFilePath(multiPagePath)
+	mw.centerPanel.Pause()
 	mw.leftPanel.modeRadio.SetSelected("Pages")
 	if len(mw.session.RenderedFrames) != 2 {
 		t.Errorf("expected 2 page frames, got %d", len(mw.session.RenderedFrames))
