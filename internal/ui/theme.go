@@ -24,6 +24,12 @@ func (m *StudioTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant)
 		return color.RGBA{R: 145, G: 71, B: 255, A: 255} // Twitch brand purple #9146FF
 	case theme.ColorNameForeground:
 		return color.RGBA{R: 244, G: 244, B: 245, A: 255} // Zinc-100
+	case theme.ColorNameDisabled:
+		return color.RGBA{R: 180, G: 180, B: 188, A: 255} // Zinc-300 (readable light gray)
+	case theme.ColorNameHyperlink:
+		return color.RGBA{R: 147, G: 197, B: 253, A: 255} // Sky-300 (crisp light blue)
+	case theme.ColorNameOverlayBackground:
+		return color.RGBA{R: 32, G: 32, B: 38, A: 255} // Modal/dialog background
 	case theme.ColorNamePlaceHolder:
 		return color.RGBA{R: 161, G: 161, B: 170, A: 255}
 	case theme.ColorNameScrollBar:

@@ -10,6 +10,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/storage"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	"inkanim/internal/app"
@@ -64,10 +65,18 @@ func NewMainWindow(appInstance fyne.App) *MainWindow {
 	})
 	openBtn.Importance = widget.MediumImportance
 
-	topToolbar := container.NewHBox(
-		openBtn,
-		widget.NewSeparator(),
-		mw.fileLabel,
+	aboutBtn := widget.NewButtonWithIcon("About", theme.InfoIcon(), func() {
+		ShowAboutDialog(mw.window, app.Version)
+	})
+
+	topToolbar := container.NewBorder(
+		nil, nil,
+		container.NewHBox(
+			openBtn,
+			widget.NewSeparator(),
+			mw.fileLabel,
+		),
+		aboutBtn,
 	)
 
 	// Bottom Status Bar

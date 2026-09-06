@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **About InkAnim Modal Dialog**: Added an "About InkAnim" modal dialog featuring the embedded app icon, version metadata, interactive GitHub Releases update checker with live status, project hyperlinks, and license credits ([#12](https://github.com/mrpoundsign/InkAnim/issues/12)).
 - **GitHub Releases Update Checker**: Added asynchronous version update checker querying GitHub Releases API with Semantic Version parsing, comparison, and rate-limit error handling ([#10](https://github.com/mrpoundsign/InkAnim/issues/10)).
 - **Vector Export Scaling**: Rasterize export frames directly from vector SVG at target export resolution (up to 4096px) to eliminate upscaling blurriness, while capping interactive preview rasterization to 512px max dimension for smooth playback ([#13](https://github.com/mrpoundsign/InkAnim/issues/13)).
 - **Drawing Crop Boundary Mode**: Added unclipped "Drawing" crop boundary mode computing the bounding box of all SVG vector paths/elements (matching Inkscape's verbage), and included "Document" (root viewBox) as the primary option in the Page selection dropdown ([#15](https://github.com/mrpoundsign/InkAnim/issues/15)).
