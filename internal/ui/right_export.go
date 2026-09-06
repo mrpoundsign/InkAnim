@@ -229,7 +229,7 @@ func (p *RightExportPanel) validateTwitch() {
 
 	res := gif.ValidateTwitchEmote(frames, totalDurMs, w, h, estBytes)
 	if res.IsValid && len(res.Warnings) == 0 {
-		p.twitchStatusLabel.SetText(fmt.Sprintf("Twitch: %dx%d - %d frames - %0.1fs", w, h, frames, float64(totalDurMs)/1000.0))
+		p.twitchStatusLabel.SetText(fmt.Sprintf("Twitch: %dx%d | %d frames | %0.1fs", w, h, frames, float64(totalDurMs)/1000.0))
 	} else {
 		var parts []string
 		parts = append(parts, res.Errors...)

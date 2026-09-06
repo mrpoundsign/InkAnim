@@ -33,6 +33,9 @@ func NewLeftFramesPanel(sess *app.Session, onFramesChange func()) *LeftFramesPan
 	}
 
 	p.modeRadio = widget.NewRadioGroup([]string{"Layers", "Pages"}, func(selected string) {
+		if p.isUpdating {
+			return
+		}
 		if selected == "Pages" {
 			_ = p.session.SetMode(svg.ModePages)
 		} else {
@@ -140,6 +143,14 @@ func (p *LeftFramesPanel) Container() *fyne.Container {
 
 // Refresh updates the frame list based on the session state.
 func (p *LeftFramesPanel) Refresh() {
+	if p.isUpdating {
+		return
+	}
+	p.isUpdating = true
+	defer func() {
+		p.isUpdating = false
+	}()
+
 	p.listContainer.Objects = nil
 
 	if p.session.Document == nil {
@@ -149,7 +160,9 @@ func (p *LeftFramesPanel) Refresh() {
 	}
 
 	if p.session.CurrentMode == svg.ModePages {
-		p.modeRadio.SetSelected("Pages")
+		if p.modeRadio.Selected != "Pages" {
+			p.modeRadio.SetSelected("Pages")
+		}
 		if len(p.session.Pages) == 0 {
 			p.listContainer.Add(widget.NewLabel("No Inkscape pages found.\nTry Layers mode."))
 			p.listContainer.Refresh()
@@ -218,7 +231,9 @@ func (p *LeftFramesPanel) Refresh() {
 			p.listContainer.Add(card)
 		}
 	} else {
-		p.modeRadio.SetSelected("Layers")
+		if p.modeRadio.Selected != "Layers" {
+			p.modeRadio.SetSelected("Layers")
+		}
 		if len(p.session.Layers) == 0 {
 			p.listContainer.Add(widget.NewLabel("No Inkscape layers found."))
 			p.listContainer.Refresh()

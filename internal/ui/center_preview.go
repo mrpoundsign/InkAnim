@@ -335,7 +335,7 @@ func (p *CenterPreviewPanel) renderCurrentFrameLocked() {
 	}
 
 	curr := frames[p.currentIdx]
-	p.frameLabel.SetText(fmt.Sprintf("Frame: %d / %d - %s - %dms", p.currentIdx+1, len(frames), curr.Label, curr.DurationMs))
+	p.frameLabel.SetText(fmt.Sprintf("Frame %d of %d | %s | %dms", p.currentIdx+1, len(frames), curr.Label, curr.DurationMs))
 
 	// If square mode is enabled, square-center the frame for display
 	displayImg := curr.Image

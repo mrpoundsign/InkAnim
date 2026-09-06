@@ -71,4 +71,18 @@ func TestMainWindowInitAndLoad(t *testing.T) {
 	if mw.session.RenderedFrames[1].DurationMs != 50 {
 		t.Errorf("expected frame 1 to remain 50ms, got %d", mw.session.RenderedFrames[1].DurationMs)
 	}
+
+	// Verify that switching between SVGs does not double the list items
+	mw.loadFilePath(testSVGPath)
+	if len(mw.leftPanel.listContainer.Objects) != 3 {
+		t.Errorf("expected exactly 3 frame objects in list, got %d", len(mw.leftPanel.listContainer.Objects))
+	}
+	mw.loadFilePath(multiPagePath)
+	if len(mw.leftPanel.listContainer.Objects) != 2 {
+		t.Errorf("expected exactly 2 page objects in list, got %d", len(mw.leftPanel.listContainer.Objects))
+	}
+	mw.loadFilePath(testSVGPath)
+	if len(mw.leftPanel.listContainer.Objects) != 3 {
+		t.Errorf("expected exactly 3 frame objects in list after switching back, got %d", len(mw.leftPanel.listContainer.Objects))
+	}
 }
