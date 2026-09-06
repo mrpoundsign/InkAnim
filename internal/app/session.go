@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"io"
 	"os"
 
 	"inkanim/internal/gif"
@@ -35,13 +36,17 @@ func (s *Session) LoadSVG(filePath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to read SVG file: %w", err)
 	}
+	return s.LoadSVGData(data, filePath)
+}
 
+// LoadSVGData parses an SVG from in-memory byte slice with a filename.
+func (s *Session) LoadSVGData(data []byte, filename string) error {
 	doc, err := svg.ParseSVG(data)
 	if err != nil {
 		return fmt.Errorf("failed to parse SVG: %w", err)
 	}
 
-	s.FilePath = filePath
+	s.FilePath = filename
 	s.Document = doc
 	s.Layers = make([]svg.Layer, len(doc.Layers))
 	copy(s.Layers, doc.Layers)
@@ -221,6 +226,25 @@ func (s *Session) RerenderAllFrames() error {
 
 	s.RenderedFrames = frames
 	return nil
+}
+
+// ExportGIFWriter exports the active frames to an io.Writer.
+func (s *Session) ExportGIFWriter(w io.Writer) (int64, error) {
+	if len(s.RenderedFrames) == 0 {
+		return 0, fmt.Errorf("no frames available to export")
+	}
+
+	frameInputs := make([]gif.FrameInput, len(s.RenderedFrames))
+	for i, rf := range s.RenderedFrames {
+		frameInputs[i] = gif.FrameInput{
+			Index:      rf.Index,
+			Label:      rf.Label,
+			Image:      rf.Image,
+			DurationMs: rf.DurationMs,
+		}
+	}
+
+	return gif.WriteGIFToWriter(w, frameInputs, s.ExportOptions)
 }
 
 // ExportGIF exports the active frames to a single animated GIF at destinationPath.

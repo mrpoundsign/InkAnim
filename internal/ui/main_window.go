@@ -2,6 +2,8 @@ package ui
 
 import (
 	"fmt"
+	"io"
+	"os"
 	"path/filepath"
 
 	"fyne.io/fyne/v2"
@@ -104,12 +106,22 @@ func NewMainWindow(appInstance fyne.App) *MainWindow {
 	win.SetOnDropped(func(pos fyne.Position, uris []fyne.URI) {
 		for _, u := range uris {
 			if u.Extension() == ".svg" {
+				reader, err := storage.Reader(u)
+				if err == nil {
+					defer reader.Close()
+					data, readErr := io.ReadAll(reader)
+					if readErr == nil {
+						mw.loadData(data, u.Name())
+						break
+					}
+				}
 				mw.loadFilePath(u.Path())
 				break
 			}
 		}
 	})
 
+	mw.initPlatform()
 	return mw
 }
 
@@ -118,31 +130,28 @@ func (mw *MainWindow) ShowAndRun() {
 	mw.window.ShowAndRun()
 }
 
-func (mw *MainWindow) promptOpenFile() {
-	fileDialog := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
-		if err != nil || reader == nil {
-			return
-		}
-		defer reader.Close()
-		mw.loadFilePath(reader.URI().Path())
-	}, mw.window)
-
-	fileDialog.SetFilter(storage.NewExtensionFileFilter([]string{".svg"}))
-	fileDialog.Show()
+func (mw *MainWindow) loadFilePath(path string) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		dialog.ShowError(err, mw.window)
+		mw.statusLabel.SetText("Failed to read SVG file.")
+		return
+	}
+	mw.loadData(data, filepath.Base(path))
 }
 
-func (mw *MainWindow) loadFilePath(path string) {
+func (mw *MainWindow) loadData(data []byte, filename string) {
 	if mw.centerPanel != nil {
 		mw.centerPanel.Pause()
 	}
-	mw.statusLabel.SetText("Loading: " + filepath.Base(path))
-	if err := mw.session.LoadSVG(path); err != nil {
+	mw.statusLabel.SetText("Loading: " + filename)
+	if err := mw.session.LoadSVGData(data, filename); err != nil {
 		dialog.ShowError(err, mw.window)
 		mw.statusLabel.SetText("Failed to load SVG.")
 		return
 	}
 
-	mw.fileLabel.SetText(fmt.Sprintf("%s (%0.0fx%0.0f)", filepath.Base(path), mw.session.Document.Width, mw.session.Document.Height))
+	mw.fileLabel.SetText(fmt.Sprintf("%s (%0.0fx%0.0f)", filename, mw.session.Document.Width, mw.session.Document.Height))
 	mw.statusLabel.SetText(fmt.Sprintf("Loaded %d layers, %d pages. Ready to preview and export.", len(mw.session.Layers), len(mw.session.Pages)))
 
 	mw.leftPanel.Refresh()

@@ -6,3 +6,5 @@
 dist/
 gui-dist/
 fyne-cross/
+wasm/
+*.wasm

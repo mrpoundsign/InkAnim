@@ -85,21 +85,15 @@ func EncodeAnimatedGIF(frames []FrameInput, opts ExportOptions) (*gif.GIF, error
 	return animGIF, nil
 }
 
-// WriteGIFToFile encodes the animation directly to a destination file path.
-func WriteGIFToFile(outputPath string, frames []FrameInput, opts ExportOptions) (int64, error) {
+// WriteGIFToWriter encodes the animation directly to an io.Writer.
+func WriteGIFToWriter(w io.Writer, frames []FrameInput, opts ExportOptions) (int64, error) {
 	anim, err := EncodeAnimatedGIF(frames, opts)
 	if err != nil {
 		return 0, err
 	}
 
-	f, err := os.Create(outputPath)
-	if err != nil {
-		return 0, fmt.Errorf("failed to create output file: %w", err)
-	}
-	defer f.Close()
-
 	var buf bytes.Buffer
-	mw := io.MultiWriter(f, &buf)
+	mw := io.MultiWriter(w, &buf)
 
 	if err := gif.EncodeAll(mw, anim); err != nil {
 		return 0, fmt.Errorf("failed to encode gif stream: %w", err)
@@ -107,3 +101,15 @@ func WriteGIFToFile(outputPath string, frames []FrameInput, opts ExportOptions) 
 
 	return int64(buf.Len()), nil
 }
+
+// WriteGIFToFile encodes the animation directly to a destination file path.
+func WriteGIFToFile(outputPath string, frames []FrameInput, opts ExportOptions) (int64, error) {
+	f, err := os.Create(outputPath)
+	if err != nil {
+		return 0, fmt.Errorf("failed to create output file: %w", err)
+	}
+	defer f.Close()
+
+	return WriteGIFToWriter(f, frames, opts)
+}
+
