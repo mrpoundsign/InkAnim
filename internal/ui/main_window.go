@@ -1,0 +1,142 @@
+package ui
+
+import (
+	"fmt"
+	"path/filepath"
+
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/storage"
+	"fyne.io/fyne/v2/widget"
+
+	"inkanim/internal/app"
+)
+
+// MainWindow builds and manages the primary Fyne application window.
+type MainWindow struct {
+	window       fyne.Window
+	session      *app.Session
+	leftPanel    *LeftFramesPanel
+	centerPanel  *CenterPreviewPanel
+	rightPanel   *RightExportPanel
+	fileLabel    *widget.Label
+	statusLabel  *widget.Label
+}
+
+// NewMainWindow creates and initializes the studio interface.
+func NewMainWindow(appInstance fyne.App) *MainWindow {
+	win := appInstance.NewWindow("InkAnim — Inkscape SVG to Animated GIF Studio")
+	win.Resize(fyne.NewSize(1200, 750))
+
+	sess := app.NewSession()
+	mw := &MainWindow{
+		window:  win,
+		session: sess,
+	}
+
+	mw.fileLabel = widget.NewLabel("No file loaded")
+	mw.statusLabel = widget.NewLabel("Ready. Open an Inkscape SVG to begin.")
+
+	// Construct panels with coordinated refresh hooks
+	mw.leftPanel = NewLeftFramesPanel(sess, func() {
+		if mw.centerPanel != nil {
+			mw.centerPanel.Refresh()
+		}
+		if mw.rightPanel != nil {
+			mw.rightPanel.validateTwitch()
+		}
+	})
+
+	mw.centerPanel = NewCenterPreviewPanel(sess)
+
+	mw.rightPanel = NewRightExportPanel(sess, win, func() {
+		if mw.centerPanel != nil {
+			mw.centerPanel.Refresh()
+		}
+	})
+
+	// Top Bar
+	openBtn := widget.NewButton("Open SVG...", func() {
+		mw.promptOpenFile()
+	})
+	openBtn.Importance = widget.MediumImportance
+
+	topToolbar := container.NewHBox(
+		openBtn,
+		widget.NewSeparator(),
+		mw.fileLabel,
+	)
+
+	// Bottom Status Bar
+	bottomBar := container.NewBorder(
+		nil, nil,
+		mw.statusLabel,
+		nil,
+	)
+
+	// 3-Panel Layout using split containers for resizability
+	// Center and Right
+	rightSplit := container.NewHSplit(mw.centerPanel.Container(), mw.rightPanel.Container())
+	rightSplit.Offset = 0.72
+
+	// Left and (Center+Right)
+	mainSplit := container.NewHSplit(mw.leftPanel.Container(), rightSplit)
+	mainSplit.Offset = 0.22
+
+	root := container.NewBorder(
+		container.NewVBox(topToolbar, widget.NewSeparator()),
+		container.NewVBox(widget.NewSeparator(), bottomBar),
+		nil,
+		nil,
+		mainSplit,
+	)
+
+	win.SetContent(root)
+
+	// Support Drag & Drop of SVG files onto window
+	win.SetOnDropped(func(pos fyne.Position, uris []fyne.URI) {
+		for _, u := range uris {
+			if u.Extension() == ".svg" {
+				mw.loadFilePath(u.Path())
+				break
+			}
+		}
+	})
+
+	return mw
+}
+
+// ShowAndRun displays the window.
+func (mw *MainWindow) ShowAndRun() {
+	mw.window.ShowAndRun()
+}
+
+func (mw *MainWindow) promptOpenFile() {
+	fileDialog := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
+		if err != nil || reader == nil {
+			return
+		}
+		defer reader.Close()
+		mw.loadFilePath(reader.URI().Path())
+	}, mw.window)
+
+	fileDialog.SetFilter(storage.NewExtensionFileFilter([]string{".svg"}))
+	fileDialog.Show()
+}
+
+func (mw *MainWindow) loadFilePath(path string) {
+	mw.statusLabel.SetText("Loading " + filepath.Base(path) + " ...")
+	if err := mw.session.LoadSVG(path); err != nil {
+		dialog.ShowError(err, mw.window)
+		mw.statusLabel.SetText("Failed to load SVG.")
+		return
+	}
+
+	mw.fileLabel.SetText(fmt.Sprintf("%s (%0.0fx%0.0f)", filepath.Base(path), mw.session.Document.Width, mw.session.Document.Height))
+	mw.statusLabel.SetText(fmt.Sprintf("Loaded %d layers, %d pages. Ready to preview and export.", len(mw.session.Layers), len(mw.session.Pages)))
+
+	mw.leftPanel.Refresh()
+	mw.centerPanel.Refresh()
+	mw.rightPanel.syncOptions()
+}

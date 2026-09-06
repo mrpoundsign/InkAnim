@@ -1,0 +1,67 @@
+name: Release InkAnim
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  goreleaser:
+    name: Release CLI Binaries (GoReleaser)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-gui:
+    name: Build Multi-Platform Desktop GUI (fyne-cross)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Install fyne-cross
+        run: go install github.com/fyne-io/fyne-cross@latest
+
+      - name: Cross-Compile Desktop GUI for Windows
+        run: |
+          fyne-cross windows -arch=amd64,arm64 -app-id=com.inkanim.studio ./cmd/inkanim
+
+      - name: Cross-Compile Desktop GUI for Linux
+        run: |
+          fyne-cross linux -arch=amd64,arm64 -app-id=com.inkanim.studio ./cmd/inkanim
+
+      - name: Cross-Compile Desktop GUI for macOS
+        run: |
+          fyne-cross darwin -arch=amd64,arm64 -app-id=com.inkanim.studio ./cmd/inkanim
+
+      - name: Upload GUI Release Packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: inkanim-desktop-binaries
+          path: fyne-cross/dist/

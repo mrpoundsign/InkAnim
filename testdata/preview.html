@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>InkAnim — Emote Transparency & Scale Tester</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-main: #0e0e10;
+      --panel-bg: #18181b;
+      --border-color: #2e2e35;
+      --accent: #9146ff;
+      --accent-hover: #772ce8;
+      --text-main: #efeff1;
+      --text-muted: #adadb8;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg-main);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      background: var(--panel-bg);
+      border-bottom: 1px solid var(--border-color);
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo-badge {
+      background: var(--accent);
+      color: white;
+      font-weight: 700;
+      font-size: 14px;
+      padding: 4px 10px;
+      border-radius: 6px;
+      letter-spacing: 0.5px;
+    }
+
+    h1 {
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .btn {
+      background: #27272a;
+      color: var(--text-main);
+      border: 1px solid var(--border-color);
+      padding: 8px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.15s ease;
+    }
+
+    .btn:hover {
+      background: #3f3f46;
+      border-color: #52525b;
+    }
+
+    .btn.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: white;
+    }
+
+    main {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 340px;
+      gap: 24px;
+      padding: 24px;
+      max-width: 1440px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    .preview-card {
+      background: var(--panel-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .card-header {
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .card-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* Viewport Area */
+    .viewport {
+      flex: 1;
+      min-height: 480px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      transition: background 0.2s ease;
+    }
+
+    /* Background Styles */
+    .bg-checkerboard {
+      background-color: #1f1f23;
+      background-image: 
+        linear-gradient(45deg, #2a2a30 25%, transparent 25%), 
+        linear-gradient(-45deg, #2a2a30 25%, transparent 25%), 
+        linear-gradient(45deg, transparent 75%, #2a2a30 75%), 
+        linear-gradient(-45deg, transparent 75%, #2a2a30 75%);
+      background-size: 24px 24px;
+      background-position: 0 0, 0 12px, 12px -12px, -12px 0px;
+    }
+
+    .bg-twitch-dark {
+      background: #18181b !important;
+    }
+
+    .bg-twitch-light {
+      background: #ffffff !important;
+    }
+
+    .bg-discord-dark {
+      background: #313338 !important;
+    }
+
+    .bg-vibrant {
+      background: linear-gradient(135deg, #ff007f 0%, #7928ca 50%, #0070f3 100%) !important;
+    }
+
+    .emote-display {
+      max-width: 90%;
+      max-height: 90%;
+      object-fit: contain;
+      transition: transform 0.15s ease;
+    }
+
+    .pixelated {
+      image-rendering: pixelated;
+    }
+
+    /* Sidebar controls */
+    .sidebar {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .panel-box {
+      background: var(--panel-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 18px;
+    }
+
+    .panel-box h3 {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 14px;
+      color: var(--text-main);
+    }
+
+    .bg-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+    }
+
+    .bg-btn {
+      padding: 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      text-align: center;
+      cursor: pointer;
+      border: 1px solid var(--border-color);
+      background: #27272a;
+      color: var(--text-main);
+      transition: all 0.15s ease;
+    }
+
+    .bg-btn:hover {
+      border-color: var(--accent);
+    }
+
+    .bg-btn.active {
+      border-color: var(--accent);
+      background: #382554;
+      color: #fff;
+    }
+
+    /* Twitch Emote Scale Inspector Box */
+    .scale-inspector {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .scale-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 12px;
+      border-radius: 8px;
+    }
+
+    .scale-row.dark-theme {
+      background: #18181b;
+      border: 1px solid #2e2e35;
+    }
+
+    .scale-row.light-theme {
+      background: #ffffff;
+      border: 1px solid #e4e4e7;
+    }
+
+    .scale-label {
+      font-size: 12px;
+      font-weight: 600;
+      width: 75px;
+    }
+
+    .dark-theme .scale-label {
+      color: #adadb8;
+    }
+
+    .light-theme .scale-label {
+      color: #18181b;
+    }
+
+    .scale-items {
+      display: flex;
+      align-items: flex-end;
+      gap: 16px;
+    }
+
+    .scale-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .scale-item span {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+    }
+
+    .dark-theme .scale-item span {
+      color: #71717a;
+    }
+
+    .light-theme .scale-item span {
+      color: #a1a1aa;
+    }
+
+    .scale-112 { width: 112px; height: 112px; }
+    .scale-56  { width: 56px; height: 56px; }
+    .scale-28  { width: 28px; height: 28px; }
+
+    /* Drop Overlay */
+    .dropzone {
+      border: 2px dashed var(--border-color);
+      border-radius: 8px;
+      padding: 16px;
+      text-align: center;
+      font-size: 13px;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .dropzone:hover, .dropzone.dragover {
+      border-color: var(--accent);
+      background: rgba(145, 71, 255, 0.08);
+      color: var(--text-main);
+    }
+
+    input[type="file"] {
+      display: none;
+    }
+
+    .metadata-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      font-size: 13px;
+    }
+
+    .metadata-row {
+      display: flex;
+      justify-content: space-between;
+      color: var(--text-muted);
+    }
+
+    .metadata-row strong {
+      color: var(--text-main);
+      font-family: 'JetBrains Mono', monospace;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="brand">
+      <span class="logo-badge">InkAnim</span>
+      <h1>Emote Transparency & Scale Tester</h1>
+    </div>
+    <div class="toolbar">
+      <button class="btn" id="btn-zoom-1">1x</button>
+      <button class="btn" id="btn-zoom-2">2x</button>
+      <button class="btn" id="btn-zoom-4">4x</button>
+      <button class="btn active" id="btn-pixelated">Pixelated: ON</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- Viewport Area -->
+    <div class="preview-card">
+      <div class="card-header">
+        <span class="card-title">Main Emote Canvas</span>
+        <span id="file-info" style="font-size: 12px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace;">
+          character_walk.gif (512x512)
+        </span>
+      </div>
+      <div class="viewport bg-checkerboard" id="main-viewport">
+        <img src="character_walk.gif" alt="Emote Preview" id="main-emote" class="emote-display pixelated" />
+      </div>
+    </div>
+
+    <!-- Sidebar Controls -->
+    <div class="sidebar">
+      <!-- File Selector -->
+      <div class="panel-box">
+        <h3>Input File</h3>
+        <label class="dropzone" id="drop-area">
+          <p>Drop exported .gif here or <strong style="color: var(--accent);">Browse</strong></p>
+          <input type="file" id="file-input" accept="image/gif,image/png,image/webp" />
+        </label>
+        <div style="display: flex; gap: 8px; margin-top: 10px;">
+          <button class="btn" style="flex: 1; font-size: 11px;" id="load-demo-layers">Load Demo (Layers)</button>
+          <button class="btn" style="flex: 1; font-size: 11px;" id="load-demo-pages">Load Demo (Pages)</button>
+        </div>
+      </div>
+
+      <!-- Background Switcher -->
+      <div class="panel-box">
+        <h3>Test Backgrounds</h3>
+        <div class="bg-grid">
+          <button class="bg-btn active" data-bg="bg-checkerboard">Checkerboard</button>
+          <button class="bg-btn" data-bg="bg-twitch-dark">Twitch Dark</button>
+          <button class="bg-btn" data-bg="bg-twitch-light">Twitch Light</button>
+          <button class="bg-btn" data-bg="bg-discord-dark">Discord Dark</button>
+          <button class="bg-btn" data-bg="bg-vibrant" style="grid-column: span 2;">Vibrant Gradient</button>
+        </div>
+      </div>
+
+      <!-- Twitch Scale Emulation -->
+      <div class="panel-box">
+        <h3>Twitch Scale Emulation</h3>
+        <div class="scale-inspector">
+          <!-- Dark Chat -->
+          <div class="scale-row dark-theme">
+            <span class="scale-label">Dark Chat</span>
+            <div class="scale-items">
+              <div class="scale-item">
+                <img src="character_walk.gif" class="scale-112 twitch-sync-img pixelated" />
+                <span>112px</span>
+              </div>
+              <div class="scale-item">
+                <img src="character_walk.gif" class="scale-56 twitch-sync-img pixelated" />
+                <span>56px</span>
+              </div>
+              <div class="scale-item">
+                <img src="character_walk.gif" class="scale-28 twitch-sync-img pixelated" />
+                <span>28px</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Light Chat -->
+          <div class="scale-row light-theme">
+            <span class="scale-label">Light Chat</span>
+            <div class="scale-items">
+              <div class="scale-item">
+                <img src="character_walk.gif" class="scale-112 twitch-sync-img pixelated" />
+                <span>112px</span>
+              </div>
+              <div class="scale-item">
+                <img src="character_walk.gif" class="scale-56 twitch-sync-img pixelated" />
+                <span>56px</span>
+              </div>
+              <div class="scale-item">
+                <img src="character_walk.gif" class="scale-28 twitch-sync-img pixelated" />
+                <span>28px</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Transparency Checklist -->
+      <div class="panel-box">
+        <h3>Halo Quality Checklist</h3>
+        <ul style="font-size: 12px; color: var(--text-muted); line-height: 1.6; padding-left: 18px;">
+          <li>Switch between <strong>Twitch Dark</strong> & <strong>Twitch Light</strong>.</li>
+          <li>Ensure no white fringe around dark outlines.</li>
+          <li>Ensure no black halo around bright highlights.</li>
+          <li>Check <strong>28px</strong> scale: face and details remain recognizable.</li>
+        </ul>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const mainViewport = document.getElementById('main-viewport');
+    const mainEmote = document.getElementById('main-emote');
+    const twitchSyncImgs = document.querySelectorAll('.twitch-sync-img');
+    const fileInfo = document.getElementById('file-info');
+    const fileInput = document.getElementById('file-input');
+    const dropArea = document.getElementById('drop-area');
+
+    // Background switcher
+    document.querySelectorAll('.bg-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.bg-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        mainViewport.className = 'viewport ' + btn.dataset.bg;
+      });
+    });
+
+    // Zoom controls
+    let currentScale = 1;
+    function setZoom(scale) {
+      currentScale = scale;
+      mainEmote.style.transform = `scale(${scale})`;
+      document.querySelectorAll('#btn-zoom-1, #btn-zoom-2, #btn-zoom-4').forEach(b => b.classList.remove('active'));
+    }
+
+    document.getElementById('btn-zoom-1').addEventListener('click', () => { setZoom(1); document.getElementById('btn-zoom-1').classList.add('active'); });
+    document.getElementById('btn-zoom-2').addEventListener('click', () => { setZoom(2); document.getElementById('btn-zoom-2').classList.add('active'); });
+    document.getElementById('btn-zoom-4').addEventListener('click', () => { setZoom(4); document.getElementById('btn-zoom-4').classList.add('active'); });
+
+    // Pixelated toggle
+    const pixelatedBtn = document.getElementById('btn-pixelated');
+    let isPixelated = true;
+    pixelatedBtn.addEventListener('click', () => {
+      isPixelated = !isPixelated;
+      pixelatedBtn.classList.toggle('active', isPixelated);
+      pixelatedBtn.textContent = `Pixelated: ${isPixelated ? 'ON' : 'OFF'}`;
+      mainEmote.classList.toggle('pixelated', isPixelated);
+      twitchSyncImgs.forEach(img => img.classList.toggle('pixelated', isPixelated));
+    });
+
+    // Load Image Source
+    function setEmoteSource(src, name = 'custom.gif') {
+      mainEmote.src = src;
+      twitchSyncImgs.forEach(img => img.src = src);
+      mainEmote.onload = () => {
+        fileInfo.textContent = `${name} (${mainEmote.naturalWidth}x${mainEmote.naturalHeight})`;
+      };
+    }
+
+    // Demo buttons
+    document.getElementById('load-demo-layers').addEventListener('click', () => {
+      setEmoteSource('character_walk.gif', 'character_walk.gif');
+    });
+    document.getElementById('load-demo-pages').addEventListener('click', () => {
+      setEmoteSource('multipage_walk.gif', 'multipage_walk.gif');
+    });
+
+    // File Input & Drag and Drop
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files && e.target.files[0]) {
+        const file = e.target.files[0];
+        const url = URL.createObjectURL(file);
+        setEmoteSource(url, file.name);
+      }
+    });
+
+    ['dragenter', 'dragover'].forEach(eventName => {
+      dropArea.addEventListener(eventName, (e) => {
+        e.preventDefault();
+        dropArea.classList.add('dragover');
+      });
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+      dropArea.addEventListener(eventName, (e) => {
+        e.preventDefault();
+        dropArea.classList.remove('dragover');
+      });
+    });
+
+    dropArea.addEventListener('drop', (e) => {
+      const dt = e.dataTransfer;
+      if (dt.files && dt.files[0]) {
+        const file = dt.files[0];
+        const url = URL.createObjectURL(file);
+        setEmoteSource(url, file.name);
+      }
+    });
+  </script>
+</body>
+</html>
