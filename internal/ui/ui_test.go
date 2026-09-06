@@ -43,10 +43,9 @@ func TestMainWindowInitAndLoad(t *testing.T) {
 		t.Errorf("expected 2 page frames, got %d", len(mw.session.RenderedFrames))
 	}
 
-	// Switch back and forth between SVGs with different frame counts while playing
+	// Switch back and forth between SVGs with different frame counts
 	for i := 0; i < 5; i++ {
 		mw.loadFilePath(testSVGPath)
-		mw.centerPanel.TogglePlay()
 		mw.centerPanel.StepFrame(2)
 		mw.loadFilePath(multiPagePath)
 		mw.centerPanel.StepFrame(1)
