@@ -4,6 +4,7 @@ import (
 	"image"
 	"image/png"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -31,6 +32,9 @@ func TestFontManager_EmbeddedFallback(t *testing.T) {
 }
 
 func TestFontResolution_SegoeUIVariable(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Segoe UI Variable is only pre-installed on Windows; Linux and other platforms fall back to system sans-serif")
+	}
 	fm := newFontManager()
 	f := fm.ResolveFont("Segoe UI Variable", true, false)
 	if f == nil {
