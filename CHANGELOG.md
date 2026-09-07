@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.5] - 2026-09-07
+
+### Added
+- **Dynamic Estimated GIF Size on Export Button**: Display real-time estimated GIF export size directly on the primary export button (e.g. `Export Animated GIF (~23 KB)...`). Uses an active-pixel compression model that factors in resolution, transparent padding, frame count, and color palette tiers ([#32](https://github.com/mrpoundsign/InkAnim/issues/32)).
+- **Integrated Profiling Flags**: Added `-cpuprofile`, `-memprofile`, and `-pprof` command-line flags across desktop GUI and CLI for in-depth profiling and diagnostics.
+
+### Changed
+- **Responsive Playback Controls Layout**: Restructured playback controls into a centered transport row and a dedicated frame label row with ellipsis truncation, preventing right export sidebar clipping on smaller displays and browser viewports ([#30](https://github.com/mrpoundsign/InkAnim/issues/30)).
+
+### Performance
+- **Parallelized Rasterization & Quantization Across CPU Cores**: Multi-threaded preview frame rasterization, export vector rasterization, and GIF color quantization via a lightweight worker pool bounded by `runtime.GOMAXPROCS(0)`. Reduces export times by over 60% on multi-core CPUs ([#27](https://github.com/mrpoundsign/InkAnim/issues/27)).
+- **Preview Playback Optimization & Event-Driven Timing**: Eliminated redundant software bilinear downscaling during live playback by pre-rendering scaled thumbnail caches, switched main canvas to `ImageScaleFastest`, and replaced polling tickers with event-driven `time.AfterFunc` timers ([#25](https://github.com/mrpoundsign/InkAnim/issues/25)).
+- **Pause Playback on Modal Dialogs & Export**: Automatically suspend preview playback during export generation and when modal dialogs are open, eliminating unnecessary thread contention and rendering load ([#25](https://github.com/mrpoundsign/InkAnim/issues/25)).
+- **Eliminated Infinite Progress Bar Animation Leak**: Removed `widget.ProgressBarInfinite` from the export flow to resolve an upstream Fyne animation leak that continuously marked the canvas dirty at 60Hz+ and pegged CPU during and after modal dialogs ([#27](https://github.com/mrpoundsign/InkAnim/issues/27)).
+
+---
+
 ## [0.1.4] - 2026-09-07
 
 > [!NOTE]
