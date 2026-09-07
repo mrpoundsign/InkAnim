@@ -20,11 +20,12 @@ import (
 type MainWindow struct {
 	window       fyne.Window
 	session      *app.Session
-	leftPanel    *LeftFramesPanel
-	centerPanel  *CenterPreviewPanel
-	rightPanel   *RightExportPanel
-	fileLabel    *widget.Label
-	statusLabel  *widget.Label
+	leftPanel   *LeftFramesPanel
+	centerPanel *CenterPreviewPanel
+	rightPanel  *RightExportPanel
+	sidebarTabs *container.AppTabs
+	fileLabel   *widget.Label
+	statusLabel *widget.Label
 }
 
 // NewMainWindow creates and initializes the studio interface.
@@ -87,17 +88,19 @@ func NewMainWindow(appInstance fyne.App) *MainWindow {
 		nil,
 	)
 
-	// Fixed-width sidebars that cannot be shifted or twitched by center animation or frame sizes
-	leftWrapper := container.New(&fixedWidthLayout{width: 275}, mw.leftPanel.Container())
-	rightWrapper := container.New(&fixedWidthLayout{width: 295}, mw.rightPanel.Container())
+	// Unified right-side tabbed sidebar hosting Frames & Export panels
+	mw.sidebarTabs = container.NewAppTabs(
+		container.NewTabItemWithIcon("Frames", theme.ListIcon(), mw.leftPanel.Container()),
+		container.NewTabItemWithIcon("Export", theme.DownloadIcon(), mw.rightPanel.Container()),
+	)
 
-	leftSection := container.NewBorder(nil, nil, nil, widget.NewSeparator(), leftWrapper)
+	rightWrapper := container.New(&fixedWidthLayout{width: 320}, mw.sidebarTabs)
 	rightSection := container.NewBorder(nil, nil, widget.NewSeparator(), nil, rightWrapper)
 
 	body := container.NewBorder(
 		nil,
 		nil,
-		leftSection,
+		nil,
 		rightSection,
 		mw.centerPanel.Container(),
 	)

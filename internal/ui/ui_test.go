@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/test"
 	"fyne.io/fyne/v2/widget"
 
@@ -528,5 +529,83 @@ func TestSpeedPresetAndCustomInput(t *testing.T) {
 	test.Tap(panel.globalMsInput.Button)
 	if sess.ExportOptions.DefaultDurationMs != 75 {
 		t.Errorf("expected custom duration 75ms, got %d", sess.ExportOptions.DefaultDurationMs)
+	}
+}
+
+func TestSidebarTabs(t *testing.T) {
+	testApp := test.NewApp()
+	defer testApp.Quit()
+
+	mw := NewMainWindow(testApp)
+	if mw.sidebarTabs == nil {
+		t.Fatal("expected sidebarTabs to be non-nil")
+	}
+
+	if len(mw.sidebarTabs.Items) != 2 {
+		t.Fatalf("expected 2 sidebar tabs, got %d", len(mw.sidebarTabs.Items))
+	}
+
+	if mw.sidebarTabs.Items[0].Text != "Frames" {
+		t.Errorf("expected first tab to be 'Frames', got %q", mw.sidebarTabs.Items[0].Text)
+	}
+	if mw.sidebarTabs.Items[1].Text != "Export" {
+		t.Errorf("expected second tab to be 'Export', got %q", mw.sidebarTabs.Items[1].Text)
+	}
+
+	// Switch tabs
+	mw.sidebarTabs.SelectIndex(1)
+	if mw.sidebarTabs.SelectedIndex() != 1 {
+		t.Errorf("expected selected tab index 1, got %d", mw.sidebarTabs.SelectedIndex())
+	}
+	mw.sidebarTabs.SelectIndex(0)
+	if mw.sidebarTabs.SelectedIndex() != 0 {
+		t.Errorf("expected selected tab index 0, got %d", mw.sidebarTabs.SelectedIndex())
+	}
+}
+
+func TestScaleInspectorToggle(t *testing.T) {
+	testApp := test.NewApp()
+	defer testApp.Quit()
+
+	mw := NewMainWindow(testApp)
+	if mw.centerPanel.inspectorCheck == nil {
+		t.Fatal("expected inspectorCheck to be non-nil")
+	}
+
+	// Initially visible
+	if !mw.centerPanel.inspectorCheck.Checked {
+		t.Errorf("expected inspectorCheck to be checked by default")
+	}
+	if !mw.centerPanel.twitchEmulationBox.Visible() {
+		t.Errorf("expected twitchEmulationBox to be visible by default")
+	}
+
+	// Resize window to layout objects
+	mw.window.Resize(fyne.NewSize(1200, 750))
+	mw.window.Content().Resize(fyne.NewSize(1200, 750))
+	hWithInspector := mw.centerPanel.mainCanvasImage.Size().Height
+
+	// Hide inspector
+	mw.centerPanel.inspectorCheck.SetChecked(false)
+	if mw.centerPanel.twitchEmulationBox.Visible() {
+		t.Errorf("expected twitchEmulationBox to be hidden after unchecking")
+	}
+
+	hWithoutInspector := mw.centerPanel.mainCanvasImage.Size().Height
+	t.Logf("Main canvas height: with inspector=%.0f, without inspector=%.0f (+%.0f px)", hWithInspector, hWithoutInspector, hWithoutInspector-hWithInspector)
+	if hWithoutInspector <= hWithInspector {
+		t.Errorf("expected main canvas to expand when inspector hidden: with=%f, without=%f", hWithInspector, hWithoutInspector)
+	}
+
+	// Show inspector via helper
+	mw.centerPanel.SetInspectorVisible(true)
+	if !mw.centerPanel.inspectorCheck.Checked {
+		t.Errorf("expected inspectorCheck to be checked after SetInspectorVisible(true)")
+	}
+	if !mw.centerPanel.twitchEmulationBox.Visible() {
+		t.Errorf("expected twitchEmulationBox to be visible after SetInspectorVisible(true)")
+	}
+	if mw.centerPanel.mainCanvasImage.Size().Height != hWithInspector {
+		t.Errorf("expected main canvas to restore size when inspector shown: got %f, want %f", mw.centerPanel.mainCanvasImage.Size().Height, hWithInspector)
 	}
 }

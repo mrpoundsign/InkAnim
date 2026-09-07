@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Custom Palette Color Limit**: Added a "Custom" option to the palette dropdown supporting any color count between 2 and 256.
 
 ### Changed
+- **Unified Right-Side Tabbed Sidebar**: Consolidated Left Frames panel and Right Export panel into a single tabbed sidebar ("Frames" and "Export" tabs) on the right side of the window, freeing up ~240px of horizontal space for a much larger, more immersive animation preview canvas ([#35](https://github.com/mrpoundsign/InkAnim/issues/35)).
+- **Collapsible Bottom Scale Inspector**: Added a "Scale Inspector" checkbox toggle in playback controls to hide/show the bottom Twitch chat-scale preview dock, allowing the main animation canvas to expand to full window height ([#35](https://github.com/mrpoundsign/InkAnim/issues/35)).
 - **Clean Export & Speed Preset Visibility**: Resolution, Dimensions, and Global Speed text inputs are hidden by default and only revealed when choosing "Custom", preventing UI clutter and partial-keystroke re-calculations ([#33](https://github.com/mrpoundsign/InkAnim/issues/33)).
 - **Updated Landing Page Copy & Simplified Downloads**: Clarified animation capabilities, added Discord emote support, and consolidated desktop downloads to direct GitHub Releases links.
 

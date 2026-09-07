@@ -21,7 +21,13 @@ func (m *StudioTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant)
 	case theme.ColorNameButton:
 		return color.RGBA{R: 49, G: 49, B: 54, A: 255}
 	case theme.ColorNamePrimary:
-		return color.RGBA{R: 145, G: 71, B: 255, A: 255} // Twitch brand purple #9146FF
+		return color.RGBA{R: 169, G: 112, B: 255, A: 255} // Vibrant Twitch purple #A970FF
+	case theme.ColorNameHeaderBackground:
+		return color.RGBA{R: 32, G: 32, B: 38, A: 255} // Elevated header/tab bar
+	case theme.ColorNameSelection:
+		return color.RGBA{R: 145, G: 71, B: 255, A: 80}
+	case theme.ColorNameHover:
+		return color.RGBA{R: 255, G: 255, B: 255, A: 25}
 	case theme.ColorNameForeground:
 		return color.RGBA{R: 244, G: 244, B: 245, A: 255} // Zinc-100
 	case theme.ColorNameDisabled:
@@ -52,5 +58,10 @@ func (m *StudioTheme) Icon(name fyne.ThemeIconName) fyne.Resource {
 }
 
 func (m *StudioTheme) Size(name fyne.ThemeSizeName) float32 {
-	return theme.DefaultTheme().Size(name)
+	switch name {
+	case theme.SizeNameSeparatorThickness:
+		return 3.0 // Bold, high-visibility 3px active tab indicator line
+	default:
+		return theme.DefaultTheme().Size(name)
+	}
 }

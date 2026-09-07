@@ -35,8 +35,10 @@ type CenterPreviewPanel struct {
 	mainCanvasImage *canvas.Image
 	frameLabel      *widget.Label
 	playPauseBtn    *widget.Button
-	loopCheck       *widget.Check
-	cropGuidesCheck *widget.Check
+	loopCheck          *widget.Check
+	cropGuidesCheck    *widget.Check
+	inspectorCheck     *widget.Check
+	twitchEmulationBox *fyne.Container
 
 	// Twitch Scale Emulation previews
 	twitch112Dark  *canvas.Image
@@ -122,6 +124,18 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 	})
 	speedSelect.SetSelected("1x")
 
+	p.inspectorCheck = widget.NewCheck("Scale Inspector", func(checked bool) {
+		if checked {
+			p.twitchEmulationBox.Show()
+		} else {
+			p.twitchEmulationBox.Hide()
+		}
+		if p.container != nil {
+			p.container.Refresh()
+		}
+	})
+	p.inspectorCheck.Checked = true
+
 	playbackButtons := container.NewHBox(
 		prevBtn,
 		p.playPauseBtn,
@@ -129,6 +143,7 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 		speedSelect,
 		p.loopCheck,
 		p.cropGuidesCheck,
+		p.inspectorCheck,
 	)
 
 	playbackControls := container.NewVBox(
@@ -162,7 +177,7 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 	)
 
 	twitchHeader := widget.NewLabelWithStyle("Twitch Chat-Scale Inspector (112px, 56px, 28px)", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
-	twitchEmulationBox := container.NewVBox(
+	p.twitchEmulationBox = container.NewVBox(
 		widget.NewSeparator(),
 		twitchHeader,
 		darkRow,
@@ -179,13 +194,18 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 
 	p.container = container.NewBorder(
 		nil,
-		twitchEmulationBox,
+		p.twitchEmulationBox,
 		nil,
 		nil,
 		mainStage,
 	)
 
 	return p
+}
+
+// SetInspectorVisible toggles visibility of the bottom chat-scale inspector dock.
+func (p *CenterPreviewPanel) SetInspectorVisible(visible bool) {
+	p.inspectorCheck.SetChecked(visible)
 }
 
 func (p *CenterPreviewPanel) newScaledImage(size float32) *canvas.Image {
