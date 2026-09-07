@@ -449,9 +449,9 @@ func TestHydrateDrawingStrokeWidth(t *testing.T) {
 	if maxY < 270.0 {
 		t.Errorf("expected drawing maxY to reach at least 270.0 to encompass 15px stroke, got %f", maxY)
 	}
-	// Node min Y is ~23.4, so with 7.5px stroke margin, min Y should reach <= 16.0
-	if drawingRect.Y > 16.0 {
-		t.Errorf("expected drawing minY <= 16.0 to encompass 15px stroke, got %f", drawingRect.Y)
+	// Node min Y is ~23.4, so with angled 15px stroke, min Y should reach <= 18.0
+	if drawingRect.Y > 18.0 {
+		t.Errorf("expected drawing minY <= 18.0 to encompass 15px stroke, got %f", drawingRect.Y)
 	}
 
 	fBytes, err := BuildLayerFrameSVG(doc, "g6", nil, drawingRect)
@@ -486,3 +486,58 @@ func TestHydrateDrawingStrokeWidth(t *testing.T) {
 		t.Errorf("expected 0 colored pixels on top row (no clipping), got %d", topRowColored)
 	}
 }
+
+func TestAlertIconDrawingBounds(t *testing.T) {
+	data, err := os.ReadFile("../../testdata/Alert Icon.svg")
+	if err != nil {
+		t.Fatalf("failed to read Alert Icon.svg: %v", err)
+	}
+
+	doc, err := ParseSVG(data)
+	if err != nil {
+		t.Fatalf("failed to parse Alert Icon.svg: %v", err)
+	}
+
+	drawingRect := doc.GetDrawingRect()
+	t.Logf("Alert Icon drawingRect: %+v", drawingRect)
+
+	// In Alert Icon.svg, the alert triangle (with 60px stroke and bevel joins) and exclamation marks
+	// span approximately [3.9 .. 496.1] horizontally and [29.0 .. 464.9] vertically after transforms.
+	// DrawingRect must not have negative X or Y, and should span approximately 492x436.
+	if drawingRect.X < 0 || drawingRect.X > 10 {
+		t.Errorf("expected drawingRect.X between 0 and 10, got %f", drawingRect.X)
+	}
+	if drawingRect.Y < 20 || drawingRect.Y > 35 {
+		t.Errorf("expected drawingRect.Y between 20 and 35, got %f", drawingRect.Y)
+	}
+	if drawingRect.Width < 480 || drawingRect.Width > 500 {
+		t.Errorf("expected drawingRect.Width between 480 and 500, got %f", drawingRect.Width)
+	}
+	if drawingRect.Height < 425 || drawingRect.Height > 445 {
+		t.Errorf("expected drawingRect.Height between 425 and 445, got %f", drawingRect.Height)
+	}
+
+	// Build frame for layer1 and render to verify no flat clipping
+	fBytes, err := BuildLayerFrameSVG(doc, "layer1", nil, drawingRect)
+	if err != nil {
+		t.Fatalf("BuildLayerFrameSVG failed: %v", err)
+	}
+
+	img, err := RenderSVGToRGBA(fBytes, 512, 512)
+	if err != nil {
+		t.Fatalf("RenderSVGToRGBA failed: %v", err)
+	}
+
+	b := img.Bounds()
+	// Check bottom row to ensure no flat clipping against the edge
+	var bottomRowColored int
+	for x := b.Min.X; x < b.Max.X; x++ {
+		if img.RGBAAt(x, b.Max.Y-1).A > 0 {
+			bottomRowColored++
+		}
+	}
+	if bottomRowColored > 0 {
+		t.Errorf("expected 0 colored pixels on bottom row (no clipping), got %d", bottomRowColored)
+	}
+}
+

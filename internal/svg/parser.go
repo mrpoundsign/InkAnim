@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/xml"
 	"fmt"
+	"image"
 	"io"
 	"math"
 	"strconv"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/srwiley/oksvg"
 	"github.com/srwiley/rasterx"
+	"golang.org/x/image/math/fixed"
 )
 
 // ParseSVG parses an Inkscape SVG document from raw bytes.
@@ -137,7 +139,63 @@ func ParseSVG(data []byte) (*SVGDocument, error) {
 	return doc, nil
 }
 
-// ComputeDrawingRect calculates the bounding box of all paths in the SVG drawing.
+type bboxScanner struct {
+	minX, minY float64
+	maxX, maxY float64
+	found      bool
+}
+
+func (s *bboxScanner) addPoint(p fixed.Point26_6) {
+	x := float64(p.X) / 64.0
+	y := float64(p.Y) / 64.0
+	if !s.found {
+		s.minX, s.maxX = x, x
+		s.minY, s.maxY = y, y
+		s.found = true
+		return
+	}
+	if x < s.minX {
+		s.minX = x
+	}
+	if x > s.maxX {
+		s.maxX = x
+	}
+	if y < s.minY {
+		s.minY = y
+	}
+	if y > s.maxY {
+		s.maxY = y
+	}
+}
+
+func (s *bboxScanner) Start(a fixed.Point26_6) {
+	s.addPoint(a)
+}
+
+func (s *bboxScanner) Line(b fixed.Point26_6) {
+	s.addPoint(b)
+}
+
+func (s *bboxScanner) Draw() {}
+
+func (s *bboxScanner) GetPathExtent() fixed.Rectangle26_6 {
+	if !s.found {
+		return fixed.Rectangle26_6{}
+	}
+	return fixed.Rectangle26_6{
+		Min: fixed.Point26_6{X: fixed.Int26_6(s.minX * 64), Y: fixed.Int26_6(s.minY * 64)},
+		Max: fixed.Point26_6{X: fixed.Int26_6(s.maxX * 64), Y: fixed.Int26_6(s.maxY * 64)},
+	}
+}
+
+func (s *bboxScanner) SetBounds(w, h int)                {}
+func (s *bboxScanner) SetColor(color interface{})        {}
+func (s *bboxScanner) SetWinding(useNonZeroWinding bool) {}
+func (s *bboxScanner) Clear()                            {}
+func (s *bboxScanner) SetClip(rect image.Rectangle)      {}
+
+// ComputeDrawingRect calculates the bounding box of all paths in the SVG drawing,
+// applying element and group transformation matrices, stroke widths, and joins.
 // Returns a Rect with 0 width/height if no paths are present or if an error occurs.
 func ComputeDrawingRect(data []byte) Rect {
 	icon, err := oksvg.ReadIconStream(bytes.NewReader(data))
@@ -145,6 +203,35 @@ func ComputeDrawingRect(data []byte) Rect {
 		return Rect{}
 	}
 
+	scanner := &bboxScanner{
+		minX: math.MaxFloat64,
+		minY: math.MaxFloat64,
+		maxX: -math.MaxFloat64,
+		maxY: -math.MaxFloat64,
+	}
+
+	w := int(math.Ceil(icon.ViewBox.W))
+	h := int(math.Ceil(icon.ViewBox.H))
+	if w <= 0 {
+		w = 512
+	}
+	if h <= 0 {
+		h = 512
+	}
+
+	dasher := rasterx.NewDasher(w, h, scanner)
+	icon.Draw(dasher, 1.0)
+
+	if scanner.found && scanner.maxX > scanner.minX && scanner.maxY > scanner.minY {
+		return Rect{
+			X:      scanner.minX,
+			Y:      scanner.minY,
+			Width:  scanner.maxX - scanner.minX,
+			Height: scanner.maxY - scanner.minY,
+		}
+	}
+
+	// Fallback to iterating raw nodes if scanner found no points (e.g. degenerated un-stroked/un-filled paths)
 	minX, minY := math.MaxFloat64, math.MaxFloat64
 	maxX, maxY := -math.MaxFloat64, -math.MaxFloat64
 	var found bool
