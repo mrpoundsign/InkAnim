@@ -92,8 +92,13 @@ serve_web() {
 }
 
 run_tests() {
+    local UPDATE_GOLDEN="${1:-false}"
     echo "==> Running unit tests..."
-    go test -v ./internal/...
+    if [ "$UPDATE_GOLDEN" = "true" ]; then
+        go test -v ./internal/... -update-golden
+    else
+        go test -v ./internal/...
+    fi
     echo "✓ All tests passed!"
 }
 
@@ -144,6 +149,9 @@ case "$TARGET" in
     test)
         run_tests
         ;;
+    test-update-golden)
+        run_tests "true"
+        ;;
     lint)
         run_lint
         ;;
@@ -154,7 +162,7 @@ case "$TARGET" in
         clean_artifacts
         ;;
     *)
-        echo "Unknown target: $TARGET. Available: all, cli, gui, wasm, serve, test, lint, cross, clean"
+        echo "Unknown target: $TARGET. Available: all, cli, gui, wasm, serve, test, test-update-golden, lint, cross, clean"
         exit 1
         ;;
 esac

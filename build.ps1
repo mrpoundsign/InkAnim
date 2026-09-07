@@ -78,8 +78,13 @@ function Build-GUI {
 }
 
 function Run-Tests {
+    param([switch]$UpdateGolden)
     Write-Host "`n==> Running unit tests..." -ForegroundColor Cyan
-    & $GoExe test -v ./internal/...
+    if ($UpdateGolden) {
+        & $GoExe test -v ./internal/... -update-golden
+    } else {
+        & $GoExe test -v ./internal/...
+    }
     if ($LASTEXITCODE -eq 0) {
         Write-Host "[OK] All tests passed!" -ForegroundColor Green
     } else {
@@ -200,15 +205,16 @@ function Clean-Artifacts {
 }
 
 switch ($Target) {
-    "all"   { Run-Lint; Run-Tests; Build-CLI; Build-GUI }
-    "gui"   { Build-GUI }
-    "cli"   { Build-CLI }
-    "wasm"  { Build-WASM }
-    "serve" { Serve-Web }
-    "test"  { Run-Tests }
-    "lint"  { Run-Lint }
-    "cross" { Cross-Compile-CLI }
-    "check" { Run-Check }
-    "clean" { Clean-Artifacts }
+    "all"                 { Run-Lint; Run-Tests; Build-CLI; Build-GUI }
+    "gui"                 { Build-GUI }
+    "cli"                 { Build-CLI }
+    "wasm"                { Build-WASM }
+    "serve"               { Serve-Web }
+    "test"                { Run-Tests }
+    "test-update-golden"  { Run-Tests -UpdateGolden }
+    "lint"                { Run-Lint }
+    "cross"               { Cross-Compile-CLI }
+    "check"               { Run-Check }
+    "clean"               { Clean-Artifacts }
 }
 
