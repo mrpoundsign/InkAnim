@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"image/draw"
 	"math"
 	"sync"
 	"time"
@@ -12,11 +13,19 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
-	"golang.org/x/image/draw"
+	xdraw "golang.org/x/image/draw"
 
 	"inkanim/internal/app"
 	"inkanim/internal/gif"
 )
+
+type cachedPreviewFrame struct {
+	withGuides    *image.RGBA
+	withoutGuides *image.RGBA
+	twitch112     *image.RGBA
+	twitch56      *image.RGBA
+	twitch28      *image.RGBA
+}
 
 // CenterPreviewPanel manages the live animation player and Twitch chat-scale emulation preview.
 type CenterPreviewPanel struct {
@@ -42,9 +51,10 @@ type CenterPreviewPanel struct {
 	showCropGuides bool
 	currentIdx     int
 	speedFactor    float64
+	cachedFrames   []cachedPreviewFrame
 
 	mu      sync.Mutex
-	stop    chan struct{}
+	timer   *time.Timer
 	animGen int
 }
 
@@ -61,6 +71,7 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 	blank := image.NewRGBA(image.Rect(0, 0, 300, 300))
 	p.mainCanvasImage = canvas.NewImageFromImage(blank)
 	p.mainCanvasImage.FillMode = canvas.ImageFillContain
+	p.mainCanvasImage.ScaleMode = canvas.ImageScaleFastest
 	p.mainCanvasImage.SetMinSize(fyne.NewSize(150, 150))
 
 	p.frameLabel = widget.NewLabel("Frame: 0 / 0")
@@ -177,6 +188,7 @@ func (p *CenterPreviewPanel) newScaledImage(size float32) *canvas.Image {
 	blank := image.NewRGBA(image.Rect(0, 0, int(size), int(size)))
 	img := canvas.NewImageFromImage(blank)
 	img.FillMode = canvas.ImageFillContain
+	img.ScaleMode = canvas.ImageScaleFastest
 	img.SetMinSize(fyne.NewSize(size, size))
 	return img
 }
@@ -199,10 +211,13 @@ func (p *CenterPreviewPanel) Refresh() {
 
 	frames := p.session.RenderedFrames
 	if len(frames) == 0 {
+		p.cachedFrames = nil
 		p.frameLabel.SetText("Frame: 0 / 0")
 		p.pauseLocked()
 		return
 	}
+
+	p.rebuildCachedFramesLocked()
 
 	if p.currentIdx >= len(frames) {
 		p.currentIdx = 0
@@ -266,7 +281,6 @@ func (p *CenterPreviewPanel) pauseLocked() {
 		return
 	}
 	p.isPlaying = false
-	p.animGen++
 	btn := p.playPauseBtn
 	if btn != nil {
 		fyne.Do(func() {
@@ -275,9 +289,9 @@ func (p *CenterPreviewPanel) pauseLocked() {
 			btn.Refresh()
 		})
 	}
-	if p.stop != nil {
-		close(p.stop)
-		p.stop = nil
+	if p.timer != nil {
+		p.timer.Stop()
+		p.timer = nil
 	}
 }
 
@@ -292,10 +306,10 @@ func (p *CenterPreviewPanel) playLocked() {
 		p.currentIdx = 0
 	}
 
-	// Stop any existing animation loop first
-	if p.stop != nil {
-		close(p.stop)
-		p.stop = nil
+	// Stop any existing timer first
+	if p.timer != nil {
+		p.timer.Stop()
+		p.timer = nil
 	}
 
 	p.animGen++
@@ -309,75 +323,131 @@ func (p *CenterPreviewPanel) playLocked() {
 			btn.Refresh()
 		})
 	}
-	p.stop = make(chan struct{})
 
-	go func(stopChan chan struct{}, gen int) {
-		for {
-			p.mu.Lock()
-			totalFrames := len(p.session.RenderedFrames)
-			if !p.isPlaying || p.animGen != gen || totalFrames == 0 {
+	durMs := p.session.RenderedFrames[p.currentIdx].DurationMs
+	if durMs <= 0 {
+		durMs = 100
+	}
+	speed := p.speedFactor
+	if speed <= 0 {
+		speed = 1.0
+	}
+	tickDelay := time.Duration(float64(durMs)/speed) * time.Millisecond
+	if tickDelay < 10*time.Millisecond {
+		tickDelay = 10 * time.Millisecond
+	}
+
+	var scheduleNextFrame func()
+	scheduleNextFrame = func() {
+		p.mu.Lock()
+		if !p.isPlaying || p.animGen != currentGen || len(p.session.RenderedFrames) <= 1 {
+			p.mu.Unlock()
+			return
+		}
+
+		totalFrames := len(p.session.RenderedFrames)
+		nextIdx := p.currentIdx + 1
+		if nextIdx >= totalFrames {
+			if !p.loop {
+				p.currentIdx = totalFrames - 1
+				p.pauseLocked()
+				p.renderCurrentFrameLocked()
 				p.mu.Unlock()
 				return
 			}
-
-			// Ensure currentIdx is always within bounds if a new SVG was loaded
-			if p.currentIdx >= totalFrames {
-				p.currentIdx = 0
-			}
-
-			durMs := p.session.RenderedFrames[p.currentIdx].DurationMs
-			if durMs <= 0 {
-				durMs = 100
-			}
-
-			speed := p.speedFactor
-			if speed <= 0 {
-				speed = 1.0
-			}
-			tickDelay := time.Duration(float64(durMs)/speed) * time.Millisecond
-			if tickDelay < 10*time.Millisecond {
-				tickDelay = 10 * time.Millisecond
-			}
-
-			// Advance to next frame
-			nextIdx := p.currentIdx + 1
-			if nextIdx >= totalFrames {
-				if !p.loop {
-					// Reached final frame with loop disabled:
-					// Display the final frame, set button back to Play (red), and pause gracefully
-					p.currentIdx = totalFrames - 1
-					p.pauseLocked()
-					p.mu.Unlock()
-
-					fyne.Do(func() {
-						p.mu.Lock()
-						defer p.mu.Unlock()
-						p.renderCurrentFrameLocked()
-					})
-					return
-				}
-				nextIdx = 0
-			}
-
-			p.currentIdx = nextIdx
-			p.mu.Unlock()
-
-			// Use fyne.Do to dispatch repaint on the main UI thread (required for OpenGL/GLFW wake-up)
-			fyne.Do(func() {
-				p.mu.Lock()
-				defer p.mu.Unlock()
-				if p.isPlaying && p.animGen == gen {
-					p.renderCurrentFrameLocked()
-				}
-			})
-
-			select {
-			case <-stopChan:
-				return
-			case <-time.After(tickDelay):
-			}
+			nextIdx = 0
 		}
-	}(p.stop, currentGen)
+
+		p.currentIdx = nextIdx
+		p.renderCurrentFrameLocked()
+
+		dur := p.session.RenderedFrames[p.currentIdx].DurationMs
+		if dur <= 0 {
+			dur = 100
+		}
+		s := p.speedFactor
+		if s <= 0 {
+			s = 1.0
+		}
+		delay := time.Duration(float64(dur)/s) * time.Millisecond
+		if delay < 10*time.Millisecond {
+			delay = 10 * time.Millisecond
+		}
+
+		p.timer = time.AfterFunc(delay, func() {
+			fyne.Do(scheduleNextFrame)
+		})
+		p.mu.Unlock()
+	}
+
+	p.timer = time.AfterFunc(tickDelay, func() {
+		fyne.Do(scheduleNextFrame)
+	})
+}
+
+func (p *CenterPreviewPanel) rebuildCachedFramesLocked() {
+	frames := p.session.RenderedFrames
+	if len(frames) == 0 {
+		p.cachedFrames = nil
+		return
+	}
+
+	p.cachedFrames = make([]cachedPreviewFrame, len(frames))
+	previewRect := p.session.GetPreviewBoundaryRect()
+
+	for i, curr := range frames {
+		if curr.Image == nil {
+			continue
+		}
+
+		activeRect := p.session.GetActiveBoundaryRect(i)
+		scaleX := float64(curr.Image.Bounds().Dx()) / previewRect.Width
+		scaleY := float64(curr.Image.Bounds().Dy()) / previewRect.Height
+		cropX0 := int(math.Round((activeRect.X - previewRect.X) * scaleX))
+		cropY0 := int(math.Round((activeRect.Y - previewRect.Y) * scaleY))
+		cropW := int(math.Round(activeRect.Width * scaleX))
+		cropH := int(math.Round(activeRect.Height * scaleY))
+		cropRect := image.Rect(cropX0, cropY0, cropX0+cropW, cropY0+cropH)
+
+		// Crop for Twitch preview
+		croppedForTwitch := cropImage(curr.Image, cropRect)
+
+		displayImg := curr.Image
+		var contentRect image.Rectangle
+		if p.session.ExportOptions.ExportSquare {
+			displayImg = gif.MakeSquare(curr.Image, 0)
+			origB := curr.Image.Bounds()
+			sqB := displayImg.Bounds()
+			offsetX := (sqB.Dx() - origB.Dx()) / 2
+			offsetY := (sqB.Dy() - origB.Dy()) / 2
+			contentRect = cropRect.Add(image.Pt(offsetX, offsetY))
+		} else {
+			contentRect = cropRect
+		}
+
+		withGuides := drawCropGuides(displayImg, contentRect)
+		withoutGuides := displayImg
+
+		var twitchDisplayImg *image.RGBA
+		if p.session.ExportOptions.ExportSquare {
+			twitchDisplayImg = gif.MakeSquare(croppedForTwitch, 0)
+		} else {
+			twitchDisplayImg = croppedForTwitch
+		}
+
+		// Pre-scale Twitch thumbnails once to exact target dimensions
+		twitch112 := scaleRGBA(twitchDisplayImg, 112, 112)
+		twitch56 := scaleRGBA(twitchDisplayImg, 56, 56)
+		twitch28 := scaleRGBA(twitchDisplayImg, 28, 28)
+
+		p.cachedFrames[i] = cachedPreviewFrame{
+			withGuides:    withGuides,
+			withoutGuides: withoutGuides,
+			twitch112:     twitch112,
+			twitch56:      twitch56,
+			twitch28:      twitch28,
+		}
+	}
 }
 
 func (p *CenterPreviewPanel) renderCurrentFrameLocked() {
@@ -386,70 +456,45 @@ func (p *CenterPreviewPanel) renderCurrentFrameLocked() {
 		return
 	}
 
+	if len(p.cachedFrames) != len(frames) {
+		p.rebuildCachedFramesLocked()
+	}
+	if len(p.cachedFrames) <= p.currentIdx {
+		return
+	}
+
 	curr := frames[p.currentIdx]
 	p.frameLabel.SetText(fmt.Sprintf("Frame %d of %d - %s - %dms", p.currentIdx+1, len(frames), curr.Label, curr.DurationMs))
 
-	// displayImg contains the full document/drawing canvas for the preview
-	displayImg := curr.Image
-	previewRect := p.session.GetPreviewBoundaryRect()
-	activeRect := p.session.GetActiveBoundaryRect(p.currentIdx)
+	cached := p.cachedFrames[p.currentIdx]
 
-	scaleX := float64(curr.Image.Bounds().Dx()) / previewRect.Width
-	scaleY := float64(curr.Image.Bounds().Dy()) / previewRect.Height
-	cropX0 := int(math.Round((activeRect.X - previewRect.X) * scaleX))
-	cropY0 := int(math.Round((activeRect.Y - previewRect.Y) * scaleY))
-	cropW := int(math.Round(activeRect.Width * scaleX))
-	cropH := int(math.Round(activeRect.Height * scaleY))
-	cropRect := image.Rect(cropX0, cropY0, cropX0+cropW, cropY0+cropH)
-
-	// Crop for Twitch preview
-	croppedForTwitch := cropImage(curr.Image, cropRect)
-
-	var contentRect image.Rectangle
-	if p.session.ExportOptions.ExportSquare {
-		displayImg = gif.MakeSquare(curr.Image, 0)
-		origB := curr.Image.Bounds()
-		sqB := displayImg.Bounds()
-		offsetX := (sqB.Dx() - origB.Dx()) / 2
-		offsetY := (sqB.Dy() - origB.Dy()) / 2
-		contentRect = cropRect.Add(image.Pt(offsetX, offsetY))
-	} else {
-		contentRect = cropRect
-	}
-
-	previewImg := displayImg
 	if p.showCropGuides {
-		previewImg = drawCropGuides(displayImg, contentRect)
+		p.mainCanvasImage.Image = cached.withGuides
+	} else {
+		p.mainCanvasImage.Image = cached.withoutGuides
 	}
-
-	p.mainCanvasImage.Image = previewImg
 	p.mainCanvasImage.Refresh()
 
-	// Update Twitch scale emulation images (clean without crop guides, cropped to active boundary)
-	var twitchDisplayImg *image.RGBA
-	if p.session.ExportOptions.ExportSquare {
-		twitchDisplayImg = gif.MakeSquare(croppedForTwitch, 0)
-	} else {
-		twitchDisplayImg = croppedForTwitch
-	}
-
-	scaled112 := scaleImage(twitchDisplayImg, 112, 112)
-	scaled56 := scaleImage(twitchDisplayImg, 56, 56)
-	scaled28 := scaleImage(twitchDisplayImg, 28, 28)
-
-	p.twitch112Dark.Image = scaled112
+	// Update Twitch scale emulation images (matching exact widget sizes, zero GL painter scaling)
+	p.twitch112Dark.Image = cached.twitch112
 	p.twitch112Dark.Refresh()
-	p.twitch56Dark.Image = scaled56
+	p.twitch56Dark.Image = cached.twitch56
 	p.twitch56Dark.Refresh()
-	p.twitch28Dark.Image = scaled28
+	p.twitch28Dark.Image = cached.twitch28
 	p.twitch28Dark.Refresh()
 
-	p.twitch112Light.Image = scaled112
+	p.twitch112Light.Image = cached.twitch112
 	p.twitch112Light.Refresh()
-	p.twitch56Light.Image = scaled56
+	p.twitch56Light.Image = cached.twitch56
 	p.twitch56Light.Refresh()
-	p.twitch28Light.Image = scaled28
+	p.twitch28Light.Image = cached.twitch28
 	p.twitch28Light.Refresh()
+}
+
+func scaleRGBA(src *image.RGBA, w, h int) *image.RGBA {
+	dst := image.NewRGBA(image.Rect(0, 0, w, h))
+	xdraw.BiLinear.Scale(dst, dst.Bounds(), src, src.Bounds(), xdraw.Src, nil)
+	return dst
 }
 
 func cropImage(src *image.RGBA, r image.Rectangle) *image.RGBA {
@@ -459,12 +504,6 @@ func cropImage(src *image.RGBA, r image.Rectangle) *image.RGBA {
 	}
 	dst := image.NewRGBA(image.Rect(0, 0, intersect.Dx(), intersect.Dy()))
 	draw.Draw(dst, dst.Bounds(), src, intersect.Min, draw.Src)
-	return dst
-}
-
-func scaleImage(src *image.RGBA, w, h int) *image.RGBA {
-	dst := image.NewRGBA(image.Rect(0, 0, w, h))
-	draw.BiLinear.Scale(dst, dst.Bounds(), src, src.Bounds(), draw.Src, nil)
 	return dst
 }
 
