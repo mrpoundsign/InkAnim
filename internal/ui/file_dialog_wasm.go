@@ -166,8 +166,17 @@ func (mw *MainWindow) promptOpenFile() {
 
 // PromptExport exports the animation as an animated GIF and triggers a browser download.
 func (p *RightExportPanel) PromptExport() {
+	var resume func()
+	if p.pausePlayback != nil {
+		resume = p.pausePlayback()
+	} else {
+		resume = func() {}
+	}
+
 	if len(p.session.RenderedFrames) == 0 {
-		dialog.ShowInformation("No Frames", "Please load an SVG with animation frames before exporting.", p.parentWindow)
+		d := dialog.NewInformation("No Frames", "Please load an SVG with animation frames before exporting.", p.parentWindow)
+		d.SetOnClosed(resume)
+		d.Show()
 		return
 	}
 
@@ -183,7 +192,9 @@ func (p *RightExportPanel) PromptExport() {
 			p.exportBtn.Enable()
 
 			if expErr != nil {
-				dialog.ShowError(expErr, p.parentWindow)
+				d := dialog.NewError(expErr, p.parentWindow)
+				d.SetOnClosed(resume)
+				d.Show()
 				return
 			}
 
@@ -211,9 +222,11 @@ func (p *RightExportPanel) PromptExport() {
 			body.Call("removeChild", a)
 			js.Global().Get("URL").Call("revokeObjectURL", url)
 
-			dialog.ShowInformation("Export Succeeded",
+			d := dialog.NewInformation("Export Succeeded",
 				fmt.Sprintf("Successfully exported animated GIF:\nemote.gif\n\nFile Size: %0.2f KB", float64(sizeBytes)/1024.0),
 				p.parentWindow)
+			d.SetOnClosed(resume)
+			d.Show()
 		})
 	}()
 }

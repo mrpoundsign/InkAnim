@@ -56,7 +56,7 @@ InkAnim incorporates the following open-source libraries and components:
 `
 
 // ShowLicensesDialog displays the third-party open source licenses modal.
-func ShowLicensesDialog(parent fyne.Window) {
+func ShowLicensesDialog(parent fyne.Window, onClosed ...func()) {
 	richText := widget.NewRichTextFromMarkdown(openSourceLicensesMarkdown)
 	richText.Wrapping = fyne.TextWrapWord
 
@@ -64,12 +64,15 @@ func ShowLicensesDialog(parent fyne.Window) {
 	scroll.SetMinSize(fyne.NewSize(500, 360))
 
 	licensesDlg := dialog.NewCustom("Open Source Licenses", "Close", scroll, parent)
+	if len(onClosed) > 0 && onClosed[0] != nil {
+		licensesDlg.SetOnClosed(onClosed[0])
+	}
 	licensesDlg.Resize(fyne.NewSize(540, 420))
 	licensesDlg.Show()
 }
 
 // ShowAboutDialog presents the application metadata, links, update checker, and licenses modal.
-func ShowAboutDialog(parent fyne.Window, currentVersion string) {
+func ShowAboutDialog(parent fyne.Window, currentVersion string, onClosed ...func()) {
 	// App Icon
 	iconImg := canvas.NewImageFromResource(assets.AppIcon)
 	iconImg.SetMinSize(fyne.NewSize(64, 64))
@@ -172,6 +175,9 @@ func ShowAboutDialog(parent fyne.Window, currentVersion string) {
 	)
 
 	aboutDialog := dialog.NewCustom("About InkAnim", "Close", content, parent)
+	if len(onClosed) > 0 && onClosed[0] != nil {
+		aboutDialog.SetOnClosed(onClosed[0])
+	}
 	aboutDialog.Resize(fyne.NewSize(480, 340))
 	aboutDialog.Show()
 }

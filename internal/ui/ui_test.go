@@ -302,5 +302,49 @@ func TestCropBoundaryUIAndGuides(t *testing.T) {
 	}
 }
 
+func TestPausePlaybackModal(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
 
+	mw := NewMainWindow(app)
+	testSVGPath, err := filepath.Abs("../../testdata/character_walk.svg")
+	if err != nil {
+		t.Fatalf("failed to resolve test SVG path: %v", err)
+	}
 
+	mw.loadFilePath(testSVGPath)
+
+	// Ensure playing
+	mw.centerPanel.Play()
+	if !mw.centerPanel.IsPlaying() {
+		t.Fatalf("expected animation to be playing")
+	}
+
+	// Calling PausePlayback while playing should pause and return a resume closure
+	resume := mw.PausePlayback()
+	if mw.centerPanel.IsPlaying() {
+		t.Errorf("expected animation to be paused by PausePlayback")
+	}
+
+	// Calling resume() should restore playing
+	resume()
+	if !mw.centerPanel.IsPlaying() {
+		t.Errorf("expected animation to resume playing after resume()")
+	}
+
+	// Pause manually
+	mw.centerPanel.Pause()
+	if mw.centerPanel.IsPlaying() {
+		t.Fatalf("expected animation to be paused")
+	}
+
+	// Calling PausePlayback when already paused should return a no-op closure
+	noOpResume := mw.PausePlayback()
+	if mw.centerPanel.IsPlaying() {
+		t.Errorf("expected animation to remain paused")
+	}
+	noOpResume()
+	if mw.centerPanel.IsPlaying() {
+		t.Errorf("expected animation to remain paused after no-op resume")
+	}
+}

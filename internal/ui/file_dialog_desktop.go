@@ -43,8 +43,17 @@ func (mw *MainWindow) promptOpenFile() {
 
 // PromptExport opens a native OS file save dialog and exports the animation.
 func (p *RightExportPanel) PromptExport() {
+	var resume func()
+	if p.pausePlayback != nil {
+		resume = p.pausePlayback()
+	} else {
+		resume = func() {}
+	}
+
 	if len(p.session.RenderedFrames) == 0 {
-		dialog.ShowInformation("No Frames", "Please load an SVG with animation frames before exporting.", p.parentWindow)
+		d := dialog.NewInformation("No Frames", "Please load an SVG with animation frames before exporting.", p.parentWindow)
+		d.SetOnClosed(resume)
+		d.Show()
 		return
 	}
 
@@ -60,15 +69,19 @@ func (p *RightExportPanel) PromptExport() {
 		)
 		if err != nil {
 			if errors.Is(err, zenity.ErrCanceled) {
+				fyne.Do(resume)
 				return
 			}
 			fyne.Do(func() {
-				dialog.ShowError(err, p.parentWindow)
+				d := dialog.NewError(err, p.parentWindow)
+				d.SetOnClosed(resume)
+				d.Show()
 			})
 			return
 		}
 
 		if filename == "" {
+			fyne.Do(resume)
 			return
 		}
 
@@ -84,12 +97,16 @@ func (p *RightExportPanel) PromptExport() {
 			p.exportBtn.Enable()
 
 			if expErr != nil {
-				dialog.ShowError(expErr, p.parentWindow)
+				d := dialog.NewError(expErr, p.parentWindow)
+				d.SetOnClosed(resume)
+				d.Show()
 			} else {
-				dialog.ShowInformation("Export Succeeded",
+				d := dialog.NewInformation("Export Succeeded",
 					fmt.Sprintf("Successfully exported single animated GIF:\n%s\n\nFile Size: %0.2f KB",
 						filepath.Base(filename), float64(sizeBytes)/1024.0),
 					p.parentWindow)
+				d.SetOnClosed(resume)
+				d.Show()
 			}
 		})
 	}()

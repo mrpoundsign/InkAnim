@@ -32,14 +32,20 @@ type RightExportPanel struct {
 	progressBar       *widget.ProgressBarInfinite
 
 	onOptionsChange func()
+	pausePlayback   func() func()
 }
 
 // NewRightExportPanel constructs the export settings panel.
-func NewRightExportPanel(sess *app.Session, win fyne.Window, onOptionsChange func()) *RightExportPanel {
+func NewRightExportPanel(sess *app.Session, win fyne.Window, onOptionsChange func(), pausePlayback ...func() func()) *RightExportPanel {
+	var pauseFn func() func()
+	if len(pausePlayback) > 0 {
+		pauseFn = pausePlayback[0]
+	}
 	p := &RightExportPanel{
 		session:         sess,
 		parentWindow:    win,
 		onOptionsChange: onOptionsChange,
+		pausePlayback:   pauseFn,
 	}
 
 	header := widget.NewLabelWithStyle("Export Settings", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})

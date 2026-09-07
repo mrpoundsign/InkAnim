@@ -57,7 +57,7 @@ func NewMainWindow(appInstance fyne.App) *MainWindow {
 		if mw.centerPanel != nil {
 			mw.centerPanel.Refresh()
 		}
-	})
+	}, mw.PausePlayback)
 
 	// Top Bar
 	openBtn := widget.NewButton("Open SVG...", func() {
@@ -66,7 +66,8 @@ func NewMainWindow(appInstance fyne.App) *MainWindow {
 	openBtn.Importance = widget.MediumImportance
 
 	aboutBtn := widget.NewButtonWithIcon(fmt.Sprintf("About (v%s)", app.Version), theme.InfoIcon(), func() {
-		ShowAboutDialog(mw.window, app.Version)
+		resume := mw.PausePlayback()
+		ShowAboutDialog(mw.window, app.Version, resume)
 	})
 
 	topToolbar := container.NewBorder(
@@ -174,6 +175,19 @@ func (mw *MainWindow) loadData(data []byte, filename string) {
 
 	if len(mw.session.RenderedFrames) > 1 {
 		mw.centerPanel.Play()
+	}
+}
+
+// PausePlayback pauses active preview playback and returns a closure that resumes playback if it was previously playing.
+func (mw *MainWindow) PausePlayback() func() {
+	if mw.centerPanel == nil || !mw.centerPanel.IsPlaying() {
+		return func() {}
+	}
+	mw.centerPanel.Pause()
+	return func() {
+		if mw.centerPanel != nil {
+			mw.centerPanel.Play()
+		}
 	}
 }
 

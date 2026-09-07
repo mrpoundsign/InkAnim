@@ -275,6 +275,13 @@ func (p *CenterPreviewPanel) Pause() {
 	p.pauseLocked()
 }
 
+// IsPlaying returns whether the animation is currently playing.
+func (p *CenterPreviewPanel) IsPlaying() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.isPlaying
+}
+
 func (p *CenterPreviewPanel) pauseLocked() {
 	p.animGen++
 	if !p.isPlaying {
