@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - **WebAssembly Text Entry Deadlock**: Intercepted canvas blur event when Fyne focuses hidden `#dummyEntry` element, preventing upstream `glfw-js` focus lost callback from deadlocking the WebAssembly runtime ([#33](https://github.com/mrpoundsign/InkAnim/issues/33)).
 
+### Performance & Tooling
+- **Performance Linters & Go Modernization**: Enabled `prealloc`, `perfsprint`, `gocritic`, and `makezero` in `golangci-lint-v2`. Modernized codebase with Go sequence iterators (`strings.SplitSeq`), integer range loops (`for range n`), built-in `min`/`max`, preallocated slice capacities, and optimized string/error formatting ([#29](https://github.com/mrpoundsign/InkAnim/issues/29)).
+
 ---
 
 ## [0.1.5] - 2026-09-07

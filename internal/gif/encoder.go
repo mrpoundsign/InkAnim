@@ -2,6 +2,7 @@ package gif
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"image"
 	"image/gif"
@@ -16,7 +17,7 @@ import (
 // EncodeAnimatedGIF processes frame inputs and encodes them into a single animated GIF.
 func EncodeAnimatedGIF(frames []FrameInput, opts ExportOptions) (*gif.GIF, error) {
 	if len(frames) == 0 {
-		return nil, fmt.Errorf("no frames provided to encode")
+		return nil, errors.New("no frames provided to encode")
 	}
 
 	processedFrames := make([]*image.RGBA, len(frames))
@@ -50,10 +51,9 @@ func EncodeAnimatedGIF(frames []FrameInput, opts ExportOptions) (*gif.GIF, error
 		if durationMs <= 0 {
 			durationMs = 100 // fallback 10 fps
 		}
-		delayUnits := durationMs / 10
-		if delayUnits < 1 {
-			delayUnits = 1 // minimum gif delay
-		}
+		delayUnits := max(durationMs/10,
+			// minimum gif delay
+			1)
 		delays[i] = delayUnits
 
 		// DisposalBackground ensures transparent pixels clear the previous frame properly
@@ -121,4 +121,3 @@ func WriteGIFToFile(outputPath string, frames []FrameInput, opts ExportOptions) 
 	}
 	return n, f.Close()
 }
-

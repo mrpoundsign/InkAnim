@@ -83,7 +83,7 @@ func ShowAboutDialog(parent fyne.Window, currentVersion string, onClosed ...func
 	tagline := widget.NewLabel("Inkscape SVG to Animated GIF Studio")
 
 	cleanVer := strings.TrimPrefix(strings.TrimSpace(currentVersion), "v")
-	verStr := fmt.Sprintf("Version: v%s", cleanVer)
+	verStr := "Version: v" + cleanVer
 	if app.Commit != "" && app.Commit != "none" {
 		commitShort := app.Commit
 		if len(commitShort) > 7 {

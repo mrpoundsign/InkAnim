@@ -58,7 +58,7 @@ func CheckForUpdateWithURL(currentVersion, apiURL string, client *http.Client) (
 	resp, err := client.Do(req)
 	if err != nil {
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			return nil, fmt.Errorf("update check timed out after 5 seconds")
+			return nil, errors.New("update check timed out after 5 seconds")
 		}
 		return nil, fmt.Errorf("network error during update check: %w", err)
 	}
@@ -67,11 +67,11 @@ func CheckForUpdateWithURL(currentVersion, apiURL string, client *http.Client) (
 	}()
 
 	if resp.StatusCode == http.StatusForbidden {
-		return nil, fmt.Errorf("GitHub API rate limit exceeded; please try again later")
+		return nil, errors.New("GitHub API rate limit exceeded; please try again later")
 	}
 
 	if resp.StatusCode == http.StatusNotFound {
-		return nil, fmt.Errorf("no releases found for repository")
+		return nil, errors.New("no releases found for repository")
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -85,7 +85,7 @@ func CheckForUpdateWithURL(currentVersion, apiURL string, client *http.Client) (
 
 	latestVersion := release.TagName
 	if latestVersion == "" {
-		return nil, fmt.Errorf("release response contained no version tag")
+		return nil, errors.New("release response contained no version tag")
 	}
 
 	// Compare current version with latest version
@@ -138,7 +138,7 @@ func ParseSemver(v string) (SemVer, error) {
 	s = strings.TrimPrefix(s, "V")
 
 	if s == "" {
-		return SemVer{}, fmt.Errorf("empty version string")
+		return SemVer{}, errors.New("empty version string")
 	}
 
 	var prerelease string

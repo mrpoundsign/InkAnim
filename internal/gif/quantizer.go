@@ -56,7 +56,7 @@ func GeneratePalette(frames []*image.RGBA, maxColors int, alphaThreshold uint8) 
 			key   rgbKey
 			count int
 		}
-		var list []colorFreq
+		list := make([]colorFreq, 0, len(colorCounts))
 		for k, count := range colorCounts {
 			list = append(list, colorFreq{key: k, count: count})
 		}

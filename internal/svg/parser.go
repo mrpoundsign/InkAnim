@@ -41,8 +41,7 @@ func ParseSVG(data []byte) (*SVGDocument, error) {
 			return nil, fmt.Errorf("xml decode error: %w", err)
 		}
 
-		switch elem := token.(type) {
-		case xml.StartElement:
+		if elem, ok := token.(xml.StartElement); ok {
 			name := elem.Name.Local
 
 			if name == "svg" && !inSVGTag {
@@ -195,7 +194,7 @@ func (s *bboxScanner) GetPathExtent() fixed.Rectangle26_6 {
 }
 
 func (s *bboxScanner) SetBounds(w, h int)                {}
-func (s *bboxScanner) SetColor(color interface{})        {}
+func (s *bboxScanner) SetColor(color any)                {}
 func (s *bboxScanner) SetWinding(useNonZeroWinding bool) {}
 func (s *bboxScanner) Clear()                            {}
 func (s *bboxScanner) SetClip(rect image.Rectangle)      {}
@@ -340,8 +339,8 @@ func parseDimension(s string) float64 {
 	// Strip known units
 	units := []string{"px", "pt", "mm", "cm", "in", "pc"}
 	for _, u := range units {
-		if strings.HasSuffix(s, u) {
-			s = strings.TrimSuffix(s, u)
+		if before, ok := strings.CutSuffix(s, u); ok {
+			s = before
 			break
 		}
 	}

@@ -59,7 +59,7 @@ func TestMainWindowInitAndLoad(t *testing.T) {
 	}
 
 	// Switch back and forth between SVGs with different frame counts
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		mw.loadFilePath(testSVGPath)
 		mw.centerPanel.Pause()
 		mw.centerPanel.StepFrame(2)
@@ -530,5 +530,3 @@ func TestSpeedPresetAndCustomInput(t *testing.T) {
 		t.Errorf("expected custom duration 75ms, got %d", sess.ExportOptions.DefaultDurationMs)
 	}
 }
-
-

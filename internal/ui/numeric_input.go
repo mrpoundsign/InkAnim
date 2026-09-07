@@ -34,7 +34,7 @@ func NewNumericCommitInput(initialVal, minVal, maxVal int, prefixLabel string, o
 	}
 
 	n.Entry = widget.NewEntry()
-	n.Entry.SetText(fmt.Sprintf("%d", initialVal))
+	n.Entry.SetText(strconv.Itoa(initialVal))
 	n.Entry.SetPlaceHolder(fmt.Sprintf("%d-%d", minVal, maxVal))
 
 	// Digits-only filtering on every change
@@ -66,7 +66,7 @@ func NewNumericCommitInput(initialVal, minVal, maxVal int, prefixLabel string, o
 		}
 		n.Value = v
 		n.isUpdating = true
-		n.Entry.SetText(fmt.Sprintf("%d", v))
+		n.Entry.SetText(strconv.Itoa(v))
 		n.isUpdating = false
 
 		if n.OnApply != nil {
@@ -102,7 +102,7 @@ func (n *NumericCommitInput) SetValue(v int) {
 	}
 	n.Value = v
 	n.isUpdating = true
-	n.Entry.SetText(fmt.Sprintf("%d", v))
+	n.Entry.SetText(strconv.Itoa(v))
 	n.isUpdating = false
 }
 

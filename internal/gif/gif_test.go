@@ -9,8 +9,8 @@ import (
 func TestMakeSquare(t *testing.T) {
 	// Create rectangular 200x100 image
 	src := image.NewRGBA(image.Rect(0, 0, 200, 100))
-	for y := 0; y < 100; y++ {
-		for x := 0; x < 200; x++ {
+	for y := range 100 {
+		for x := range 200 {
 			src.Set(x, y, color.RGBA{R: 255, G: 0, B: 0, A: 255})
 		}
 	}
@@ -42,7 +42,7 @@ func TestMakeSquare(t *testing.T) {
 
 func TestEncodeAnimatedGIF(t *testing.T) {
 	frames := make([]FrameInput, 3)
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		img := image.NewRGBA(image.Rect(0, 0, 64, 32))
 		// Color each frame differently
 		var c color.RGBA
@@ -113,10 +113,10 @@ func TestValidateTwitchEmote(t *testing.T) {
 func BenchmarkEncodeAnimatedGIF(b *testing.B) {
 	const numFrames = 12
 	frames := make([]FrameInput, numFrames)
-	for i := 0; i < numFrames; i++ {
+	for i := range numFrames {
 		img := image.NewRGBA(image.Rect(0, 0, 128, 128))
-		for y := 0; y < 128; y++ {
-			for x := 0; x < 128; x++ {
+		for y := range 128 {
+			for x := range 128 {
 				img.Set(x, y, color.RGBA{
 					R: uint8((x + i*10) % 256),
 					G: uint8((y + i*15) % 256),
@@ -147,4 +147,3 @@ func BenchmarkEncodeAnimatedGIF(b *testing.B) {
 		}
 	}
 }
-

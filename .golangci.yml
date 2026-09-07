@@ -13,3 +13,7 @@ linters:
     - unused
     - misspell
     - unconvert
+    - prealloc
+    - perfsprint
+    - gocritic
+    - makezero

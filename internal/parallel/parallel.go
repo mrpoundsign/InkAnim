@@ -17,16 +17,13 @@ func Run(count int, fn func(i int) error) error {
 		return fn(0)
 	}
 
-	workers := runtime.GOMAXPROCS(0)
-	if workers > count {
-		workers = count
-	}
+	workers := min(runtime.GOMAXPROCS(0), count)
 	if workers < 1 {
 		workers = 1
 	}
 
 	tasks := make(chan int, count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		tasks <- i
 	}
 	close(tasks)
@@ -36,9 +33,7 @@ func Run(count int, fn func(i int) error) error {
 	var firstErr error
 
 	for w := 0; w < workers; w++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for idx := range tasks {
 				errMu.Lock()
 				hasErr := firstErr != nil
@@ -56,7 +51,7 @@ func Run(count int, fn func(i int) error) error {
 					return
 				}
 			}
-		}()
+		})
 	}
 
 	wg.Wait()

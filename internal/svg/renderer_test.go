@@ -20,7 +20,7 @@ func TestRenderSVGToRGBAStrokeResolutionScaling(t *testing.T) {
 
 	// Count vertical stroke thickness at x=50
 	var count100 int
-	for y := 0; y < 100; y++ {
+	for y := range 100 {
 		_, _, _, a := img100.At(50, y).RGBA()
 		if a > 1000 {
 			count100++
@@ -34,7 +34,7 @@ func TestRenderSVGToRGBAStrokeResolutionScaling(t *testing.T) {
 	}
 
 	var count200 int
-	for y := 0; y < 200; y++ {
+	for y := range 200 {
 		_, _, _, a := img200.At(100, y).RGBA()
 		if a > 1000 {
 			count200++

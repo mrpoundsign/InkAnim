@@ -136,7 +136,6 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 		p.frameLabel,
 	)
 
-
 	// Twitch Scale Emulation Dock
 	p.twitch112Dark = p.newScaledImage(112)
 	p.twitch56Dark = p.newScaledImage(56)
@@ -344,10 +343,7 @@ func (p *CenterPreviewPanel) playLocked() {
 	if speed <= 0 {
 		speed = 1.0
 	}
-	tickDelay := time.Duration(float64(durMs)/speed) * time.Millisecond
-	if tickDelay < 10*time.Millisecond {
-		tickDelay = 10 * time.Millisecond
-	}
+	tickDelay := max(time.Duration(float64(durMs)/speed)*time.Millisecond, 10*time.Millisecond)
 
 	var scheduleNextFrame func()
 	scheduleNextFrame = func() {
@@ -381,10 +377,7 @@ func (p *CenterPreviewPanel) playLocked() {
 		if s <= 0 {
 			s = 1.0
 		}
-		delay := time.Duration(float64(dur)/s) * time.Millisecond
-		if delay < 10*time.Millisecond {
-			delay = 10 * time.Millisecond
-		}
+		delay := max(time.Duration(float64(dur)/s)*time.Millisecond, 10*time.Millisecond)
 
 		p.timer = time.AfterFunc(delay, func() {
 			fyne.Do(scheduleNextFrame)
@@ -603,10 +596,7 @@ func drawCropGuides(src *image.RGBA, contentRect image.Rectangle) *image.RGBA {
 	// 2. Solid corner brackets (length = min(14, min(w, h)/4))
 	w := x1 - x0
 	h := y1 - y0
-	cornerLen := 14
-	if w/4 < cornerLen {
-		cornerLen = w / 4
-	}
+	cornerLen := min(w/4, 14)
 	if h/4 < cornerLen {
 		cornerLen = h / 4
 	}
@@ -645,4 +635,3 @@ func drawCropGuides(src *image.RGBA, contentRect image.Rectangle) *image.RGBA {
 
 	return dst
 }
-

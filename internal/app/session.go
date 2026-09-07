@@ -1,6 +1,7 @@
 package app
 
 import (
+	"errors"
 	"fmt"
 	"image"
 	"image/draw"
@@ -409,7 +410,7 @@ func (s *Session) RerenderAllFrames() error {
 // at the target export resolution (up to 4096px), eliminating bitmap scaling blur.
 func (s *Session) RenderExportFrames() ([]gif.FrameInput, error) {
 	if s.Document == nil {
-		return nil, fmt.Errorf("no SVG document loaded")
+		return nil, errors.New("no SVG document loaded")
 	}
 
 	var frameInputs []gif.FrameInput
@@ -437,11 +438,12 @@ func (s *Session) RenderExportFrames() ([]gif.FrameInput, error) {
 				if boundH > maxSide {
 					maxSide = boundH
 				}
-				if maxSide < 512 {
+				switch {
+				case maxSide < 512:
 					targetSquare = 512
-				} else if maxSide > 4096 {
+				case maxSide > 4096:
 					targetSquare = 4096
-				} else {
+				default:
 					targetSquare = int(math.Round(maxSide))
 				}
 			}
@@ -471,15 +473,16 @@ func (s *Session) RenderExportFrames() ([]gif.FrameInput, error) {
 				if boundH > maxSide {
 					maxSide = boundH
 				}
-				if maxSide < 512 {
+				switch {
+				case maxSide < 512:
 					scale := 512.0 / maxSide
 					fitW = int(math.Round(boundW * scale))
 					fitH = int(math.Round(boundH * scale))
-				} else if maxSide > 4096 {
+				case maxSide > 4096:
 					scale := 4096.0 / maxSide
 					fitW = int(math.Round(boundW * scale))
 					fitH = int(math.Round(boundH * scale))
-				} else {
+				default:
 					fitW = int(math.Round(boundW))
 					fitH = int(math.Round(boundH))
 				}
@@ -586,11 +589,12 @@ func (s *Session) RenderExportFrames() ([]gif.FrameInput, error) {
 					if boundH > maxSide {
 						maxSide = boundH
 					}
-					if maxSide < 512 {
+					switch {
+					case maxSide < 512:
 						targetSquare = 512
-					} else if maxSide > 4096 {
+					case maxSide > 4096:
 						targetSquare = 4096
-					} else {
+					default:
 						targetSquare = int(math.Round(maxSide))
 					}
 				}
@@ -620,15 +624,16 @@ func (s *Session) RenderExportFrames() ([]gif.FrameInput, error) {
 					if boundH > maxSide {
 						maxSide = boundH
 					}
-					if maxSide < 512 {
+					switch {
+					case maxSide < 512:
 						scale := 512.0 / maxSide
 						fitW = int(math.Round(boundW * scale))
 						fitH = int(math.Round(boundH * scale))
-					} else if maxSide > 4096 {
+					case maxSide > 4096:
 						scale := 4096.0 / maxSide
 						fitW = int(math.Round(boundW * scale))
 						fitH = int(math.Round(boundH * scale))
-					} else {
+					default:
 						fitW = int(math.Round(boundW))
 						fitH = int(math.Round(boundH))
 					}
@@ -703,7 +708,7 @@ func (s *Session) ExportGIFWriter(w io.Writer) (int64, error) {
 		return 0, err
 	}
 	if len(frameInputs) == 0 {
-		return 0, fmt.Errorf("no frames available to export")
+		return 0, errors.New("no frames available to export")
 	}
 
 	// Since frames are already vector-rasterized and squared at final target dimensions,
@@ -726,7 +731,7 @@ func (s *Session) ExportGIF(destinationPath string) (int64, error) {
 		return 0, err
 	}
 	if len(frameInputs) == 0 {
-		return 0, fmt.Errorf("no frames available to export")
+		return 0, errors.New("no frames available to export")
 	}
 
 	exportOpts := s.ExportOptions

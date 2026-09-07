@@ -111,8 +111,8 @@ func computeDiff(actual, golden image.Image, tolerance uint8) (DiffStats, *image
 	var stats DiffStats
 	stats.TotalPixels = w * h
 
-	for y := 0; y < h; y++ {
-		for x := 0; x < w; x++ {
+	for y := range h {
+		for x := range w {
 			actPt := image.Pt(b.Min.X+x, b.Min.Y+y)
 			goldPt := image.Pt(golden.Bounds().Min.X+x, golden.Bounds().Min.Y+y)
 
@@ -124,7 +124,7 @@ func computeDiff(actual, golden image.Image, tolerance uint8) (DiffStats, *image
 			g8 := [4]uint8{uint8(gr >> 8), uint8(gg >> 8), uint8(gb >> 8), uint8(ga >> 8)}
 
 			var maxDiff uint8
-			for c := 0; c < 4; c++ {
+			for c := range 4 {
 				diff := uint8(math.Abs(float64(int(a8[c]) - int(g8[c]))))
 				if diff > maxDiff {
 					maxDiff = diff
@@ -342,8 +342,8 @@ func TestComputeDiff_AntialiasingToleranceAndFailureDiff(t *testing.T) {
 	golden := image.NewRGBA(image.Rect(0, 0, 10, 10))
 
 	// Base background: white
-	for y := 0; y < 10; y++ {
-		for x := 0; x < 10; x++ {
+	for y := range 10 {
+		for x := range 10 {
 			actual.Set(x, y, color.RGBA{R: 255, G: 255, B: 255, A: 255})
 			golden.Set(x, y, color.RGBA{R: 255, G: 255, B: 255, A: 255})
 		}
@@ -382,6 +382,3 @@ func TestComputeDiff_AntialiasingToleranceAndFailureDiff(t *testing.T) {
 		t.Errorf("pixel with minor diff <= tolerance should not be marked as mismatch")
 	}
 }
-
-
-

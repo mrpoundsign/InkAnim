@@ -15,9 +15,9 @@ import (
 
 // RightExportPanel manages dimension inputs, Twitch presets, and single animated GIF export.
 type RightExportPanel struct {
-	session       *app.Session
-	container     *container.Scroll
-	parentWindow  fyne.Window
+	session      *app.Session
+	container    *container.Scroll
+	parentWindow fyne.Window
 
 	presetSelect       *widget.Select
 	customResContainer *fyne.Container
@@ -245,10 +245,7 @@ func (p *RightExportPanel) validateTwitch() {
 	w := int(boundW)
 	h := int(boundH)
 	if p.session.ExportOptions.ExportSquare {
-		maxSide := w
-		if h > maxSide {
-			maxSide = h
-		}
+		maxSide := max(h, w)
 		if p.session.ExportOptions.SquareSize > 0 {
 			maxSide = p.session.ExportOptions.SquareSize
 		}
@@ -291,7 +288,7 @@ func (p *RightExportPanel) validateTwitch() {
 	if res.IsValid && len(res.Warnings) == 0 {
 		p.twitchStatusLabel.SetText(fmt.Sprintf("Twitch: %dx%d - %d frames - %0.1fs", w, h, frames, float64(totalDurMs)/1000.0))
 	} else {
-		var parts []string
+		parts := make([]string, 0, len(res.Errors)+len(res.Warnings))
 		parts = append(parts, res.Errors...)
 		parts = append(parts, res.Warnings...)
 		p.twitchStatusLabel.SetText("Twitch: " + strings.Join(parts, "; "))

@@ -42,12 +42,12 @@ type SubPathSegment struct {
 }
 
 // PreprocessSVG applies in-memory transformations to raw SVG data:
-// 1. Converts SVG <text> and <tspan> elements into standard <path> vector glyph contours (Issue #21).
-// 2. Evaluates Inkscape fillet_chamfer Live Path Effects on paths referencing them (when unbaked).
-// 3. Normalizes rect rx/ry arcs.
-// 4. Scales shape stroke-width by cumulative group transform scaling.
-// 5. Desugars paint-order: stroke fill (and stroke fill markers) into consecutive stroke-then-fill elements
-//    so renderers like oksvg (which lack native paint-order support) render strokes under fills correctly.
+//  1. Converts SVG <text> and <tspan> elements into standard <path> vector glyph contours (Issue #21).
+//  2. Evaluates Inkscape fillet_chamfer Live Path Effects on paths referencing them (when unbaked).
+//  3. Normalizes rect rx/ry arcs.
+//  4. Scales shape stroke-width by cumulative group transform scaling.
+//  5. Desugars paint-order: stroke fill (and stroke fill markers) into consecutive stroke-then-fill elements
+//     so renderers like oksvg (which lack native paint-order support) render strokes under fills correctly.
 func PreprocessSVG(data []byte) ([]byte, error) {
 	// First pass: extract LPE definitions from <defs>
 	effects := extractPathEffects(data)
@@ -343,13 +343,13 @@ func desugarPaintOrder(elem *xml.StartElement, styleAttrIdx int) (xml.StartEleme
 	if styleAttrIdx >= 0 {
 		sStyle := removeStyleProp(strokeElem.Attr[styleAttrIdx].Value, "paint-order")
 		sStyle = removeStyleProp(sStyle, "fill")
-		sStyle = sStyle + ";fill:none"
+		sStyle += ";fill:none"
 		strokeElem.Attr[styleAttrIdx].Value = sStyle
 
 		fStyle := removeStyleProp(fillElem.Attr[styleAttrIdx].Value, "paint-order")
 		fStyle = removeStyleProp(fStyle, "stroke")
 		fStyle = removeStyleProp(fStyle, "stroke-width")
-		fStyle = fStyle + ";stroke:none"
+		fStyle += ";stroke:none"
 		fillElem.Attr[styleAttrIdx].Value = fStyle
 	} else {
 		setOrAppendAttr(&strokeElem, "fill", "none")
@@ -358,7 +358,7 @@ func desugarPaintOrder(elem *xml.StartElement, styleAttrIdx int) (xml.StartEleme
 
 	for i := range strokeElem.Attr {
 		if strokeElem.Attr[i].Name.Local == "id" {
-			strokeElem.Attr[i].Value = strokeElem.Attr[i].Value + "_stroke"
+			strokeElem.Attr[i].Value += "_stroke"
 		}
 	}
 
@@ -379,7 +379,7 @@ func setOrAppendAttr(elem *xml.StartElement, name, val string) {
 }
 
 func extractCSSProp(style, prop string) string {
-	for _, part := range strings.Split(style, ";") {
+	for part := range strings.SplitSeq(style, ";") {
 		kv := strings.SplitN(strings.TrimSpace(part), ":", 2)
 		if len(kv) == 2 && strings.TrimSpace(kv[0]) == prop {
 			return strings.TrimSpace(kv[1])
@@ -472,19 +472,21 @@ func parseTransform(s string) Matrix2D {
 				cur = IdentityMatrix()
 			}
 		case "scale":
-			if len(nums) == 1 {
+			switch {
+			case len(nums) == 1:
 				cur = Matrix2D{A: nums[0], D: nums[0]}
-			} else if len(nums) >= 2 {
+			case len(nums) >= 2:
 				cur = Matrix2D{A: nums[0], D: nums[1]}
-			} else {
+			default:
 				cur = IdentityMatrix()
 			}
 		case "translate":
-			if len(nums) == 1 {
+			switch {
+			case len(nums) == 1:
 				cur = Matrix2D{A: 1, D: 1, E: nums[0]}
-			} else if len(nums) >= 2 {
+			case len(nums) >= 2:
 				cur = Matrix2D{A: 1, D: 1, E: nums[0], F: nums[1]}
-			} else {
+			default:
 				cur = IdentityMatrix()
 			}
 		case "rotate":
@@ -814,7 +816,7 @@ func filletSegments(segs []SubPathSegment, radius float64) []SubPathSegment {
 	var result []SubPathSegment
 	n := len(segs)
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		cur := segs[i]
 		if cur.Type != 'L' {
 			result = append(result, cur)

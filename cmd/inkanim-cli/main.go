@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -20,6 +21,13 @@ var (
 )
 
 func main() {
+	if err := run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	showVersion := flag.Bool("v", false, "Show version information")
 	inputFile := flag.String("i", "", "Input Inkscape SVG file path (required)")
 	outputFile := flag.String("o", "", "Output animated GIF file path (default: input with .gif extension)")
@@ -38,23 +46,23 @@ func main() {
 
 	flag.Parse()
 
-	cleanup, err := prof.SetupProfiler(*cpuprofile, *memprofile, *pprofAddr)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Profiler error: %v\n", err)
-	} else if cleanup != nil {
-		defer cleanup()
-	}
-
 	if *showVersion {
 		fmt.Printf("inkanim-cli version %s (commit %s, built %s)\n", version, commit, date)
-		os.Exit(0)
+		return nil
 	}
 
 	if *inputFile == "" {
 		fmt.Println("InkAnim CLI — Convert Inkscape SVG layers/pages to a single animated GIF")
 		fmt.Println("\nUsage:")
 		flag.PrintDefaults()
-		os.Exit(1)
+		return errors.New("missing required input file (-i)")
+	}
+
+	cleanup, err := prof.SetupProfiler(*cpuprofile, *memprofile, *pprofAddr)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Profiler error: %v\n", err)
+	} else if cleanup != nil {
+		defer cleanup()
 	}
 
 	outPath := *outputFile
@@ -66,27 +74,23 @@ func main() {
 	sess := app.NewSession()
 	fmt.Printf("Loading SVG: %s ...\n", *inputFile)
 	if err := sess.LoadSVG(*inputFile); err != nil {
-		fmt.Fprintf(os.Stderr, "Error loading SVG: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("loading SVG: %w", err)
 	}
 
 	if strings.ToLower(*modeStr) == "pages" {
 		if err := sess.SetMode(svg.ModePages); err != nil {
-			fmt.Fprintf(os.Stderr, "Error setting pages mode: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("setting pages mode: %w", err)
 		}
 	} else {
 		if err := sess.SetMode(svg.ModeLayers); err != nil {
-			fmt.Fprintf(os.Stderr, "Error setting layers mode: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("setting layers mode: %w", err)
 		}
 	}
 
 	frameCount := len(sess.RenderedFrames)
 	fmt.Printf("Detected %d animation frames in %s mode.\n", frameCount, sess.CurrentMode)
 	if frameCount == 0 {
-		fmt.Fprintf(os.Stderr, "Error: No animation frames found in mode '%s'.\n", sess.CurrentMode)
-		os.Exit(1)
+		return fmt.Errorf("no animation frames found in mode '%s'", sess.CurrentMode)
 	}
 
 	frameDelayMs := 100
@@ -110,8 +114,7 @@ func main() {
 	fmt.Printf("Encoding single animated GIF to: %s ...\n", outPath)
 	sizeBytes, err := sess.ExportGIF(outPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error exporting GIF: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("exporting GIF: %w", err)
 	}
 
 	fmt.Printf("Success! Exported %s (%0.2f KB)\n", outPath, float64(sizeBytes)/1024.0)
@@ -121,10 +124,7 @@ func main() {
 		exportW := int(sess.Document.Width)
 		exportH := int(sess.Document.Height)
 		if *square {
-			maxSide := exportW
-			if exportH > maxSide {
-				maxSide = exportH
-			}
+			maxSide := max(exportH, exportW)
 			if *squareSize > 0 {
 				maxSide = *squareSize
 			}
@@ -146,4 +146,5 @@ func main() {
 			}
 		}
 	}
+	return nil
 }

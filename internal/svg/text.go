@@ -5,6 +5,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"maps"
 	"math"
 	"os"
 	"path/filepath"
@@ -151,11 +152,12 @@ func (fm *FontManager) findSystemFont(family string, bold, italic bool) *sfnt.Fo
 
 	// Try candidate names
 	var candidates []string
-	if bold && italic {
+	switch {
+	case bold && italic:
 		candidates = append(candidates, normFam+"bolditalic", normFam+"bi", normFam+"z")
-	} else if bold {
+	case bold:
 		candidates = append(candidates, normFam+"bold", normFam+"bd", normFam+"b")
-	} else if italic {
+	case italic:
 		candidates = append(candidates, normFam+"italic", normFam+"i")
 	}
 
@@ -251,7 +253,7 @@ func ParseTextStyle(styleStr string, attrs []xml.Attr) TextStyle {
 	}
 
 	props := make(map[string]string)
-	for _, part := range strings.Split(styleStr, ";") {
+	for part := range strings.SplitSeq(styleStr, ";") {
 		kv := strings.SplitN(strings.TrimSpace(part), ":", 2)
 		if len(kv) == 2 {
 			props[strings.TrimSpace(kv[0])] = strings.TrimSpace(kv[1])
@@ -686,9 +688,7 @@ func mergeTextStyle(base *TextStyle, overrides TextStyle) {
 	if overrides.PaintOrder != "" {
 		base.PaintOrder = overrides.PaintOrder
 	}
-	for k, v := range overrides.ExtraStyles {
-		base.ExtraStyles[k] = v
-	}
+	maps.Copy(base.ExtraStyles, overrides.ExtraStyles)
 }
 
 // GenerateGlyphPathD converts a text string into an SVG path d string using sfnt vector glyph contours.
@@ -714,7 +714,7 @@ func GenerateGlyphPathD(f *sfnt.Font, text string, startX, baselineY, fontSize, 
 	// Compute advances between characters
 	advances := make([]float64, len(runes))
 	var totalAdvance float64
-	for i := 0; i < len(runes); i++ {
+	for i := range runes {
 		adv, err := f.GlyphAdvance(&b, indices[i], ppem, 0)
 		advPx := float64(adv) / 64.0
 		if err != nil {

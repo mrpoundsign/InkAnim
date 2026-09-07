@@ -40,7 +40,7 @@ func TestRun_Multiple(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		if visited[i] != 1 {
 			t.Errorf("expected visited[%d] == 1, got %d", i, visited[i])
 		}

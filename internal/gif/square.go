@@ -19,10 +19,7 @@ func MakeSquare(src *image.RGBA, targetSize int) *image.RGBA {
 		return src
 	}
 
-	maxSide := srcW
-	if srcH > maxSide {
-		maxSide = srcH
-	}
+	maxSide := max(srcH, srcW)
 
 	if targetSize <= 0 {
 		targetSize = maxSide

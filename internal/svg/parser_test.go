@@ -245,8 +245,8 @@ func TestCharacterWalkPinned(t *testing.T) {
 		t.Fatal(err)
 	}
 	diff := 0
-	for y := 0; y < 256; y++ {
-		for x := 0; x < 256; x++ {
+	for y := range 256 {
+		for x := range 256 {
 			if img2.RGBAAt(x, y) != img3.RGBAAt(x, y) {
 				diff++
 			}
@@ -543,4 +543,3 @@ func TestAlertIconDrawingBounds(t *testing.T) {
 		t.Errorf("expected 0 colored pixels on bottom row (no clipping), got %d", bottomRowColored)
 	}
 }
-

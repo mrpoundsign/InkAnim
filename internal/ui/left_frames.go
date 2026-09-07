@@ -257,7 +257,7 @@ func (p *LeftFramesPanel) Refresh() {
 			if page.HasOverride && page.OverrideMs > 0 {
 				durVal = page.OverrideMs
 			}
-			durEntry.SetText(fmt.Sprintf("%d", durVal))
+			durEntry.SetText(strconv.Itoa(durVal))
 			if !page.HasOverride {
 				durEntry.Disable()
 			}
@@ -281,7 +281,7 @@ func (p *LeftFramesPanel) Refresh() {
 					p.session.SetFrameOverride(idx, true, ms)
 				} else {
 					durEntry.Disable()
-					durEntry.SetText(fmt.Sprintf("%d", p.session.ExportOptions.DefaultDurationMs))
+					durEntry.SetText(strconv.Itoa(p.session.ExportOptions.DefaultDurationMs))
 					p.session.SetFrameOverride(idx, false, 0)
 				}
 				if p.onFramesChange != nil {
@@ -337,7 +337,7 @@ func (p *LeftFramesPanel) Refresh() {
 			if layer.HasOverride && layer.OverrideMs > 0 {
 				durVal = layer.OverrideMs
 			}
-			durEntry.SetText(fmt.Sprintf("%d", durVal))
+			durEntry.SetText(strconv.Itoa(durVal))
 			if !layer.HasOverride {
 				durEntry.Disable()
 			}
@@ -361,7 +361,7 @@ func (p *LeftFramesPanel) Refresh() {
 					p.session.SetFrameOverride(idx, true, ms)
 				} else {
 					durEntry.Disable()
-					durEntry.SetText(fmt.Sprintf("%d", p.session.ExportOptions.DefaultDurationMs))
+					durEntry.SetText(strconv.Itoa(p.session.ExportOptions.DefaultDurationMs))
 					p.session.SetFrameOverride(idx, false, 0)
 				}
 				if p.onFramesChange != nil {
