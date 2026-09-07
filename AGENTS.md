@@ -115,3 +115,30 @@ Active issues and feature requests are tracked exclusively via **[GitHub Issues]
 4. **Fyne GUI Thread Safety**:
    - In Fyne v2, all UI mutations (such as `label.SetText()`, `button.Enable()`, `widget.Show()`, or canvas refreshes) triggered from background goroutines, tickers, or asynchronous callbacks **must** be dispatched on the main render thread via `fyne.Do(func() { ... })` or `fyne.DoAndWait(...)`.
    - Never mutate Fyne widget state directly from background threads; doing so triggers runtime thread-safety warnings (`*** Error in Fyne call thread, this should have been called in fyne.Do[AndWait] ***`) and risks race conditions.
+
+---
+
+## 7. SVG In-Memory Pre-Processing Architecture & Findings
+
+### Why In-Memory Pre-Processing (`PreprocessSVG`) is Required
+`oksvg` is a lightweight SVG vector rasterizer with notable upstream limitations:
+1. **No Text Rendering**: `<text>` and `<tspan>` elements are completely unhandled and silently skipped.
+2. **No `paint-order` Support**: SVG standard `paint-order: stroke fill` (strokes rendered under fills) is ignored; `oksvg` always renders fills first, then strokes on top.
+3. **Unscaled Stroke Width in Transformed Groups**: When shapes are inside `<g transform="...">`, `oksvg` applies the CTM to path coordinates but leaves `stroke-width` unscaled, producing strokes that are too thick or too thin under scaling transforms.
+4. **Omitted `rx` on `<rect>`**: If a `<rect>` defines `ry` but omits `rx`, `oksvg` fails to default `rx = ry` per SVG spec, rendering square 90° corners instead of rounded arcs.
+5. **No Inkscape LPE Support**: Paths referencing unbaked Live Path Effects (e.g. `fillet_chamfer` for smooth rounded polygon corners) render as raw sharp vertices.
+
+### The Architectural Pattern
+**Never modify or destructively flatten SVG files on disk.** Instead, [`PreprocessSVG`](file:///c:/Users/mrpou/Documents/Projects/InkAnim/internal/svg/lpe.go) intercepts the XML token stream in memory before passing it to `oksvg`:
+- **Stage 1: Font & Element Conversion (Issue #21)**: Convert `<text>` and `<tspan>` elements into `<path>` vector glyph contours early in the pipeline.
+- **Stage 2: LPE Evaluation**: Evaluate `fillet_chamfer` LPEs on `<path>` elements referencing `<inkscape:path-effect>`.
+- **Stage 3: Rect `rx`/`ry` Normalization**: Mirror `rx` and `ry` when either is omitted.
+- **Stage 4: Group Transform Stroke Scaling**: Track 2D affine transformation matrices across nested `<g>` tags and scale `stroke-width` by cumulative ancestor scale factors.
+- **Stage 5: Paint-Order Desugaring**: Desugar `paint-order: stroke fill` into consecutive stroke-only and fill-only elements.
+
+### Critical Learnings for Issue #21 (Text-to-Path Converter)
+1. **Pipeline Ordering**: Converting `<text>` to `<path>` early in `PreprocessSVG` allows generated text paths to automatically benefit from ancestor transform stroke scaling and `paint-order: stroke fill` desugaring. (In `testdata/Alert Icon.svg`, `text1` uses `paint-order: stroke fill markers` with a 13.4px stroke!).
+2. **Y-Axis Inversion in Glyph Contours**: Font formats (`sfnt`, TrueType/OpenType) place the origin at the baseline with positive Y pointing UP towards the ascender, whereas SVG Y points DOWN. Coordinates must be inverted: `svgY = baselineY - (glyphY * fontSize / unitsPerEm)`.
+3. **Inkscape Flowed Text (`shape-inside`)**: Inkscape 1.0+ flowed text objects (`shape-inside:url(...)`) typically embed explicit baseline anchors on `<tspan x="..." y="...">`. Using `<tspan>` coordinates avoids the need for a complex text-wrapping engine for simple labels.
+4. **WASM / Cross-Platform Font Fallbacks**: System font paths (`C:\Windows\Fonts`, `/usr/share/fonts`) are inaccessible in WebAssembly. The converter must bundle or fall back to standard Go / Fyne embedded TTF glyphs when system fonts cannot be resolved.
+

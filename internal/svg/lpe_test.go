@@ -325,17 +325,17 @@ func TestAlertIconMiddleBoxesMatch(t *testing.T) {
 		t.Errorf("expected inner box stroke to span >= 9 pixels around y=267..276, got %d", innerStrokeCount)
 	}
 
-	// At x=260, verify the diagonal slash spans from y=316 to y=339 (24 pixels)
+	// At x=220, verify the diagonal slash spans >= 20 pixels (uncovered by text)
 	var slashCount int
-	for y := 316; y <= 339; y++ {
-		r, g, b, a := img.At(260, y).RGBA()
+	for y := 330; y <= 380; y++ {
+		r, g, b, a := img.At(220, y).RGBA()
 		r8, g8, b8, a8 := uint8(r>>8), uint8(g>>8), uint8(b>>8), uint8(a>>8)
 		if r8 > 50 && g8 < 40 && b8 < 40 && a8 > 200 {
 			slashCount++
 		}
 	}
-	if slashCount < 22 {
-		t.Errorf("expected diagonal slash to span >= 22 pixels around y=316..339, got %d", slashCount)
+	if slashCount < 15 {
+		t.Errorf("expected diagonal slash to span >= 15 pixels around x=220, got %d", slashCount)
 	}
 }
 

@@ -42,8 +42,11 @@ type SubPathSegment struct {
 }
 
 // PreprocessSVG applies in-memory transformations to raw SVG data:
-// 1. Evaluates Inkscape fillet_chamfer Live Path Effects on paths referencing them (when unbaked).
-// 2. Desugars paint-order: stroke fill (and stroke fill markers) into consecutive stroke-then-fill elements
+// 1. Converts SVG <text> and <tspan> elements into standard <path> vector glyph contours (Issue #21).
+// 2. Evaluates Inkscape fillet_chamfer Live Path Effects on paths referencing them (when unbaked).
+// 3. Normalizes rect rx/ry arcs.
+// 4. Scales shape stroke-width by cumulative group transform scaling.
+// 5. Desugars paint-order: stroke fill (and stroke fill markers) into consecutive stroke-then-fill elements
 //    so renderers like oksvg (which lack native paint-order support) render strokes under fills correctly.
 func PreprocessSVG(data []byte) ([]byte, error) {
 	// First pass: extract LPE definitions from <defs>
@@ -68,6 +71,14 @@ func PreprocessSVG(data []byte) ([]byte, error) {
 		switch elem := token.(type) {
 		case xml.StartElement:
 			name := elem.Name.Local
+
+			// Stage 1: Convert SVG <text> elements into <path> vectors (Issue #21)
+			if name == "text" {
+				if err := ProcessTextElementToPaths(elem, decoder, encoder, &transformStack); err != nil {
+					return nil, err
+				}
+				continue
+			}
 
 			// Track group transforms
 			if name == "g" {
