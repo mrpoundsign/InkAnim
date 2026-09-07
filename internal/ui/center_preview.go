@@ -74,7 +74,8 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 	p.mainCanvasImage.ScaleMode = canvas.ImageScaleFastest
 	p.mainCanvasImage.SetMinSize(fyne.NewSize(150, 150))
 
-	p.frameLabel = widget.NewLabel("Frame: 0 / 0")
+	p.frameLabel = widget.NewLabelWithStyle("Frame: 0 / 0", fyne.TextAlignCenter, fyne.TextStyle{})
+	p.frameLabel.Truncation = fyne.TextTruncateEllipsis
 
 	p.playPauseBtn = widget.NewButton("Play", func() {
 		p.TogglePlay()
@@ -121,13 +122,17 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 	})
 	speedSelect.SetSelected("1x")
 
-	playbackControls := container.NewHBox(
+	playbackButtons := container.NewHBox(
 		prevBtn,
 		p.playPauseBtn,
 		nextBtn,
+		speedSelect,
 		p.loopCheck,
 		p.cropGuidesCheck,
-		speedSelect,
+	)
+
+	playbackControls := container.NewVBox(
+		container.NewCenter(playbackButtons),
 		p.frameLabel,
 	)
 
