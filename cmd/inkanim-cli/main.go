@@ -9,6 +9,7 @@ import (
 
 	"inkanim/internal/app"
 	"inkanim/internal/gif"
+	"inkanim/internal/prof"
 	"inkanim/internal/svg"
 )
 
@@ -31,8 +32,18 @@ func main() {
 	colors := flag.Int("colors", 256, "Max palette colors (2-256)")
 	dither := flag.Bool("dither", false, "Apply Floyd-Steinberg dithering")
 	checkTwitch := flag.Bool("check-twitch", true, "Validate output against Twitch animated emote specifications")
+	cpuprofile := flag.String("cpuprofile", "", "Write cpu profile to file")
+	memprofile := flag.String("memprofile", "", "Write memory profile to file")
+	pprofAddr := flag.String("pprof", "", "Serve live pprof HTTP endpoint at address (e.g. :6060)")
 
 	flag.Parse()
+
+	cleanup, err := prof.SetupProfiler(*cpuprofile, *memprofile, *pprofAddr)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Profiler error: %v\n", err)
+	} else if cleanup != nil {
+		defer cleanup()
+	}
 
 	if *showVersion {
 		fmt.Printf("inkanim-cli version %s (commit %s, built %s)\n", version, commit, date)

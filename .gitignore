@@ -9,3 +9,4 @@ build/
 fyne-cross/
 wasm/
 *.wasm
+*.pprof
