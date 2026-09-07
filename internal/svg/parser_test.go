@@ -2,6 +2,7 @@ package svg
 
 import (
 	"bytes"
+	"math"
 	"os"
 	"strings"
 	"testing"
@@ -460,20 +461,22 @@ func TestHydrateDrawingStrokeWidth(t *testing.T) {
 	}
 
 	// Render through RenderSVGToRGBA with proportional dimensions
-	img, err := RenderSVGToRGBA(fBytes, 436, 512)
+	renderW := int(math.Round(drawingRect.Width * 512.0 / drawingRect.Height))
+	img, err := RenderSVGToRGBA(fBytes, renderW, 512)
 	if err != nil {
 		t.Fatalf("RenderSVGToRGBA failed: %v", err)
 	}
 
 	b := img.Bounds()
-	var bottomRowColored int
+	var bottomRowFill int
 	for x := b.Min.X; x < b.Max.X; x++ {
-		if img.RGBAAt(x, b.Max.Y-1).A > 0 {
-			bottomRowColored++
+		c := img.RGBAAt(x, b.Max.Y-1)
+		if c.B > 200 && c.R < 50 && c.G < 50 {
+			bottomRowFill++
 		}
 	}
-	if bottomRowColored > 0 {
-		t.Errorf("expected 0 colored pixels on bottom row (no clipping), got %d", bottomRowColored)
+	if bottomRowFill > 0 {
+		t.Errorf("expected 0 fill pixels on bottom row (stroke encompasses fill without clipping), got %d", bottomRowFill)
 	}
 
 	var topRowColored int

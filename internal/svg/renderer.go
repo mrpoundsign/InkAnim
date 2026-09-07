@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"image"
+	"math"
 
 	"github.com/srwiley/oksvg"
 	"github.com/srwiley/rasterx"
@@ -50,6 +51,13 @@ func RenderSVGToRGBA(svgData []byte, targetW, targetH int) (*image.RGBA, error) 
 			D: scaleH,
 			E: -icon.ViewBox.X * scaleW,
 			F: -icon.ViewBox.Y * scaleH,
+		}
+
+		// oksvg draws strokes using raw LineWidth in user units without scaling by the viewBox-to-canvas
+		// transformation matrix. Scale each path's LineWidth proportionally so strokes scale with image resolution.
+		scaleFactor := math.Sqrt(scaleW * scaleH)
+		for i := range icon.SVGPaths {
+			icon.SVGPaths[i].LineWidth *= scaleFactor
 		}
 	}
 
