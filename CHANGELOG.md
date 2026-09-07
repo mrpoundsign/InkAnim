@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.6-pre1] - 2026-09-07
+
+### Added
+- **Reusable NumericCommitInput Component**: Created a numeric-only input component with bounds checking and commit via an "OK" button or Enter key ([#33](https://github.com/mrpoundsign/InkAnim/issues/33)).
+- **Custom Palette Color Limit**: Added a "Custom" option to the palette dropdown supporting any color count between 2 and 256.
+
+### Changed
+- **Clean Export & Speed Preset Visibility**: Resolution, Dimensions, and Global Speed text inputs are hidden by default and only revealed when choosing "Custom", preventing UI clutter and partial-keystroke re-calculations ([#33](https://github.com/mrpoundsign/InkAnim/issues/33)).
+- **Updated Landing Page Copy & Simplified Downloads**: Clarified animation capabilities, added Discord emote support, and consolidated desktop downloads to direct GitHub Releases links.
+
+### Fixed
+- **WebAssembly Text Entry Deadlock**: Intercepted canvas blur event when Fyne focuses hidden `#dummyEntry` element, preventing upstream `glfw-js` focus lost callback from deadlocking the WebAssembly runtime ([#33](https://github.com/mrpoundsign/InkAnim/issues/33)).
+
+---
+
 ## [0.1.5] - 2026-09-07
 
 ### Added
