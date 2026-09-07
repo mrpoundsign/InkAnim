@@ -295,7 +295,7 @@ func TestSessionCropBoundaryModes(t *testing.T) {
 	if err := sessBounce.LoadSVG(bouncePath); err != nil {
 		t.Fatalf("LoadSVG bouncing_walker failed: %v", err)
 	}
-	// Default mode for bouncing_walker (7 layers, 2 pages) is ModeLayers, CropBoundaryMode is Drawing
+	// Default mode for bouncing_walker is ModeLayers, CropBoundaryMode is BoundaryDrawing (unclipped, width >= 350)
 	bDrawW, _ := sessBounce.GetActiveBoundaryDimensions()
 	if bDrawW < 350 {
 		t.Errorf("expected drawing width >= 350 in bouncing_walker, got %f", bDrawW)
@@ -320,5 +320,35 @@ func TestSessionCropBoundaryModes(t *testing.T) {
 	}
 }
 
+func TestHydrateSessionLoadAndPreviewBounds(t *testing.T) {
+	hydratePath, err := filepath.Abs("../../testdata/hydrate.svg")
+	if err != nil {
+		t.Fatalf("failed to resolve hydrate.svg path: %v", err)
+	}
 
+	sess := NewSession()
+	if err := sess.LoadSVG(hydratePath); err != nil {
+		t.Fatalf("LoadSVG hydrate.svg failed: %v", err)
+	}
 
+	// 1. Initial load for layered SVG is in Drawing mode
+	if sess.CropBoundaryMode != svg.BoundaryDrawing {
+		t.Errorf("expected BoundaryDrawing on load, got %s", sess.CropBoundaryMode)
+	}
+
+	// 2. Active boundary in Drawing mode includes 15px stroke width (maxY >= 270.0)
+	drawingBound := sess.GetActiveBoundaryRect(0)
+	maxY := drawingBound.Y + drawingBound.Height
+	if maxY < 270.0 {
+		t.Errorf("expected drawing maxY to reach >= 270.0 including stroke, got %f", maxY)
+	}
+
+	// 3. In Page mode with Document (index 0), active boundary is Document (210x297)
+	if err := sess.SetCropBoundary(svg.BoundaryPage, 0); err != nil {
+		t.Fatalf("SetCropBoundary Page Document failed: %v", err)
+	}
+	activeRect := sess.GetActiveBoundaryRect(0)
+	if activeRect.Width != 210 || activeRect.Height != 297 {
+		t.Errorf("expected 210x297 active boundary rect in Document mode, got %+v", activeRect)
+	}
+}

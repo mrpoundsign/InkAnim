@@ -139,6 +139,11 @@ func (mw *MainWindow) ShowAndRun() {
 	mw.window.ShowAndRun()
 }
 
+// OpenFile loads and displays an SVG file from the specified file path.
+func (mw *MainWindow) OpenFile(path string) {
+	mw.loadFilePath(path)
+}
+
 func (mw *MainWindow) loadFilePath(path string) {
 	data, err := os.ReadFile(path)
 	if err != nil {

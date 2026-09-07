@@ -36,6 +36,23 @@ func RenderSVGToRGBA(svgData []byte, targetW, targetH int) (*image.RGBA, error) 
 
 	icon.SetTarget(0, 0, w, h)
 
+	// Fix upstream oksvg bug: icon.SetTarget translates by (x-ViewBox.X, y-ViewBox.Y) BEFORE
+	// scaling, but rasterx matrix multiplication applies translation without scaling it.
+	// This results in x' = x*scale + (targetX - ViewBox.X) instead of (x - ViewBox.X)*scale + targetX.
+	// For any SVG with non-zero ViewBox.X or ViewBox.Y (e.g. Drawing boundary or multi-page offsets),
+	// this caused an unintended shift of ViewBox * (scale - 1), shoving the drawing down/right
+	// and clipping shapes against the bottom/right canvas edges.
+	if icon.ViewBox.W > 0 && icon.ViewBox.H > 0 {
+		scaleW := w / icon.ViewBox.W
+		scaleH := h / icon.ViewBox.H
+		icon.Transform = rasterx.Matrix2D{
+			A: scaleW,
+			D: scaleH,
+			E: -icon.ViewBox.X * scaleW,
+			F: -icon.ViewBox.Y * scaleH,
+		}
+	}
+
 	widthInt := int(w)
 	heightInt := int(h)
 

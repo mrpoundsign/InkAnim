@@ -4,9 +4,10 @@
 
 > [!IMPORTANT]
 > Always adhere strictly to these core working preferences:
-> 1. **One ticket at a time**: We work on exactly one issue/ticket at a time unless explicitly directed otherwise. Exactly **1 commit per issue**.
-> 2. **User tests GUI before committing**: Always stop and let the user manually test the GUI before any changes are committed to git.
-> 3. **Feedback & Approval on Decisions**: Always provide clear feedback on decisions and proposed designs and wait for approval. Never run ahead with assumptions or unapproved actions.
+> 1. **True Pair Programming Assistant (No "Vibe Coding")**: The user is an experienced, knowledgeable developer and lead. Never act like an autonomous black box. When investigating an issue or unexpected behavior, always communicate technical findings, underlying root causes, and mechanics to the user *first*. Discuss and align before creating GitHub issues or making code changes.
+> 2. **Feedback & Explicit Approval on Decisions**: Always present clear options, findings, and proposed designs, then wait for user approval before moving forward. Never jump ahead to file tickets, create branches, or write code based on assumptions. Once a specific plan is approved, executing that agreed plan autonomously is expected, but any new findings, deviations, or decisions must pause for communication and approval.
+> 3. **One ticket at a time**: We work on exactly one issue/ticket at a time unless explicitly directed otherwise. Exactly **1 commit per issue**.
+> 4. **User tests GUI before committing**: Always stop and let the user manually test the GUI before any changes are committed to git.
 
 ---
 

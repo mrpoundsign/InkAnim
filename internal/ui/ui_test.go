@@ -135,6 +135,7 @@ func TestCheckFrameDifferences(t *testing.T) {
 	}
 
 	mw.loadFilePath(testSVGPath)
+	mw.centerPanel.Pause()
 	frames := mw.session.RenderedFrames
 	if len(frames) != 3 {
 		t.Fatalf("expected 3 frames, got %d", len(frames))

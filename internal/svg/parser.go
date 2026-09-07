@@ -150,6 +150,14 @@ func ComputeDrawingRect(data []byte) Rect {
 	var found bool
 
 	for _, p := range icon.SVGPaths {
+		strokeMargin := 0.0
+		if p.LineWidth > 0 {
+			strokeMargin = p.LineWidth / 2.0
+			if (p.LineJoin == rasterx.Miter || p.LineJoin == rasterx.MiterClip) && p.MiterLimit > 1.0 {
+				strokeMargin = p.LineWidth * (p.MiterLimit / 2.0)
+			}
+		}
+
 		for i := 0; i < len(p.Path); {
 			cmd := rasterx.PathCommand(p.Path[i])
 			i++
@@ -170,17 +178,17 @@ func ComputeDrawingRect(data []byte) Rect {
 				x := float64(p.Path[i]) / 64.0
 				y := float64(p.Path[i+1]) / 64.0
 				i += 2
-				if x < minX {
-					minX = x
+				if x-strokeMargin < minX {
+					minX = x - strokeMargin
 				}
-				if x > maxX {
-					maxX = x
+				if x+strokeMargin > maxX {
+					maxX = x + strokeMargin
 				}
-				if y < minY {
-					minY = y
+				if y-strokeMargin < minY {
+					minY = y - strokeMargin
 				}
-				if y > maxY {
-					maxY = y
+				if y+strokeMargin > maxY {
+					maxY = y + strokeMargin
 				}
 				found = true
 			}

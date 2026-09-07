@@ -1,9 +1,12 @@
 package svg
 
 import (
+	"bytes"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/srwiley/oksvg"
 )
 
 const sampleInkscapeSVG = `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
@@ -411,16 +414,75 @@ func TestBouncingWalkerSVGLoadAndCrop(t *testing.T) {
 		t.Errorf("expected 160x160 cropped image, got %dx%d", imgF3.Bounds().Dx(), imgF3.Bounds().Dy())
 	}
 
-	// Test Drawing Rect (unclipped bounding box encompassing ground line from -50 to 306)
+	// Test Drawing Rect (unclipped bounding box encompassing ground line from -50 to 306, plus 3px stroke margin)
 	drawingRect := doc.GetDrawingRect()
-	if drawingRect.X > -49 || drawingRect.X < -51 {
-		t.Errorf("expected drawing min X around -50, got %f", drawingRect.X)
+	if drawingRect.X > -50 || drawingRect.X < -53 {
+		t.Errorf("expected drawing min X around -51.5 (including stroke), got %f", drawingRect.X)
 	}
 	if drawingRect.Width < 350 {
 		t.Errorf("expected drawing width >= 350, got %f", drawingRect.Width)
 	}
 }
 
+func TestHydrateDrawingStrokeWidth(t *testing.T) {
+	data, err := os.ReadFile("../../testdata/hydrate.svg")
+	if err != nil {
+		t.Fatalf("failed to read hydrate.svg: %v", err)
+	}
 
+	doc, err := ParseSVG(data)
+	if err != nil {
+		t.Fatalf("failed to parse hydrate.svg: %v", err)
+	}
 
+	icon, err := oksvg.ReadIconStream(bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("ReadIconStream error: %v", err)
+	}
+	t.Logf("oksvg icon.ViewBox: %+v", icon.ViewBox)
+	t.Logf("oksvg icon.Transform: %+v", icon.Transform)
 
+	// DrawingRect should encompass the 15px stroke (7.5px margin on each side)
+	drawingRect := doc.GetDrawingRect()
+	// Node max Y is ~263.1, so with 7.5px stroke margin, max Y should reach >= 270.0
+	maxY := drawingRect.Y + drawingRect.Height
+	if maxY < 270.0 {
+		t.Errorf("expected drawing maxY to reach at least 270.0 to encompass 15px stroke, got %f", maxY)
+	}
+	// Node min Y is ~23.4, so with 7.5px stroke margin, min Y should reach <= 16.0
+	if drawingRect.Y > 16.0 {
+		t.Errorf("expected drawing minY <= 16.0 to encompass 15px stroke, got %f", drawingRect.Y)
+	}
+
+	fBytes, err := BuildLayerFrameSVG(doc, "g6", nil, drawingRect)
+	if err != nil {
+		t.Fatalf("BuildLayerFrameSVG failed: %v", err)
+	}
+
+	// Render through RenderSVGToRGBA with proportional dimensions
+	img, err := RenderSVGToRGBA(fBytes, 436, 512)
+	if err != nil {
+		t.Fatalf("RenderSVGToRGBA failed: %v", err)
+	}
+
+	b := img.Bounds()
+	var bottomRowColored int
+	for x := b.Min.X; x < b.Max.X; x++ {
+		if img.RGBAAt(x, b.Max.Y-1).A > 0 {
+			bottomRowColored++
+		}
+	}
+	if bottomRowColored > 0 {
+		t.Errorf("expected 0 colored pixels on bottom row (no clipping), got %d", bottomRowColored)
+	}
+
+	var topRowColored int
+	for x := b.Min.X; x < b.Max.X; x++ {
+		if img.RGBAAt(x, b.Min.Y).A > 0 {
+			topRowColored++
+		}
+	}
+	if topRowColored > 0 {
+		t.Errorf("expected 0 colored pixels on top row (no clipping), got %d", topRowColored)
+	}
+}

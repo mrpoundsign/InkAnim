@@ -8,9 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **CLI File Argument Loading**: Support passing an SVG file path as the first CLI argument (e.g. `inkanim.exe ./testdata/hydrate.svg`) to automatically open on launch.
 - **GitHub Pages WebAssembly Demo & Landing Page**: Deployed an in-browser WebAssembly studio demo (`/demo`) and project landing page (`/`) via GitHub Actions artifact deployment. Includes live Twitch chat scale previews, desktop download links, CLI snippet, and pre-loaded sample animations ([#16](https://github.com/mrpoundsign/InkAnim/issues/16)).
 - **WebAssembly Build & Dev Server Tooling**: Added `wasm` and `serve` targets to `build.sh` and `build.ps1`, and created `cmd/wasm-serve` to serve the web application locally on `http://localhost:8080` with proper `application/wasm` MIME types ([#16](https://github.com/mrpoundsign/InkAnim/issues/16)).
 - **Programmatic Sample SVG Loader**: Added `window.inkanimLoadBytes` bridge in WebAssembly platform driver to enable 1-click sample animation loading in web browsers ([#16](https://github.com/mrpoundsign/InkAnim/issues/16)).
+
+### Fixed
+- **ViewBox Offset Translation in Rasterization**: Fixed upstream `oksvg` matrix multiplication bug where `icon.SetTarget` applied unscaled viewBox translation offsets, causing SVGs with non-zero viewBox origins (Drawing bounds and multi-page layouts) to drift down/right and clip against canvas edges.
+- **Stroke-Width in Drawing Crop Boundary**: Factored `stroke-width` (`LineWidth / 2` + join/miter allowance) into `ComputeDrawingRect` so outer strokes on all four edges are completely preserved without flat clipping in Drawing mode ([#17](https://github.com/mrpoundsign/InkAnim/issues/17)).
+
+---
 
 ## [0.1.3] - 2026-09-06
 

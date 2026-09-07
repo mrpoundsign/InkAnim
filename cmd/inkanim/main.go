@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+
 	"fyne.io/fyne/v2/app"
 
 	"inkanim/assets"
@@ -13,5 +15,10 @@ func main() {
 	myApp.Settings().SetTheme(&ui.StudioTheme{})
 
 	win := ui.NewMainWindow(myApp)
+
+	if len(os.Args) > 1 && os.Args[1] != "" {
+		win.OpenFile(os.Args[1])
+	}
+
 	win.ShowAndRun()
 }

@@ -132,6 +132,10 @@ function Run-Lint {
     if (-not $linter) {
         Write-Error "golangci-lint-v2 not found in PATH or ~/go/bin."
     }
+    if ($ZigExe) {
+        $env:CGO_ENABLED = "1"
+        $env:CC = "zig cc"
+    }
     & $linter run ./...
     if ($LASTEXITCODE -eq 0) {
         Write-Host "[OK] Lint passed!" -ForegroundColor Green
