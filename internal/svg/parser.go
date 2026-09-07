@@ -17,12 +17,18 @@ import (
 
 // ParseSVG parses an Inkscape SVG document from raw bytes.
 func ParseSVG(data []byte) (*SVGDocument, error) {
+	// Preprocess SVG: apply in-memory fillet_chamfer LPEs and desugar paint-order
+	processedData, err := PreprocessSVG(data)
+	if err != nil {
+		processedData = data
+	}
+
 	doc := &SVGDocument{
-		RawContent:  data,
+		RawContent:  processedData,
 		DefaultMode: ModeLayers,
 	}
 
-	decoder := xml.NewDecoder(bytes.NewReader(data))
+	decoder := xml.NewDecoder(bytes.NewReader(processedData))
 	var inSVGTag bool
 	var layerIdx, pageIdx int
 
@@ -134,7 +140,7 @@ func ParseSVG(data []byte) (*SVGDocument, error) {
 		doc.DefaultMode = ModeLayers
 	}
 
-	doc.DrawingRect = ComputeDrawingRect(data)
+	doc.DrawingRect = ComputeDrawingRect(processedData)
 
 	return doc, nil
 }
