@@ -1,8 +1,11 @@
 package gif
 
 import (
+	"bytes"
 	"image"
 	"image/color"
+	"image/gif"
+	"io"
 	"testing"
 )
 
@@ -90,6 +93,40 @@ func TestEncodeAnimatedGIF(t *testing.T) {
 	}
 }
 
+func TestWriteGIFToWriter(t *testing.T) {
+	frames := make([]FrameInput, 2)
+	for i := range 2 {
+		img := image.NewRGBA(image.Rect(0, 0, 32, 32))
+		frames[i] = FrameInput{
+			Index:      i,
+			Label:      "Frame",
+			Image:      img,
+			DurationMs: 100,
+		}
+	}
+
+	opts := DefaultOptions()
+	var buf bytes.Buffer
+	n, err := WriteGIFToWriter(&buf, frames, opts)
+	if err != nil {
+		t.Fatalf("WriteGIFToWriter failed: %v", err)
+	}
+	if n != int64(buf.Len()) {
+		t.Errorf("expected %d bytes, got %d", buf.Len(), n)
+	}
+	if n == 0 {
+		t.Errorf("expected non-zero bytes written")
+	}
+
+	decoded, err := gif.DecodeAll(&buf)
+	if err != nil {
+		t.Fatalf("failed to decode generated GIF: %v", err)
+	}
+	if len(decoded.Image) != 2 {
+		t.Errorf("expected 2 frames, got %d", len(decoded.Image))
+	}
+}
+
 func TestValidateTwitchEmote(t *testing.T) {
 	// Valid square emote
 	res := ValidateTwitchEmote(10, 1000, 112, 112, 200000)
@@ -144,6 +181,45 @@ func BenchmarkEncodeAnimatedGIF(b *testing.B) {
 		anim, err := EncodeAnimatedGIF(frames, opts)
 		if err != nil || anim == nil {
 			b.Fatalf("EncodeAnimatedGIF failed: %v", err)
+		}
+	}
+}
+
+func BenchmarkWriteGIFToWriter(b *testing.B) {
+	const numFrames = 12
+	frames := make([]FrameInput, numFrames)
+	for i := range numFrames {
+		img := image.NewRGBA(image.Rect(0, 0, 128, 128))
+		for y := range 128 {
+			for x := range 128 {
+				img.Set(x, y, color.RGBA{
+					R: uint8((x + i*10) % 256),
+					G: uint8((y + i*15) % 256),
+					B: uint8((x + y) % 256),
+					A: 255,
+				})
+			}
+		}
+		frames[i] = FrameInput{
+			Index:      i,
+			Label:      "frame",
+			Image:      img,
+			DurationMs: 100,
+		}
+	}
+
+	opts := ExportOptions{
+		NumColors:         256,
+		Dither:            true,
+		DefaultDurationMs: 100,
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		n, err := WriteGIFToWriter(io.Discard, frames, opts)
+		if err != nil || n <= 0 {
+			b.Fatalf("WriteGIFToWriter failed: %v", err)
 		}
 	}
 }

@@ -1,7 +1,6 @@
 package gif
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"image"
@@ -90,6 +89,17 @@ func EncodeAnimatedGIF(frames []FrameInput, opts ExportOptions) (*gif.GIF, error
 	return animGIF, nil
 }
 
+type countingWriter struct {
+	w io.Writer
+	n int64
+}
+
+func (c *countingWriter) Write(p []byte) (int, error) {
+	n, err := c.w.Write(p)
+	c.n += int64(n)
+	return n, err
+}
+
 // WriteGIFToWriter encodes the animation directly to an io.Writer.
 func WriteGIFToWriter(w io.Writer, frames []FrameInput, opts ExportOptions) (int64, error) {
 	anim, err := EncodeAnimatedGIF(frames, opts)
@@ -97,14 +107,12 @@ func WriteGIFToWriter(w io.Writer, frames []FrameInput, opts ExportOptions) (int
 		return 0, err
 	}
 
-	var buf bytes.Buffer
-	mw := io.MultiWriter(w, &buf)
-
-	if err := gif.EncodeAll(mw, anim); err != nil {
+	cw := &countingWriter{w: w}
+	if err := gif.EncodeAll(cw, anim); err != nil {
 		return 0, fmt.Errorf("failed to encode gif stream: %w", err)
 	}
 
-	return int64(buf.Len()), nil
+	return cw.n, nil
 }
 
 // WriteGIFToFile encodes the animation directly to a destination file path.
