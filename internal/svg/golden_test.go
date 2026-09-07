@@ -212,10 +212,12 @@ func TestGolden_AlertIcon(t *testing.T) {
 	}
 
 	// Alert Icon includes text glyphs from Segoe UI and LPE curves.
-	// Cairo/Inkscape vs rasterx produces minor curve rasterization differences.
+	// Cairo/Inkscape vs rasterx produces minor curve rasterization differences (2.18% on Windows).
+	// On Linux/non-Windows platforms, Segoe UI falls back to system Noto Sans / DejaVu Sans,
+	// producing ~2.99% font contour variance. Allow 3.5% cross-platform.
 	opts := GoldenCompareOptions{
 		PerPixelTolerance:  25,
-		MaxMismatchPercent: 2.5,
+		MaxMismatchPercent: 3.5,
 	}
 	AssertImageMatchesGolden(t, img, "../../testdata/Alert Icon-golden.png", opts)
 }
