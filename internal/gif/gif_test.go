@@ -147,7 +147,123 @@ func TestValidateTwitchEmote(t *testing.T) {
 	}
 }
 
-func BenchmarkEncodeAnimatedGIF(b *testing.B) {
+func BenchmarkGeneratePalette(b *testing.B) {
+	const numFrames = 6
+	frames := make([]*image.RGBA, numFrames)
+	for i := range numFrames {
+		img := image.NewRGBA(image.Rect(0, 0, 256, 256))
+		for y := range 256 {
+			for x := range 256 {
+				img.Set(x, y, color.RGBA{
+					R: uint8((x + i*10) % 256),
+					G: uint8((y + i*15) % 256),
+					B: uint8((x + y) % 256),
+					A: 255,
+				})
+			}
+		}
+		frames[i] = img
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		pal := GeneratePalette(frames, 256, 128)
+		if len(pal) == 0 {
+			b.Fatal("empty palette")
+		}
+	}
+}
+
+func BenchmarkQuantizeFrame_NoDither(b *testing.B) {
+	img := image.NewRGBA(image.Rect(0, 0, 256, 256))
+	for y := range 256 {
+		for x := range 256 {
+			// Emulate artwork with repeating color regions (4x4 blocks of color)
+			img.Set(x, y, color.RGBA{
+				R: uint8(((x / 16) * 32) % 256),
+				G: uint8(((y / 16) * 32) % 256),
+				B: uint8((x + y) % 256),
+				A: 255,
+			})
+		}
+	}
+	pal := GeneratePalette([]*image.RGBA{img}, 256, 128)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		paletted := QuantizeFrame(img, pal, 128, false)
+		if paletted == nil {
+			b.Fatal("nil paletted")
+		}
+	}
+}
+
+func BenchmarkQuantizeFrame_Dither(b *testing.B) {
+	img := image.NewRGBA(image.Rect(0, 0, 256, 256))
+	for y := range 256 {
+		for x := range 256 {
+			img.Set(x, y, color.RGBA{
+				R: uint8(((x / 16) * 32) % 256),
+				G: uint8(((y / 16) * 32) % 256),
+				B: uint8((x + y) % 256),
+				A: 255,
+			})
+		}
+	}
+	pal := GeneratePalette([]*image.RGBA{img}, 256, 128)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		paletted := QuantizeFrame(img, pal, 128, true)
+		if paletted == nil {
+			b.Fatal("nil paletted")
+		}
+	}
+}
+
+func BenchmarkEncodeAnimatedGIF_NoDither(b *testing.B) {
+	const numFrames = 12
+	frames := make([]FrameInput, numFrames)
+	for i := range numFrames {
+		img := image.NewRGBA(image.Rect(0, 0, 128, 128))
+		for y := range 128 {
+			for x := range 128 {
+				img.Set(x, y, color.RGBA{
+					R: uint8((x + i*10) % 256),
+					G: uint8((y + i*15) % 256),
+					B: uint8((x + y) % 256),
+					A: 255,
+				})
+			}
+		}
+		frames[i] = FrameInput{
+			Index:      i,
+			Label:      "frame",
+			Image:      img,
+			DurationMs: 100,
+		}
+	}
+
+	opts := ExportOptions{
+		NumColors:         256,
+		Dither:            false,
+		DefaultDurationMs: 100,
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		anim, err := EncodeAnimatedGIF(frames, opts)
+		if err != nil || anim == nil {
+			b.Fatalf("EncodeAnimatedGIF failed: %v", err)
+		}
+	}
+}
+
+func BenchmarkEncodeAnimatedGIF_Dither(b *testing.B) {
 	const numFrames = 12
 	frames := make([]FrameInput, numFrames)
 	for i := range numFrames {
@@ -177,6 +293,7 @@ func BenchmarkEncodeAnimatedGIF(b *testing.B) {
 	}
 
 	b.ResetTimer()
+	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		anim, err := EncodeAnimatedGIF(frames, opts)
 		if err != nil || anim == nil {

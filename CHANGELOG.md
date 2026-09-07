@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **WebAssembly Text Entry Deadlock**: Intercepted canvas blur event when Fyne focuses hidden `#dummyEntry` element, preventing upstream `glfw-js` focus lost callback from deadlocking the WebAssembly runtime ([#33](https://github.com/mrpoundsign/InkAnim/issues/33)).
 
 ### Performance & Tooling
+- **Optimized GIF Color Quantization & Hot Path Lookups**: Overhauled color quantization and palette generation in `internal/gif/quantizer.go` with flat pre-unpacked palette entries, scaled integer squared Euclidean distance math, a 4096-entry direct-mapped L1 CPU color cache (32 KB), Go `slices.SortFunc` (pdqsort), and direct linear byte slice scanning (`Pix`). ([#26](https://github.com/mrpoundsign/InkAnim/issues/26))
+  - `QuantizeFrame (No Dither)`: **134.6 ms -> 8.63 ms** (**15.6x faster**, -93.6% latency).
+  - `GeneratePalette`: **47.2 ms -> 38.4 ms** (**1.23x faster**, -18.6% latency).
+  - `EncodeAnimatedGIF (No Dither)`: **245.7 ms -> 195.4 ms** (**1.26x faster**, -20.4% latency).
 - **Eliminated Redundant In-Memory GIF Buffering**: Replaced `bytes.Buffer` and `io.MultiWriter` with a zero-allocation `countingWriter` in `WriteGIFToWriter`, eliminating duplicated in-memory payload buffering during GIF export ([#28](https://github.com/mrpoundsign/InkAnim/issues/28)).
 - **Performance Linters & Go Modernization**: Enabled `prealloc`, `perfsprint`, `gocritic`, and `makezero` in `golangci-lint-v2`. Modernized codebase with Go sequence iterators (`strings.SplitSeq`), integer range loops (`for range n`), built-in `min`/`max`, preallocated slice capacities, and optimized string/error formatting ([#29](https://github.com/mrpoundsign/InkAnim/issues/29)).
 

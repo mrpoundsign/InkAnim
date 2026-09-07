@@ -1,15 +1,27 @@
 package gif
 
 import (
+	"cmp"
 	"image"
 	"image/color"
 	"image/draw"
 	"math"
+	"slices"
 )
 
-// RGBAColorKey represents an RGB triplet for palette generation.
+// rgbKey represents an RGB triplet for palette generation.
 type rgbKey struct {
 	r, g, b uint8
+}
+
+type paletteEntry struct {
+	r, g, b int32
+	idx     uint8
+}
+
+type colorCacheEntry struct {
+	tag uint32
+	idx uint8
 }
 
 // GeneratePalette creates an optimized color.Palette with up to maxColors entries.
@@ -25,19 +37,27 @@ func GeneratePalette(frames []*image.RGBA, maxColors int, alphaThreshold uint8) 
 	// Always reserve index 0 for transparency
 	palette := color.Palette{color.RGBA{R: 0, G: 0, B: 0, A: 0}}
 
-	// Collect color frequencies from visible pixels
+	// Collect color frequencies from visible pixels using direct byte slice scanning
 	colorCounts := make(map[rgbKey]int)
 	for _, frame := range frames {
 		bounds := frame.Bounds()
-		for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
-			for x := bounds.Min.X; x < bounds.Max.X; x++ {
-				c := frame.RGBAAt(x, y)
-				if c.A >= alphaThreshold {
+		w := bounds.Dx()
+		h := bounds.Dy()
+		minX := bounds.Min.X - frame.Rect.Min.X
+		minY := bounds.Min.Y - frame.Rect.Min.Y
+
+		for y := range h {
+			rowStart := (minY+y)*frame.Stride + minX*4
+			rowEnd := rowStart + w*4
+			row := frame.Pix[rowStart:rowEnd]
+
+			for x := 0; x < len(row); x += 4 {
+				if row[x+3] >= alphaThreshold {
 					// Quantize slightly to 5-bit per channel to cluster close colors
 					key := rgbKey{
-						r: c.R & 0xF8,
-						g: c.G & 0xF8,
-						b: c.B & 0xF8,
+						r: row[x] & 0xF8,
+						g: row[x+1] & 0xF8,
+						b: row[x+2] & 0xF8,
 					}
 					colorCounts[key]++
 				}
@@ -60,17 +80,11 @@ func GeneratePalette(frames []*image.RGBA, maxColors int, alphaThreshold uint8) 
 		for k, count := range colorCounts {
 			list = append(list, colorFreq{key: k, count: count})
 		}
-		// Sort by frequency descending
-		for i := 0; i < len(list)-1; i++ {
-			for j := i + 1; j < len(list); j++ {
-				if list[j].count > list[i].count {
-					list[i], list[j] = list[j], list[i]
-				}
-			}
-			if i >= availableSlots {
-				break
-			}
-		}
+
+		// Sort by frequency descending using pdqsort (O(N log N))
+		slices.SortFunc(list, func(a, b colorFreq) int {
+			return cmp.Compare(b.count, a.count)
+		})
 
 		for i := 0; i < availableSlots && i < len(list); i++ {
 			k := list[i].key
@@ -86,65 +100,112 @@ func GeneratePalette(frames []*image.RGBA, maxColors int, alphaThreshold uint8) 
 	return palette
 }
 
+func unpackPalette(palette color.Palette) []paletteEntry {
+	if len(palette) <= 1 {
+		return nil
+	}
+	entries := make([]paletteEntry, 0, len(palette)-1)
+	for i := 1; i < len(palette); i++ {
+		if c, ok := palette[i].(color.RGBA); ok {
+			entries = append(entries, paletteEntry{r: int32(c.R), g: int32(c.G), b: int32(c.B), idx: uint8(i)})
+		} else {
+			r, g, b, _ := palette[i].RGBA()
+			entries = append(entries, paletteEntry{r: int32(r >> 8), g: int32(g >> 8), b: int32(b >> 8), idx: uint8(i)})
+		}
+	}
+	return entries
+}
+
 // QuantizeFrame converts an image.RGBA to image.Paletted using the given palette and alpha threshold.
 func QuantizeFrame(src *image.RGBA, palette color.Palette, alphaThreshold uint8, dither bool) *image.Paletted {
 	bounds := src.Bounds()
 	paletted := image.NewPaletted(bounds, palette)
 
+	w := bounds.Dx()
+	h := bounds.Dy()
+	srcMinX := bounds.Min.X - src.Rect.Min.X
+	srcMinY := bounds.Min.Y - src.Rect.Min.Y
+	dstMinX := bounds.Min.X - paletted.Rect.Min.X
+	dstMinY := bounds.Min.Y - paletted.Rect.Min.Y
+
 	if dither {
 		draw.FloydSteinberg.Draw(paletted, bounds, src, bounds.Min)
-		// Post-process to re-enforce transparency
-		for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
-			for x := bounds.Min.X; x < bounds.Max.X; x++ {
-				origA := src.RGBAAt(x, y).A
-				if origA < alphaThreshold {
-					paletted.SetColorIndex(x, y, 0)
+		// Post-process to re-enforce transparency using direct slice indexing
+		for y := range h {
+			srcRow := src.Pix[(srcMinY+y)*src.Stride+srcMinX*4 : (srcMinY+y)*src.Stride+(srcMinX+w)*4]
+			dstRow := paletted.Pix[(dstMinY+y)*paletted.Stride+dstMinX : (dstMinY+y)*paletted.Stride+dstMinX+w]
+			for x := range w {
+				if srcRow[x*4+3] < alphaThreshold {
+					dstRow[x] = 0
 				}
 			}
 		}
-	} else {
-		for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
-			for x := bounds.Min.X; x < bounds.Max.X; x++ {
-				c := src.RGBAAt(x, y)
-				if c.A < alphaThreshold {
-					paletted.SetColorIndex(x, y, 0) // transparent index
-				} else {
-					bestIdx := findClosestPaletteIndex(c, palette)
-					paletted.SetColorIndex(x, y, uint8(bestIdx))
+		return paletted
+	}
+
+	entries := unpackPalette(palette)
+	if len(entries) == 0 {
+		return paletted
+	}
+
+	singleColor := len(entries) == 1
+	singleIdx := entries[0].idx
+
+	// 4096-entry direct-mapped color cache (32 KB, fits entirely in CPU L1 data cache)
+	var cache [4096]colorCacheEntry
+
+	for y := range h {
+		srcRow := src.Pix[(srcMinY+y)*src.Stride+srcMinX*4 : (srcMinY+y)*src.Stride+(srcMinX+w)*4]
+		dstRow := paletted.Pix[(dstMinY+y)*paletted.Stride+dstMinX : (dstMinY+y)*paletted.Stride+dstMinX+w]
+
+		for x := range w {
+			p := x * 4
+			if srcRow[p+3] < alphaThreshold {
+				dstRow[x] = 0 // transparent index
+				continue
+			}
+
+			if singleColor {
+				dstRow[x] = singleIdx
+				continue
+			}
+
+			r := srcRow[p]
+			g := srcRow[p+1]
+			b := srcRow[p+2]
+
+			rgb := uint32(r)<<16 | uint32(g)<<8 | uint32(b)
+			tag := rgb | 0x01000000
+			hash := (rgb * 0x9E3779B9) >> 20
+
+			if cache[hash].tag == tag {
+				dstRow[x] = cache[hash].idx
+				continue
+			}
+
+			// Cache miss: search pre-unpacked palette entries with integer squared Euclidean distance
+			r32, g32, b32 := int32(r), int32(g), int32(b)
+			bestIdx := entries[0].idx
+			bestDist := int32(math.MaxInt32)
+
+			for i := range entries {
+				dr := r32 - entries[i].r
+				dg := g32 - entries[i].g
+				db := b32 - entries[i].b
+				dist := dr*dr*299 + dg*dg*587 + db*db*114
+				if dist < bestDist {
+					bestDist = dist
+					bestIdx = entries[i].idx
+					if dist == 0 {
+						break
+					}
 				}
 			}
+
+			cache[hash] = colorCacheEntry{tag: tag, idx: bestIdx}
+			dstRow[x] = bestIdx
 		}
 	}
 
 	return paletted
-}
-
-func findClosestPaletteIndex(c color.RGBA, palette color.Palette) int {
-	bestIdx := 1
-	bestDist := math.MaxFloat64
-
-	r := float64(c.R)
-	g := float64(c.G)
-	b := float64(c.B)
-
-	// Skip index 0 because it's transparent
-	for i := 1; i < len(palette); i++ {
-		pc, ok := palette[i].(color.RGBA)
-		if !ok {
-			r1, g1, b1, _ := palette[i].RGBA()
-			pc = color.RGBA{R: uint8(r1 >> 8), G: uint8(g1 >> 8), B: uint8(b1 >> 8), A: 255}
-		}
-		dr := r - float64(pc.R)
-		dg := g - float64(pc.G)
-		db := b - float64(pc.B)
-
-		// Weighted Euclidean distance (human perception)
-		dist := dr*dr*0.299 + dg*dg*0.587 + db*db*0.114
-		if dist < bestDist {
-			bestDist = dist
-			bestIdx = i
-		}
-	}
-
-	return bestIdx
 }
