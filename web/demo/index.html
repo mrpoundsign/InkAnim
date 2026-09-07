@@ -229,6 +229,25 @@
       return raw ? parseInt(raw[2], 10) : 0;
     }
 
+    // Intercept canvas/window blur to avoid upstream glfw-js deadlock when Fyne focuses #dummyEntry
+    (function() {
+      const origAddEventListener = EventTarget.prototype.addEventListener;
+      EventTarget.prototype.addEventListener = function(type, listener, options) {
+        if (type === "blur") {
+          const guardedListener = function(event) {
+            const dummy = document.getElementById("dummyEntry");
+            if (dummy && (document.activeElement === dummy || (event && event.relatedTarget === dummy))) {
+              // Focus moved to Fyne's hidden input bridge; do not signal window blur to glfw-js
+              return;
+            }
+            return typeof listener === "function" ? listener.call(this, event) : listener.handleEvent(event);
+          };
+          return origAddEventListener.call(this, type, guardedListener, options);
+        }
+        return origAddEventListener.call(this, type, listener, options);
+      };
+    })();
+
     var wasmBuild = true;
     if (window.chrome && getChromeVersion() < 106) {
       wasmBuild = false;

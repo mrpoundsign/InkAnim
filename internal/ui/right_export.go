@@ -19,13 +19,18 @@ type RightExportPanel struct {
 	container     *container.Scroll
 	parentWindow  fyne.Window
 
-	presetSelect  *widget.Select
-	squareCheck   *widget.Check
-	squareSizeEnt *widget.Entry
-	widthEntry    *widget.Entry
-	heightEntry   *widget.Entry
-	colorsSelect  *widget.Select
-	ditherCheck   *widget.Check
+	presetSelect       *widget.Select
+	customResContainer *fyne.Container
+	squareCheck        *widget.Check
+	squareSizeInput    *NumericCommitInput
+	widthInput         *NumericCommitInput
+	heightInput        *NumericCommitInput
+	widthHeightRow     *fyne.Container
+
+	colorsSelect      *widget.Select
+	customColorsInput *NumericCommitInput
+	customColorsRow   *fyne.Container
+	ditherCheck       *widget.Check
 
 	twitchStatusLabel *widget.Label
 	exportBtn         *widget.Button
@@ -52,76 +57,124 @@ func NewRightExportPanel(sess *app.Session, win fyne.Window, onOptionsChange fun
 	// Pre-allocate status label first so callbacks are safe
 	p.twitchStatusLabel = widget.NewLabel("Twitch Status: Ready")
 
-	p.squareCheck = widget.NewCheck("Export Square (Centers on max side)", func(checked bool) {
+	p.squareSizeInput = NewNumericCommitInput(512, 16, 4096, "Resolution (px):", func(val int) {
+		p.session.ExportOptions.SquareSize = val
+		p.validateTwitch()
+	})
+
+	p.widthInput = NewNumericCommitInput(512, 16, 4096, "W:", func(val int) {
+		p.session.ExportOptions.TargetWidth = val
+		p.validateTwitch()
+	})
+
+	p.heightInput = NewNumericCommitInput(512, 16, 4096, "H:", func(val int) {
+		p.session.ExportOptions.TargetHeight = val
+		p.validateTwitch()
+	})
+
+	p.widthHeightRow = container.NewGridWithColumns(2,
+		p.widthInput.Container,
+		p.heightInput.Container,
+	)
+	p.widthHeightRow.Hide()
+
+	p.squareCheck = widget.NewCheck("Force 1:1 Square (Twitch standard)", func(checked bool) {
 		p.session.ExportOptions.ExportSquare = checked
 		if checked {
-			p.squareSizeEnt.Enable()
-			p.widthEntry.Disable()
-			p.heightEntry.Disable()
+			p.squareSizeInput.Show()
+			p.widthHeightRow.Hide()
+			p.session.ExportOptions.SquareSize = p.squareSizeInput.Value
 		} else {
-			p.squareSizeEnt.Disable()
-			p.widthEntry.Enable()
-			p.heightEntry.Enable()
+			p.squareSizeInput.Hide()
+			p.widthHeightRow.Show()
+			p.session.ExportOptions.TargetWidth = p.widthInput.Value
+			p.session.ExportOptions.TargetHeight = p.heightInput.Value
 		}
-		p.syncOptions()
+		p.validateTwitch()
+		if p.onOptionsChange != nil {
+			p.onOptionsChange()
+		}
 	})
 	p.squareCheck.Checked = true
 
-	p.squareSizeEnt = widget.NewEntry()
-	p.squareSizeEnt.SetPlaceHolder("Resolution (e.g. 512, max 4096)")
-	p.squareSizeEnt.SetText("512")
-	p.squareSizeEnt.OnChanged = func(s string) {
-		p.syncOptions()
-	}
-
-	p.widthEntry = widget.NewEntry()
-	p.widthEntry.SetPlaceHolder("Width (px)")
-	p.widthEntry.Disable()
-	p.widthEntry.OnChanged = func(s string) {
-		p.syncOptions()
-	}
-
-	p.heightEntry = widget.NewEntry()
-	p.heightEntry.SetPlaceHolder("Height (px)")
-	p.heightEntry.Disable()
-	p.heightEntry.OnChanged = func(s string) {
-		p.syncOptions()
-	}
+	p.customResContainer = container.NewVBox(
+		p.squareCheck,
+		p.squareSizeInput.Container,
+		p.widthHeightRow,
+	)
+	p.customResContainer.Hide()
 
 	// Preset Dropdown
 	p.presetSelect = widget.NewSelect([]string{
-		"Twitch Emote (Square, Max 4096)",
-		"Discord Emote (128x128)",
+		"Twitch Emote (512x512 Square)",
+		"Discord Emote (128x128 Square)",
 		"Custom Dimensions",
 	}, func(selected string) {
 		switch selected {
-		case "Twitch Emote (Square, Max 4096)":
-			p.squareCheck.SetChecked(true)
-			p.squareSizeEnt.SetText("512")
-			p.squareSizeEnt.Enable()
-			p.widthEntry.Disable()
-			p.heightEntry.Disable()
-		case "Discord Emote (128x128)":
-			p.squareCheck.SetChecked(true)
-			p.squareSizeEnt.SetText("128")
-			p.squareSizeEnt.Disable()
-			p.widthEntry.Disable()
-			p.heightEntry.Disable()
+		case "Twitch Emote (512x512 Square)":
+			p.session.ExportOptions.ExportSquare = true
+			p.session.ExportOptions.SquareSize = 512
+			p.squareCheck.Checked = true
+			p.squareSizeInput.SetValue(512)
+			p.squareSizeInput.Show()
+			p.widthHeightRow.Hide()
+			p.customResContainer.Hide()
+			p.validateTwitch()
+			if p.onOptionsChange != nil {
+				p.onOptionsChange()
+			}
+		case "Discord Emote (128x128 Square)":
+			p.session.ExportOptions.ExportSquare = true
+			p.session.ExportOptions.SquareSize = 128
+			p.squareCheck.Checked = true
+			p.squareSizeInput.SetValue(128)
+			p.squareSizeInput.Show()
+			p.widthHeightRow.Hide()
+			p.customResContainer.Hide()
+			p.validateTwitch()
+			if p.onOptionsChange != nil {
+				p.onOptionsChange()
+			}
 		case "Custom Dimensions":
-			p.squareCheck.SetChecked(false)
-			p.squareSizeEnt.Disable()
-			p.widthEntry.Enable()
-			p.heightEntry.Enable()
+			p.customResContainer.Show()
+			p.session.ExportOptions.ExportSquare = p.squareCheck.Checked
+			if p.squareCheck.Checked {
+				p.squareSizeInput.Show()
+				p.widthHeightRow.Hide()
+				p.session.ExportOptions.SquareSize = p.squareSizeInput.Value
+			} else {
+				p.squareSizeInput.Hide()
+				p.widthHeightRow.Show()
+				p.session.ExportOptions.TargetWidth = p.widthInput.Value
+				p.session.ExportOptions.TargetHeight = p.heightInput.Value
+			}
+			p.validateTwitch()
+			if p.onOptionsChange != nil {
+				p.onOptionsChange()
+			}
 		}
-		p.syncOptions()
 	})
-	p.presetSelect.Selected = "Twitch Emote (Square, Max 4096)"
+	p.presetSelect.Selected = "Twitch Emote (512x512 Square)"
+	p.session.ExportOptions.ExportSquare = true
+	p.session.ExportOptions.SquareSize = 512
 
 	// Colors
-	p.colorsSelect = widget.NewSelect([]string{"256", "128", "64", "32"}, func(s string) {
-		if c, err := strconv.Atoi(s); err == nil {
+	p.customColorsInput = NewNumericCommitInput(256, 2, 256, "Colors (2-256):", func(val int) {
+		p.session.ExportOptions.NumColors = val
+		p.validateTwitch()
+	})
+	p.customColorsRow = container.NewVBox(p.customColorsInput.Container)
+	p.customColorsRow.Hide()
+
+	p.colorsSelect = widget.NewSelect([]string{"256", "128", "64", "32", "Custom"}, func(s string) {
+		if s == "Custom" {
+			p.customColorsRow.Show()
+			p.session.ExportOptions.NumColors = p.customColorsInput.Value
+			p.validateTwitch()
+		} else if c, err := strconv.Atoi(s); err == nil {
+			p.customColorsRow.Hide()
 			p.session.ExportOptions.NumColors = c
-			p.syncOptions()
+			p.validateTwitch()
 		}
 	})
 	p.colorsSelect.Selected = "256"
@@ -137,17 +190,13 @@ func NewRightExportPanel(sess *app.Session, win fyne.Window, onOptionsChange fun
 
 	form := container.NewVBox(
 		header,
-		widget.NewLabel("Preset:"),
+		widget.NewLabel("Export Preset:"),
 		p.presetSelect,
-		widget.NewSeparator(),
-		p.squareCheck,
-		widget.NewLabel("Square Target Size (px):"),
-		p.squareSizeEnt,
-		widget.NewLabel("Custom Dimensions:"),
-		container.NewGridWithColumns(2, p.widthEntry, p.heightEntry),
+		p.customResContainer,
 		widget.NewSeparator(),
 		widget.NewLabel("Max Colors:"),
 		p.colorsSelect,
+		p.customColorsRow,
 		p.ditherCheck,
 		widget.NewSeparator(),
 		p.twitchStatusLabel,
@@ -164,29 +213,6 @@ func (p *RightExportPanel) Container() *container.Scroll {
 }
 
 func (p *RightExportPanel) syncOptions() {
-	if p.squareCheck == nil || p.squareSizeEnt == nil || p.widthEntry == nil || p.heightEntry == nil {
-		return
-	}
-
-	opts := &p.session.ExportOptions
-	opts.ExportSquare = p.squareCheck.Checked
-
-	if sz, err := strconv.Atoi(p.squareSizeEnt.Text); err == nil && sz > 0 {
-		if sz > 4096 {
-			sz = 4096
-		}
-		opts.SquareSize = sz
-	} else {
-		opts.SquareSize = 0
-	}
-
-	if w, err := strconv.Atoi(p.widthEntry.Text); err == nil {
-		opts.TargetWidth = w
-	}
-	if h, err := strconv.Atoi(p.heightEntry.Text); err == nil {
-		opts.TargetHeight = h
-	}
-
 	p.validateTwitch()
 	if p.onOptionsChange != nil {
 		p.onOptionsChange()

@@ -8,6 +8,8 @@ import (
 
 	"fyne.io/fyne/v2/test"
 	"fyne.io/fyne/v2/widget"
+
+	appkg "inkanim/internal/app"
 )
 
 func TestMainWindowInitAndLoad(t *testing.T) {
@@ -357,4 +359,176 @@ func TestPausePlaybackModal(t *testing.T) {
 		t.Errorf("expected animation to remain paused after no-op resume")
 	}
 }
+
+func TestNumericCommitInput(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	appliedVal := 0
+	input := NewNumericCommitInput(100, 16, 4096, "Test:", func(val int) {
+		appliedVal = val
+	})
+
+	if input.Value != 100 {
+		t.Fatalf("expected initial value 100, got %d", input.Value)
+	}
+
+	// 1. Test digit filtering
+	input.Entry.SetText("abc256!#")
+	if input.Entry.Text != "256" {
+		t.Errorf("expected filtered text '256', got %q", input.Entry.Text)
+	}
+
+	// 2. Test button commit
+	test.Tap(input.Button)
+	if appliedVal != 256 || input.Value != 256 {
+		t.Errorf("expected applied value 256, got %d (input.Value=%d)", appliedVal, input.Value)
+	}
+
+	// 3. Test Enter key (OnSubmitted) and min clamping
+	input.Entry.SetText("5")
+	input.Entry.OnSubmitted("5")
+	if appliedVal != 16 || input.Value != 16 {
+		t.Errorf("expected min-clamped value 16, got %d (input.Value=%d)", appliedVal, input.Value)
+	}
+
+	// 4. Test max clamping
+	input.Entry.SetText("99999")
+	input.Entry.OnSubmitted("99999")
+	if appliedVal != 4096 || input.Value != 4096 {
+		t.Errorf("expected max-clamped value 4096, got %d (input.Value=%d)", appliedVal, input.Value)
+	}
+
+	// 5. Test SetValue does not call OnApply
+	appliedVal = -1
+	input.SetValue(512)
+	if input.Value != 512 || input.Entry.Text != "512" {
+		t.Errorf("expected SetValue to update value and text to 512, got %d / %q", input.Value, input.Entry.Text)
+	}
+	if appliedVal != -1 {
+		t.Errorf("expected SetValue not to invoke OnApply callback")
+	}
+
+	// 6. Test Show / Hide
+	input.Hide()
+	if input.Visible() {
+		t.Errorf("expected input to be hidden")
+	}
+	input.Show()
+	if !input.Visible() {
+		t.Errorf("expected input to be visible")
+	}
+}
+
+func TestExportPresetsAndCustomInputs(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	sess := appkg.NewSession()
+	win := app.NewWindow("Test")
+	defer win.Close()
+
+	changedCount := 0
+	panel := NewRightExportPanel(sess, win, func() {
+		changedCount++
+	})
+
+	// Default state: Twitch Emote (512x512)
+	if panel.presetSelect.Selected != "Twitch Emote (512x512 Square)" {
+		t.Errorf("expected default preset 'Twitch Emote (512x512 Square)', got %q", panel.presetSelect.Selected)
+	}
+	if sess.ExportOptions.SquareSize != 512 || !sess.ExportOptions.ExportSquare {
+		t.Errorf("expected ExportSquare=true, SquareSize=512, got %v, %d", sess.ExportOptions.ExportSquare, sess.ExportOptions.SquareSize)
+	}
+	if panel.customResContainer.Visible() {
+		t.Errorf("expected custom resolution container to be hidden by default")
+	}
+
+	// Switch to Discord Emote
+	panel.presetSelect.SetSelected("Discord Emote (128x128 Square)")
+	if sess.ExportOptions.SquareSize != 128 || !sess.ExportOptions.ExportSquare {
+		t.Errorf("expected Discord square size 128, got %d", sess.ExportOptions.SquareSize)
+	}
+	if panel.customResContainer.Visible() {
+		t.Errorf("expected custom resolution container to remain hidden for Discord preset")
+	}
+
+	// Switch to Custom Dimensions
+	panel.presetSelect.SetSelected("Custom Dimensions")
+	if !panel.customResContainer.Visible() {
+		t.Errorf("expected custom resolution container to be visible for Custom Dimensions")
+	}
+
+	// Apply custom square resolution
+	panel.squareSizeInput.Entry.SetText("300")
+	test.Tap(panel.squareSizeInput.Button)
+	if sess.ExportOptions.SquareSize != 300 {
+		t.Errorf("expected custom resolution 300, got %d", sess.ExportOptions.SquareSize)
+	}
+
+	// Test Palette Custom option
+	if panel.customColorsRow.Visible() {
+		t.Errorf("expected custom colors row to be hidden by default")
+	}
+	panel.colorsSelect.SetSelected("Custom")
+	if !panel.customColorsRow.Visible() {
+		t.Errorf("expected custom colors row to be visible when 'Custom' selected")
+	}
+	panel.customColorsInput.Entry.SetText("48")
+	test.Tap(panel.customColorsInput.Button)
+	if sess.ExportOptions.NumColors != 48 {
+		t.Errorf("expected 48 custom colors, got %d", sess.ExportOptions.NumColors)
+	}
+
+	// Switch back to fixed palette preset
+	panel.colorsSelect.SetSelected("64")
+	if panel.customColorsRow.Visible() {
+		t.Errorf("expected custom colors row to be hidden when '64' selected")
+	}
+	if sess.ExportOptions.NumColors != 64 {
+		t.Errorf("expected 64 colors, got %d", sess.ExportOptions.NumColors)
+	}
+}
+
+func TestSpeedPresetAndCustomInput(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	sess := appkg.NewSession()
+	panel := NewLeftFramesPanel(sess, nil)
+
+	// Default: 10 FPS (100ms) and custom input hidden
+	if panel.speedPresetSelect.Selected != "10 FPS (100ms)" {
+		t.Errorf("expected default speed '10 FPS (100ms)', got %q", panel.speedPresetSelect.Selected)
+	}
+	if panel.globalMsInput.Visible() {
+		t.Errorf("expected custom ms input to be hidden by default")
+	}
+	if sess.ExportOptions.DefaultDurationMs != 100 {
+		t.Errorf("expected default duration 100ms, got %d", sess.ExportOptions.DefaultDurationMs)
+	}
+
+	// Switch to 20 FPS (50ms)
+	panel.speedPresetSelect.SetSelected("20 FPS (50ms)")
+	if panel.globalMsInput.Visible() {
+		t.Errorf("expected custom ms input to remain hidden for 20 FPS")
+	}
+	if sess.ExportOptions.DefaultDurationMs != 50 {
+		t.Errorf("expected duration 50ms, got %d", sess.ExportOptions.DefaultDurationMs)
+	}
+
+	// Switch to Custom
+	panel.speedPresetSelect.SetSelected("Custom")
+	if !panel.globalMsInput.Visible() {
+		t.Errorf("expected custom ms input to be visible when 'Custom' selected")
+	}
+
+	// Apply custom duration
+	panel.globalMsInput.Entry.SetText("75")
+	test.Tap(panel.globalMsInput.Button)
+	if sess.ExportOptions.DefaultDurationMs != 75 {
+		t.Errorf("expected custom duration 75ms, got %d", sess.ExportOptions.DefaultDurationMs)
+	}
+}
+
 

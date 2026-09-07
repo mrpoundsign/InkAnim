@@ -21,7 +21,7 @@ type LeftFramesPanel struct {
 	cropBoundaryRadio *widget.RadioGroup
 	cropPageSelect    *widget.Select
 	speedPresetSelect *widget.Select
-	globalMsEntry     *widget.Entry
+	globalMsInput     *NumericCommitInput
 	onFramesChange    func()
 	isUpdating        bool
 }
@@ -98,8 +98,14 @@ func NewLeftFramesPanel(sess *app.Session, onFramesChange func()) *LeftFramesPan
 
 	// Global Speed Master Bar
 	speedLabel := widget.NewLabelWithStyle("Global Speed:", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
-	p.globalMsEntry = widget.NewEntry()
-	p.globalMsEntry.SetText(fmt.Sprintf("%d", sess.ExportOptions.DefaultDurationMs))
+	p.globalMsInput = NewNumericCommitInput(sess.ExportOptions.DefaultDurationMs, 10, 10000, "ms:", func(val int) {
+		p.session.SetGlobalDuration(val)
+		p.Refresh()
+		if p.onFramesChange != nil {
+			p.onFramesChange()
+		}
+	})
+	p.globalMsInput.Hide()
 
 	p.speedPresetSelect = widget.NewSelect([]string{
 		"10 FPS (100ms)",
@@ -113,6 +119,11 @@ func NewLeftFramesPanel(sess *app.Session, onFramesChange func()) *LeftFramesPan
 		if p.isUpdating {
 			return
 		}
+		if selected == "Custom" {
+			p.globalMsInput.Show()
+			return
+		}
+		p.globalMsInput.Hide()
 		ms := 0
 		switch selected {
 		case "10 FPS (100ms)":
@@ -130,7 +141,7 @@ func NewLeftFramesPanel(sess *app.Session, onFramesChange func()) *LeftFramesPan
 		}
 		if ms > 0 {
 			p.isUpdating = true
-			p.globalMsEntry.SetText(fmt.Sprintf("%d", ms))
+			p.globalMsInput.SetValue(ms)
 			p.session.SetGlobalDuration(ms)
 			p.isUpdating = false
 			p.Refresh()
@@ -140,28 +151,6 @@ func NewLeftFramesPanel(sess *app.Session, onFramesChange func()) *LeftFramesPan
 		}
 	})
 	p.speedPresetSelect.SetSelected("10 FPS (100ms)")
-
-	p.globalMsEntry.OnChanged = func(val string) {
-		if p.isUpdating {
-			return
-		}
-		if ms, err := strconv.Atoi(val); err == nil && ms > 0 {
-			p.isUpdating = true
-			p.speedPresetSelect.SetSelected("Custom")
-			p.session.SetGlobalDuration(ms)
-			p.isUpdating = false
-			p.Refresh()
-			if p.onFramesChange != nil {
-				p.onFramesChange()
-			}
-		}
-	}
-
-	globalSpeedRow := container.NewBorder(
-		nil, nil,
-		widget.NewLabel("ms:"), nil,
-		p.globalMsEntry,
-	)
 
 	topControls := container.NewVBox(
 		header,
@@ -174,7 +163,7 @@ func NewLeftFramesPanel(sess *app.Session, onFramesChange func()) *LeftFramesPan
 		widget.NewSeparator(),
 		speedLabel,
 		p.speedPresetSelect,
-		globalSpeedRow,
+		p.globalMsInput.Container,
 		widget.NewSeparator(),
 	)
 
