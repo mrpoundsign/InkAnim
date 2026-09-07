@@ -2,6 +2,7 @@ package ui
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -18,6 +19,10 @@ func TestMainWindowInitAndLoad(t *testing.T) {
 		t.Fatalf("expected NewMainWindow to succeed")
 	}
 
+	if mw.rightPanel.exportBtn.Text != "Export Animated GIF..." {
+		t.Errorf("expected initial button text 'Export Animated GIF...', got '%s'", mw.rightPanel.exportBtn.Text)
+	}
+
 	// Verify loading demo SVG does not panic
 	testSVGPath, err := filepath.Abs("../../testdata/character_walk.svg")
 	if err != nil {
@@ -26,6 +31,10 @@ func TestMainWindowInitAndLoad(t *testing.T) {
 
 	mw.loadFilePath(testSVGPath)
 	mw.centerPanel.Pause()
+
+	if !strings.Contains(mw.rightPanel.exportBtn.Text, "(~") {
+		t.Errorf("expected exportBtn text to contain estimated size, got '%s'", mw.rightPanel.exportBtn.Text)
+	}
 
 	if len(mw.session.Layers) != 3 {
 		t.Errorf("expected 3 layers, got %d", len(mw.session.Layers))

@@ -93,7 +93,7 @@ func (p *RightExportPanel) PromptExport() {
 		sizeBytes, expErr := p.session.ExportGIF(filename)
 
 		fyne.Do(func() {
-			p.exportBtn.SetText("Export Animated GIF...")
+			p.validateTwitch()
 			p.exportBtn.Enable()
 
 			if expErr != nil {

@@ -193,12 +193,24 @@ func (p *RightExportPanel) syncOptions() {
 	}
 }
 
+func formatEstimatedSize(b int64) string {
+	if b < 1024*1024 {
+		kb := float64(b) / 1024.0
+		return fmt.Sprintf("~%0.0f KB", kb)
+	}
+	mb := float64(b) / (1024.0 * 1024.0)
+	return fmt.Sprintf("~%0.1f MB", mb)
+}
+
 func (p *RightExportPanel) validateTwitch() {
 	if p.twitchStatusLabel == nil {
 		return
 	}
 	if p.session == nil || p.session.Document == nil || len(p.session.RenderedFrames) == 0 {
 		p.twitchStatusLabel.SetText("Twitch Status: No frames loaded.")
+		if p.exportBtn != nil {
+			p.exportBtn.SetText("Export Animated GIF...")
+		}
 		return
 	}
 
@@ -222,10 +234,31 @@ func (p *RightExportPanel) validateTwitch() {
 		totalDurMs += f.DurationMs
 	}
 
-	// Rough estimation for GIF size: ~1.2 KB per frame at 112x112, scale quadratically
-	estBytes := int64(float64(frames*1500) * (float64(w*h) / (112.0 * 112.0 * 8.0)))
-	if estBytes < 50000 {
-		estBytes = 50000
+	// Realistic GIF compression estimation:
+	// Active artwork pixels compress to ~0.08 bytes/px with LZW; transparent padding compresses to ~0.005 bytes/px.
+	activePixels := boundW * boundH
+	totalPixels := float64(w * h)
+	if activePixels > totalPixels {
+		activePixels = totalPixels
+	}
+	paddingPixels := totalPixels - activePixels
+
+	perFrameBytes := 600.0 + (activePixels * 0.08) + (paddingPixels * 0.005)
+	estBytes := int64(float64(frames) * perFrameBytes)
+
+	// Adjust estimate based on palette size (e.g. 32 colors is ~50% size of 256 colors)
+	numColors := p.session.ExportOptions.NumColors
+	if numColors > 0 && numColors < 256 {
+		colorRatio := float64(numColors) / 256.0
+		scaleFactor := 0.4 + 0.6*colorRatio
+		estBytes = int64(float64(estBytes) * scaleFactor)
+	}
+	if estBytes < 1024 {
+		estBytes = 1024
+	}
+
+	if p.exportBtn != nil {
+		p.exportBtn.SetText(fmt.Sprintf("Export Animated GIF (%s)...", formatEstimatedSize(estBytes)))
 	}
 
 	res := gif.ValidateTwitchEmote(frames, totalDurMs, w, h, estBytes)
