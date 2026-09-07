@@ -65,7 +65,7 @@ func NewMainWindow(appInstance fyne.App) *MainWindow {
 	})
 	openBtn.Importance = widget.MediumImportance
 
-	aboutBtn := widget.NewButtonWithIcon("About", theme.InfoIcon(), func() {
+	aboutBtn := widget.NewButtonWithIcon(fmt.Sprintf("About (v%s)", app.Version), theme.InfoIcon(), func() {
 		ShowAboutDialog(mw.window, app.Version)
 	})
 
