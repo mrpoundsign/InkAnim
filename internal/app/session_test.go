@@ -352,3 +352,43 @@ func TestHydrateSessionLoadAndPreviewBounds(t *testing.T) {
 		t.Errorf("expected 210x297 active boundary rect in Document mode, got %+v", activeRect)
 	}
 }
+
+func BenchmarkRerenderAllFrames(b *testing.B) {
+	testSVGPath, err := filepath.Abs("../../testdata/bouncing_walker.svg")
+	if err != nil {
+		b.Fatalf("failed to resolve test SVG path: %v", err)
+	}
+
+	sess := NewSession()
+	if err := sess.LoadSVG(testSVGPath); err != nil {
+		b.Fatalf("failed to load SVG: %v", err)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if err := sess.RerenderAllFrames(); err != nil {
+			b.Fatalf("RerenderAllFrames failed: %v", err)
+		}
+	}
+}
+
+func BenchmarkRenderExportFrames(b *testing.B) {
+	testSVGPath, err := filepath.Abs("../../testdata/bouncing_walker.svg")
+	if err != nil {
+		b.Fatalf("failed to resolve test SVG path: %v", err)
+	}
+
+	sess := NewSession()
+	if err := sess.LoadSVG(testSVGPath); err != nil {
+		b.Fatalf("failed to load SVG: %v", err)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		frames, err := sess.RenderExportFrames()
+		if err != nil || len(frames) == 0 {
+			b.Fatalf("RenderExportFrames failed: %v", err)
+		}
+	}
+}
+

@@ -180,7 +180,7 @@ func (p *RightExportPanel) PromptExport() {
 		return
 	}
 
-	p.progressBar.Show()
+	p.exportBtn.SetText("Exporting...")
 	p.exportBtn.Disable()
 
 	go func() {
@@ -188,7 +188,7 @@ func (p *RightExportPanel) PromptExport() {
 		sizeBytes, expErr := p.session.ExportGIFWriter(&buf)
 
 		fyne.Do(func() {
-			p.progressBar.Hide()
+			p.exportBtn.SetText("Export Animated GIF...")
 			p.exportBtn.Enable()
 
 			if expErr != nil {

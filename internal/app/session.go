@@ -9,6 +9,7 @@ import (
 	"os"
 
 	"inkanim/internal/gif"
+	"inkanim/internal/parallel"
 	"inkanim/internal/svg"
 )
 
@@ -313,54 +314,90 @@ func (s *Session) RerenderAllFrames() error {
 	renderH := int(math.Round(boundH * previewScale))
 
 	if s.CurrentMode == svg.ModeLayers {
+		type layerJob struct {
+			frameIdx int
+			layerIdx int
+			layer    svg.Layer
+		}
+		var jobs []layerJob
 		for i, layer := range s.Layers {
 			if !layer.IsActive || layer.IsPinned {
 				continue
 			}
+			jobs = append(jobs, layerJob{
+				frameIdx: len(jobs),
+				layerIdx: i,
+				layer:    layer,
+			})
+		}
 
-			frameSVG, err := svg.BuildLayerFrameSVG(s.Document, layer.ID, s.PinnedLayers, previewRect)
+		frames = make([]svg.RenderedFrame, len(jobs))
+		err := parallel.Run(len(jobs), func(idx int) error {
+			j := jobs[idx]
+			frameSVG, err := svg.BuildLayerFrameSVG(s.Document, j.layer.ID, s.PinnedLayers, previewRect)
 			if err != nil {
-				return fmt.Errorf("failed to build frame for layer %s: %w", layer.Label, err)
+				return fmt.Errorf("failed to build frame for layer %s: %w", j.layer.Label, err)
 			}
 
 			img, err := svg.RenderSVGToRGBA(frameSVG, renderW, renderH)
 			if err != nil {
-				return fmt.Errorf("failed to render layer %s: %w", layer.Label, err)
+				return fmt.Errorf("failed to render layer %s: %w", j.layer.Label, err)
 			}
 
-			dur := layer.EffectiveDuration(s.ExportOptions.DefaultDurationMs)
-
-			frames = append(frames, svg.RenderedFrame{
-				Index:      i,
-				Label:      layer.Label,
+			dur := j.layer.EffectiveDuration(s.ExportOptions.DefaultDurationMs)
+			frames[j.frameIdx] = svg.RenderedFrame{
+				Index:      j.layerIdx,
+				Label:      j.layer.Label,
 				Image:      img,
 				DurationMs: dur,
-			})
+			}
+			return nil
+		})
+		if err != nil {
+			return err
 		}
 	} else {
+		type pageJob struct {
+			frameIdx int
+			pageIdx  int
+			page     svg.Page
+		}
+		var jobs []pageJob
 		for i, page := range s.Pages {
 			if !page.IsActive {
 				continue
 			}
+			jobs = append(jobs, pageJob{
+				frameIdx: len(jobs),
+				pageIdx:  i,
+				page:     page,
+			})
+		}
 
-			frameSVG, err := svg.BuildPageFrameSVG(s.Document, page, previewRect)
+		frames = make([]svg.RenderedFrame, len(jobs))
+		err := parallel.Run(len(jobs), func(idx int) error {
+			j := jobs[idx]
+			frameSVG, err := svg.BuildPageFrameSVG(s.Document, j.page, previewRect)
 			if err != nil {
-				return fmt.Errorf("failed to build frame for page %s: %w", page.Label, err)
+				return fmt.Errorf("failed to build frame for page %s: %w", j.page.Label, err)
 			}
 
 			img, err := svg.RenderSVGToRGBA(frameSVG, renderW, renderH)
 			if err != nil {
-				return fmt.Errorf("failed to render page %s: %w", page.Label, err)
+				return fmt.Errorf("failed to render page %s: %w", j.page.Label, err)
 			}
 
-			dur := page.EffectiveDuration(s.ExportOptions.DefaultDurationMs)
-
-			frames = append(frames, svg.RenderedFrame{
-				Index:      i,
-				Label:      page.Label,
+			dur := j.page.EffectiveDuration(s.ExportOptions.DefaultDurationMs)
+			frames[j.frameIdx] = svg.RenderedFrame{
+				Index:      j.pageIdx,
+				Label:      j.page.Label,
 				Image:      img,
 				DurationMs: dur,
-			})
+			}
+			return nil
+		})
+		if err != nil {
+			return err
 		}
 	}
 
@@ -456,19 +493,34 @@ func (s *Session) RenderExportFrames() ([]gif.FrameInput, error) {
 			fitH = 1
 		}
 
+		type layerExportJob struct {
+			frameIdx int
+			layerIdx int
+			layer    svg.Layer
+		}
+		var jobs []layerExportJob
 		for i, layer := range s.Layers {
 			if !layer.IsActive || layer.IsPinned {
 				continue
 			}
+			jobs = append(jobs, layerExportJob{
+				frameIdx: len(jobs),
+				layerIdx: i,
+				layer:    layer,
+			})
+		}
 
-			frameSVG, err := svg.BuildLayerFrameSVG(s.Document, layer.ID, s.PinnedLayers, boundaryRect)
+		frameInputs = make([]gif.FrameInput, len(jobs))
+		err := parallel.Run(len(jobs), func(idx int) error {
+			j := jobs[idx]
+			frameSVG, err := svg.BuildLayerFrameSVG(s.Document, j.layer.ID, s.PinnedLayers, boundaryRect)
 			if err != nil {
-				return nil, fmt.Errorf("failed to build frame for layer %s: %w", layer.Label, err)
+				return fmt.Errorf("failed to build frame for layer %s: %w", j.layer.Label, err)
 			}
 
 			rawImg, err := svg.RenderSVGToRGBA(frameSVG, fitW, fitH)
 			if err != nil {
-				return nil, fmt.Errorf("failed to rasterize layer %s at %dx%d: %w", layer.Label, fitW, fitH, err)
+				return fmt.Errorf("failed to rasterize layer %s at %dx%d: %w", j.layer.Label, fitW, fitH, err)
 			}
 
 			var finalImg *image.RGBA
@@ -483,15 +535,30 @@ func (s *Session) RenderExportFrames() ([]gif.FrameInput, error) {
 				finalImg = rawImg
 			}
 
-			dur := layer.EffectiveDuration(s.ExportOptions.DefaultDurationMs)
-			frameInputs = append(frameInputs, gif.FrameInput{
-				Index:      i,
-				Label:      layer.Label,
+			dur := j.layer.EffectiveDuration(s.ExportOptions.DefaultDurationMs)
+			frameInputs[j.frameIdx] = gif.FrameInput{
+				Index:      j.layerIdx,
+				Label:      j.layer.Label,
 				Image:      finalImg,
 				DurationMs: dur,
-			})
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, err
 		}
 	} else {
+		type pageExportJob struct {
+			frameIdx     int
+			pageIdx      int
+			page         svg.Page
+			boundaryRect svg.Rect
+			fitW         int
+			fitH         int
+			targetSquare int
+			exportSquare bool
+		}
+		var jobs []pageExportJob
 		for i, page := range s.Pages {
 			if !page.IsActive {
 				continue
@@ -575,38 +642,56 @@ func (s *Session) RenderExportFrames() ([]gif.FrameInput, error) {
 				fitH = 1
 			}
 
-			frameSVG, err := svg.BuildPageFrameSVG(s.Document, page, boundaryRect)
+			jobs = append(jobs, pageExportJob{
+				frameIdx:     len(jobs),
+				pageIdx:      i,
+				page:         page,
+				boundaryRect: boundaryRect,
+				fitW:         fitW,
+				fitH:         fitH,
+				targetSquare: targetSquare,
+				exportSquare: exportSquare,
+			})
+		}
+
+		frameInputs = make([]gif.FrameInput, len(jobs))
+		err := parallel.Run(len(jobs), func(idx int) error {
+			j := jobs[idx]
+			frameSVG, err := svg.BuildPageFrameSVG(s.Document, j.page, j.boundaryRect)
 			if err != nil {
-				return nil, fmt.Errorf("failed to build frame for page %s: %w", page.Label, err)
+				return fmt.Errorf("failed to build frame for page %s: %w", j.page.Label, err)
 			}
 
-			rawImg, err := svg.RenderSVGToRGBA(frameSVG, fitW, fitH)
+			rawImg, err := svg.RenderSVGToRGBA(frameSVG, j.fitW, j.fitH)
 			if err != nil {
-				return nil, fmt.Errorf("failed to rasterize page %s at %dx%d: %w", page.Label, fitW, fitH, err)
+				return fmt.Errorf("failed to rasterize page %s at %dx%d: %w", j.page.Label, j.fitW, j.fitH, err)
 			}
 
 			var finalImg *image.RGBA
-			if exportSquare {
-				dst := image.NewRGBA(image.Rect(0, 0, targetSquare, targetSquare))
-				offsetX := (targetSquare - fitW) / 2
-				offsetY := (targetSquare - fitH) / 2
-				dstRect := image.Rect(offsetX, offsetY, offsetX+fitW, offsetY+fitH)
+			if j.exportSquare {
+				dst := image.NewRGBA(image.Rect(0, 0, j.targetSquare, j.targetSquare))
+				offsetX := (j.targetSquare - j.fitW) / 2
+				offsetY := (j.targetSquare - j.fitH) / 2
+				dstRect := image.Rect(offsetX, offsetY, offsetX+j.fitW, offsetY+j.fitH)
 				draw.Draw(dst, dstRect, rawImg, rawImg.Bounds().Min, draw.Src)
 				finalImg = dst
 			} else {
 				finalImg = rawImg
 			}
 
-			dur := page.EffectiveDuration(s.ExportOptions.DefaultDurationMs)
-			frameInputs = append(frameInputs, gif.FrameInput{
-				Index:      i,
-				Label:      page.Label,
+			dur := j.page.EffectiveDuration(s.ExportOptions.DefaultDurationMs)
+			frameInputs[j.frameIdx] = gif.FrameInput{
+				Index:      j.pageIdx,
+				Label:      j.page.Label,
 				Image:      finalImg,
 				DurationMs: dur,
-			})
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, err
 		}
 	}
-
 
 	return frameInputs, nil
 }

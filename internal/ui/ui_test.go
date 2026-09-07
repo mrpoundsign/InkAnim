@@ -348,3 +348,4 @@ func TestPausePlaybackModal(t *testing.T) {
 		t.Errorf("expected animation to remain paused after no-op resume")
 	}
 }
+

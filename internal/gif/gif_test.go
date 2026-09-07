@@ -109,3 +109,42 @@ func TestValidateTwitchEmote(t *testing.T) {
 		t.Errorf("expected invalid for oversized file")
 	}
 }
+
+func BenchmarkEncodeAnimatedGIF(b *testing.B) {
+	const numFrames = 12
+	frames := make([]FrameInput, numFrames)
+	for i := 0; i < numFrames; i++ {
+		img := image.NewRGBA(image.Rect(0, 0, 128, 128))
+		for y := 0; y < 128; y++ {
+			for x := 0; x < 128; x++ {
+				img.Set(x, y, color.RGBA{
+					R: uint8((x + i*10) % 256),
+					G: uint8((y + i*15) % 256),
+					B: uint8((x + y) % 256),
+					A: 255,
+				})
+			}
+		}
+		frames[i] = FrameInput{
+			Index:      i,
+			Label:      "frame",
+			Image:      img,
+			DurationMs: 100,
+		}
+	}
+
+	opts := ExportOptions{
+		NumColors:         256,
+		Dither:            true,
+		DefaultDurationMs: 100,
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		anim, err := EncodeAnimatedGIF(frames, opts)
+		if err != nil || anim == nil {
+			b.Fatalf("EncodeAnimatedGIF failed: %v", err)
+		}
+	}
+}
+

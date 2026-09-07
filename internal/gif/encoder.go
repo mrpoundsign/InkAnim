@@ -9,6 +9,8 @@ import (
 	"os"
 
 	"golang.org/x/image/draw"
+
+	"inkanim/internal/parallel"
 )
 
 // EncodeAnimatedGIF processes frame inputs and encodes them into a single animated GIF.
@@ -21,7 +23,8 @@ func EncodeAnimatedGIF(frames []FrameInput, opts ExportOptions) (*gif.GIF, error
 	delays := make([]int, len(frames))
 	disposals := make([]byte, len(frames))
 
-	for i, f := range frames {
+	_ = parallel.Run(len(frames), func(i int) error {
+		f := frames[i]
 		frameImg := f.Image
 
 		// 1. If ExportSquare is enabled, center source inside square canvas
@@ -55,7 +58,8 @@ func EncodeAnimatedGIF(frames []FrameInput, opts ExportOptions) (*gif.GIF, error
 
 		// DisposalBackground ensures transparent pixels clear the previous frame properly
 		disposals[i] = gif.DisposalBackground
-	}
+		return nil
+	})
 
 	// 2. Generate unified palette
 	numColors := opts.NumColors
@@ -69,11 +73,12 @@ func EncodeAnimatedGIF(frames []FrameInput, opts ExportOptions) (*gif.GIF, error
 
 	palette := GeneratePalette(processedFrames, numColors, alphaThreshold)
 
-	// 3. Quantize frames
+	// 3. Quantize frames in parallel
 	palettedList := make([]*image.Paletted, len(processedFrames))
-	for i, frameImg := range processedFrames {
-		palettedList[i] = QuantizeFrame(frameImg, palette, alphaThreshold, opts.Dither)
-	}
+	_ = parallel.Run(len(processedFrames), func(i int) error {
+		palettedList[i] = QuantizeFrame(processedFrames[i], palette, alphaThreshold, opts.Dither)
+		return nil
+	})
 
 	animGIF := &gif.GIF{
 		Image:     palettedList,

@@ -29,7 +29,6 @@ type RightExportPanel struct {
 
 	twitchStatusLabel *widget.Label
 	exportBtn         *widget.Button
-	progressBar       *widget.ProgressBarInfinite
 
 	onOptionsChange func()
 	pausePlayback   func() func()
@@ -50,11 +49,8 @@ func NewRightExportPanel(sess *app.Session, win fyne.Window, onOptionsChange fun
 
 	header := widget.NewLabelWithStyle("Export Settings", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 
-	// Pre-allocate status label & progress bar first so callbacks are safe
+	// Pre-allocate status label first so callbacks are safe
 	p.twitchStatusLabel = widget.NewLabel("Twitch Status: Ready")
-
-	p.progressBar = widget.NewProgressBarInfinite()
-	p.progressBar.Hide()
 
 	p.squareCheck = widget.NewCheck("Export Square (Centers on max side)", func(checked bool) {
 		p.session.ExportOptions.ExportSquare = checked
@@ -155,7 +151,6 @@ func NewRightExportPanel(sess *app.Session, win fyne.Window, onOptionsChange fun
 		p.ditherCheck,
 		widget.NewSeparator(),
 		p.twitchStatusLabel,
-		p.progressBar,
 		p.exportBtn,
 	)
 
