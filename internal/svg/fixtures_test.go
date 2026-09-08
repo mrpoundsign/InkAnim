@@ -79,9 +79,14 @@ func TestAtomicFixtures(t *testing.T) {
 				t.Fatalf("Scaled GUI preview render (512x512) failed for %s: %v", entry.Name(), err)
 			}
 
+			maxMismatch := 0.5 // 99.5%+ compliance for all vector shapes and paths
+			if strings.HasPrefix(baseName, "text_") {
+				maxMismatch = 3.0 // allowance for cross-platform system font metrics & antialiasing
+			}
+
 			opts := GoldenCompareOptions{
 				PerPixelTolerance:  35,
-				MaxMismatchPercent: 3.0,
+				MaxMismatchPercent: maxMismatch,
 			}
 
 			AssertImageMatchesGolden(t, actualImg, goldenPath, opts)

@@ -383,6 +383,37 @@ func PreprocessSVG(data []byte) ([]byte, error) {
 				}
 			}
 
+			// Default stroke-linejoin="miter" on stroked shapes and groups (Issue #64).
+			// Upstream oksvg defaults omitted stroke-linejoin to rasterx.Bevel (4) instead of
+			// rasterx.Miter (2), causing 45° beveled corners instead of standard SVG 90° miter joins.
+			if isShapeElement(name) || name == "g" {
+				var hasStroke bool
+				var hasLineJoin bool
+				for _, attr := range elem.Attr {
+					if attr.Name.Local == "stroke" && attr.Value != "" && attr.Value != "none" {
+						hasStroke = true
+					}
+					if attr.Name.Local == "stroke-linejoin" && attr.Value != "" {
+						hasLineJoin = true
+					}
+					if attr.Name.Local == "style" {
+						sVal := extractCSSProp(attr.Value, "stroke")
+						if sVal != "" && sVal != "none" {
+							hasStroke = true
+						}
+						if extractCSSProp(attr.Value, "stroke-linejoin") != "" {
+							hasLineJoin = true
+						}
+					}
+				}
+				if hasStroke && !hasLineJoin {
+					elem.Attr = append(elem.Attr, xml.Attr{
+						Name:  xml.Name{Local: "stroke-linejoin"},
+						Value: "miter",
+					})
+				}
+			}
+
 			// Rewrite userSpaceOnUse gradient references for group transforms (Issue #56)
 			elemMatrix := transformStack[len(transformStack)-1]
 			for _, a := range elem.Attr {
