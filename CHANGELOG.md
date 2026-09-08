@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Web Studio & WebAssembly Edition**: Positioned the WebAssembly edition as a complete in-browser studio, adding a collapsible "Sample Animations" toolbar with one-click preview loading of bundled sample SVGs.
 
 ### Fixed
+- **Physical Dimension Unit Conversion**: Converted CSS/SVG physical length units (`"in"`, `"mm"`, `"cm"`, `"pt"`, `"pc"`) to standard 96 DPI pixels during SVG parsing and root preprocessing, eliminating distorted or squished viewports on SVGs authored with physical dimensions ([#45](https://github.com/mrpoundsign/InkAnim/issues/45)).
 - **Inkscape Document Background Page Color & Opacity**: Extracted `sodipodi:namedview pagecolor` and `inkscape:pageopacity` during SVG pre-processing to accurately render document canvas background colors ([#43](https://github.com/mrpoundsign/InkAnim/issues/43)).
 - **LPE `fillet_chamfer` Vertex Wrapping & Closing Arc**: Fixed closed polygon handling in `internal/svg/lpe.go#filletSegments` to round all vertices including vertex 0 across `Z` subpaths and correctly calculate non-inverted closing tangent arcs ([#41](https://github.com/mrpoundsign/InkAnim/issues/41)).
 - **Cross-Platform Font Resolution for SVG Text Rendering**: Enhanced font manager with standard system font aliases (`DejaVu Sans`, `Liberation Sans`, `Segoe UI`, `Arial`) and embedded fallbacks for consistent text rendering across native desktop and WASM ([#42](https://github.com/mrpoundsign/InkAnim/issues/42)).

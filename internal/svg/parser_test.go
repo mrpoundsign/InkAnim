@@ -574,3 +574,30 @@ func TestParseSVG_NoExplicitLayersFallback(t *testing.T) {
 	}
 }
 
+func TestParseDimensionUnits(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected float64
+	}{
+		{"100", 100.0},
+		{"100px", 100.0},
+		{"1in", 96.0},
+		{"2.5in", 240.0},
+		{"25.4mm", 96.0},
+		{"2.54cm", 96.0},
+		{"72pt", 96.0},
+		{"6pc", 96.0},
+		{" 10 mm ", 96.0 / 25.4 * 10.0},
+		{"", 0.0},
+		{"auto", 0.0},
+	}
+
+	for _, tt := range tests {
+		got := parseDimension(tt.input)
+		if math.Abs(got-tt.expected) > 0.001 {
+			t.Errorf("parseDimension(%q) = %f; expected %f", tt.input, got, tt.expected)
+		}
+	}
+}
+
+

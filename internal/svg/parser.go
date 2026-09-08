@@ -343,17 +343,31 @@ func parseSVGAttributes(attrs []xml.Attr, doc *SVGDocument) {
 	}
 }
 
-// parseDimension parses strings like "100", "100px", "100mm", "100pt" into float64.
+// parseDimension parses strings with CSS/SVG length units ("px", "pt", "mm", "cm", "in", "pc")
+// and converts them to standard user space pixels at 96 DPI.
 func parseDimension(s string) float64 {
 	s = strings.TrimSpace(s)
-	// Strip known units
-	units := []string{"px", "pt", "mm", "cm", "in", "pc"}
-	for _, u := range units {
-		if before, ok := strings.CutSuffix(s, u); ok {
-			s = before
-			break
-		}
+	scale := 1.0
+	switch {
+	case strings.HasSuffix(s, "in"):
+		scale = 96.0
+		s = strings.TrimSuffix(s, "in")
+	case strings.HasSuffix(s, "mm"):
+		scale = 96.0 / 25.4
+		s = strings.TrimSuffix(s, "mm")
+	case strings.HasSuffix(s, "cm"):
+		scale = 96.0 / 2.54
+		s = strings.TrimSuffix(s, "cm")
+	case strings.HasSuffix(s, "pt"):
+		scale = 96.0 / 72.0
+		s = strings.TrimSuffix(s, "pt")
+	case strings.HasSuffix(s, "pc"):
+		scale = 16.0
+		s = strings.TrimSuffix(s, "pc")
+	case strings.HasSuffix(s, "px"):
+		scale = 1.0
+		s = strings.TrimSuffix(s, "px")
 	}
-	v, _ := strconv.ParseFloat(s, 64)
-	return v
+	v, _ := strconv.ParseFloat(strings.TrimSpace(s), 64)
+	return v * scale
 }

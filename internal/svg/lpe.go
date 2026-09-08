@@ -74,9 +74,41 @@ func PreprocessSVG(data []byte) ([]byte, error) {
 		case xml.StartElement:
 			name := elem.Name.Local
 
-			// Stage 0: Inject canvas background rect if sodipodi:namedview specifies pagecolor with opacity
+			// Stage 0: Normalize root SVG dimensions/viewBox and inject canvas background rect
 			if name == "svg" && !rootSVGSeen {
 				rootSVGSeen = true
+
+				var newAttrs []xml.Attr
+				var hasVB bool
+				for _, a := range elem.Attr {
+					switch a.Name.Local {
+					case "width":
+						if meta.Width > 0 {
+							newAttrs = append(newAttrs, xml.Attr{Name: a.Name, Value: fmt.Sprintf("%f", meta.Width)})
+						} else {
+							newAttrs = append(newAttrs, a)
+						}
+					case "height":
+						if meta.Height > 0 {
+							newAttrs = append(newAttrs, xml.Attr{Name: a.Name, Value: fmt.Sprintf("%f", meta.Height)})
+						} else {
+							newAttrs = append(newAttrs, a)
+						}
+					case "viewBox":
+						hasVB = true
+						newAttrs = append(newAttrs, a)
+					default:
+						newAttrs = append(newAttrs, a)
+					}
+				}
+				if !hasVB && meta.Width > 0 && meta.Height > 0 {
+					newAttrs = append(newAttrs, xml.Attr{
+						Name:  xml.Name{Local: "viewBox"},
+						Value: fmt.Sprintf("0 0 %f %f", meta.Width, meta.Height),
+					})
+				}
+				elem.Attr = newAttrs
+
 				if err := encoder.EncodeToken(elem); err != nil {
 					return nil, err
 				}
