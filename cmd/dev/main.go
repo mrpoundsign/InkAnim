@@ -88,10 +88,7 @@ func runGolden(args []string) {
 			}
 		}
 	} else {
-		for _, arg := range fs.Args() {
-			name := strings.TrimSuffix(filepath.Base(arg), ".svg")
-			targets = append(targets, name)
-		}
+		targets = append(targets, fs.Args()...)
 	}
 
 	if len(targets) == 0 {
@@ -100,9 +97,18 @@ func runGolden(args []string) {
 	}
 
 	hasFailure := false
-	for _, name := range targets {
-		svgPath := filepath.Join(fixturesDir, name+".svg")
-		goldenPath := filepath.Join(fixturesDir, name+".golden.png")
+	for _, target := range targets {
+		var name, svgPath, goldenPath string
+		_, statErr := os.Stat(target)
+		if strings.Contains(target, string(filepath.Separator)) || strings.HasSuffix(target, ".svg") || statErr == nil {
+			svgPath = target
+			name = strings.TrimSuffix(filepath.Base(target), ".svg")
+			goldenPath = filepath.Join("testdata", "scratch", name+".golden.png")
+		} else {
+			name = target
+			svgPath = filepath.Join(fixturesDir, name+".svg")
+			goldenPath = filepath.Join(fixturesDir, name+".golden.png")
+		}
 
 		if _, err := os.Stat(svgPath); os.IsNotExist(err) {
 			fmt.Fprintf(os.Stderr, "[%s] SVG file not found: %s\n", name, svgPath)
@@ -150,6 +156,15 @@ func runGolden(args []string) {
 		}
 
 		gf, err := os.Open(goldenPath)
+		if err != nil {
+			// If golden doesn't exist, try auto-generating it via Inkscape CLI
+			if _, lookErr := exec.LookPath("inkscape"); lookErr == nil {
+				_ = os.MkdirAll(filepath.Dir(goldenPath), 0755)
+				if genErr := generateGoldenWithInkscape(svgPath, goldenPath, w, h); genErr == nil {
+					gf, err = os.Open(goldenPath)
+				}
+			}
+		}
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "[%s] Golden PNG missing: %s (run with --generate to create)\n", name, goldenPath)
 			hasFailure = true

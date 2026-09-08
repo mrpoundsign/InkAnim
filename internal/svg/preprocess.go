@@ -240,12 +240,18 @@ func PreprocessSVG(data []byte) ([]byte, error) {
 				}
 			}
 
-			// For shapes inside transformed groups, oksvg applies the CTM to path coordinates
-			// but ignores the transform when rasterizing stroke-width. Scale stroke-width by the
-			// ancestor group scale factor so strokes render at the true visual thickness.
+			// For shapes inside transformed groups or with direct element transforms, oksvg
+			// applies the CTM to path coordinates but ignores the transform when rasterizing stroke-width.
+			// Scale stroke-width by the combined ancestor and element scale factor so strokes render at true visual thickness.
 			if isShapeElement(name) {
-				ancestorScale := transformStack[len(transformStack)-1].ScaleFactor()
-				if ancestorScale > 0 && math.Abs(ancestorScale-1.0) > 0.001 {
+				scale := transformStack[len(transformStack)-1].ScaleFactor()
+				for _, attr := range elem.Attr {
+					if attr.Name.Local == "transform" {
+						scale *= parseTransform(attr.Value).ScaleFactor()
+						break
+					}
+				}
+				if scale > 0 && math.Abs(scale-1.0) > 0.001 {
 					var styleAttrIdx = -1
 					for i, attr := range elem.Attr {
 						if attr.Name.Local == "style" {
@@ -257,7 +263,7 @@ func PreprocessSVG(data []byte) ([]byte, error) {
 						swVal := extractCSSProp(elem.Attr[styleAttrIdx].Value, "stroke-width")
 						if swVal != "" {
 							if swNum, unit := parseStrokeWidth(swVal); swNum > 0 {
-								newSW := fmt.Sprintf("%.4f%s", swNum*ancestorScale, unit)
+								newSW := fmt.Sprintf("%.4f%s", swNum*scale, unit)
 								elem.Attr[styleAttrIdx].Value = setStyleProp(elem.Attr[styleAttrIdx].Value, "stroke-width", newSW)
 							}
 						}
@@ -265,7 +271,7 @@ func PreprocessSVG(data []byte) ([]byte, error) {
 					for i := range elem.Attr {
 						if elem.Attr[i].Name.Local == "stroke-width" {
 							if swNum, unit := parseStrokeWidth(elem.Attr[i].Value); swNum > 0 {
-								elem.Attr[i].Value = fmt.Sprintf("%.4f%s", swNum*ancestorScale, unit)
+								elem.Attr[i].Value = fmt.Sprintf("%.4f%s", swNum*scale, unit)
 							}
 						}
 					}
