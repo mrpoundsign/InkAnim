@@ -83,6 +83,7 @@ Each fixture lives in `testdata/fixtures/` as `<operation_name>.svg` and `<opera
 | `lpe_fillet_chamfer` | Polygon path referencing `<inkscape:path-effect effect="fillet_chamfer">` |
 | `paint_order_stroke_fill` | Path with `style="paint-order: stroke fill"` verifying stroke sits under fill |
 | `transform_group_stroke` | Nested `<g transform="scale(...)">` verifying stroke width scales proportionally |
+| `transform_group_gradient` | `userSpaceOnUse` linear and radial gradients inside transformed `<g>` groups verifying gradient coordinates scale and translate with the shape |
 | `rect_rx_ry_mirror` | `<rect ry="15">` with omitted `rx` verifying spec-compliant rounded corners |
 | `rect_rx_ry_zero` | `<rect>` with explicit `rx="0"` or `ry="0"` alongside positive radius verifying rounded corner normalization |
 | `text_tspan_basic` | Text with `<tspan>` baseline offset converting to vector glyph contours |

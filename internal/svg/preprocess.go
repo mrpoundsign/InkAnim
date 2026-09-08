@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"regexp"
 	"strconv"
 	"strings"
 	"unicode"
@@ -175,6 +176,37 @@ func PreprocessSVG(data []byte) ([]byte, error) {
 						}
 					}
 				}
+
+				// Emit specialized gradient variants for group transforms (Issue #56)
+				if specs, ok := meta.SpecializedByParent[gradID]; ok && gradDef != nil {
+					for _, spec := range specs {
+						var specAttrs []xml.Attr
+						for _, a := range gradDef.Attrs {
+							switch a.Name.Local {
+							case "id":
+								specAttrs = append(specAttrs, xml.Attr{Name: a.Name, Value: spec.NewID})
+							case "gradientTransform", "href":
+								continue
+							default:
+								specAttrs = append(specAttrs, a)
+							}
+						}
+						matStr := fmt.Sprintf("matrix(%f %f %f %f %f %f)", spec.Transform.A, spec.Transform.B, spec.Transform.C, spec.Transform.D, spec.Transform.E, spec.Transform.F)
+						specAttrs = append(specAttrs, xml.Attr{Name: xml.Name{Local: "gradientTransform"}, Value: matStr})
+						specStart := xml.StartElement{Name: elem.Name, Attr: specAttrs}
+						if err := encoder.EncodeToken(specStart); err != nil {
+							return nil, err
+						}
+						for _, st := range gradDef.Stops {
+							if err := encoder.EncodeToken(st); err != nil {
+								return nil, err
+							}
+						}
+						if err := encoder.EncodeToken(xml.EndElement{Name: elem.Name}); err != nil {
+							return nil, err
+						}
+					}
+				}
 				continue
 			}
 
@@ -194,10 +226,12 @@ func PreprocessSVG(data []byte) ([]byte, error) {
 			// Track 2D affine transformation matrices on nested <g> elements
 			if name == "g" {
 				curMatrix := transformStack[len(transformStack)-1]
-				for _, attr := range elem.Attr {
+				for i, attr := range elem.Attr {
 					if attr.Name.Local == "transform" {
 						parsed := parseTransform(attr.Value)
 						curMatrix = curMatrix.Multiply(parsed)
+						// Normalize transform to canonical matrix to avoid oksvg single-param scale(s, 0) bug
+						elem.Attr[i].Value = fmt.Sprintf("matrix(%f %f %f %f %f %f)", parsed.A, parsed.B, parsed.C, parsed.D, parsed.E, parsed.F)
 					}
 				}
 				transformStack = append(transformStack, curMatrix)
@@ -299,6 +333,42 @@ func PreprocessSVG(data []byte) ([]byte, error) {
 				}
 			}
 
+			// Rewrite userSpaceOnUse gradient references for group transforms (Issue #56)
+			elemMatrix := transformStack[len(transformStack)-1]
+			for _, a := range elem.Attr {
+				if a.Name.Local == "transform" {
+					elemMatrix = elemMatrix.Multiply(parseTransform(a.Value))
+				}
+			}
+			if elemMatrix != IdentityMatrix() {
+				rewrites := make(map[string]string)
+				for _, a := range elem.Attr {
+					for _, match := range reURLGrad.FindAllStringSubmatch(a.Value, -1) {
+						gradID := match[1]
+						if g, ok := meta.Gradients[gradID]; ok && g.IsUserSpaceOnUse(meta.Gradients) {
+							eff := elemMatrix.Multiply(g.GetGradientTransform(meta.Gradients))
+							key := fmt.Sprintf("%.4f_%.4f_%.4f_%.4f_%.4f_%.4f", eff.A, eff.B, eff.C, eff.D, eff.E, eff.F)
+							if newID, exists := meta.SpecializedLookup[gradID][key]; exists {
+								rewrites[gradID] = newID
+							}
+						}
+					}
+				}
+				if len(rewrites) > 0 {
+					for i, a := range elem.Attr {
+						elem.Attr[i].Value = reURLGrad.ReplaceAllStringFunc(a.Value, func(m string) string {
+							sub := reURLGrad.FindStringSubmatch(m)
+							if len(sub) == 2 {
+								if newID, ok := rewrites[sub[1]]; ok {
+									return fmt.Sprintf("url(#%s)", newID)
+								}
+							}
+							return m
+						})
+					}
+				}
+			}
+
 			// Desugar paint-order: stroke fill on all shape elements (path, rect, circle, polygon, etc.)
 			if isShapeElement(name) {
 				var styleAttrIdx = -1
@@ -371,18 +441,27 @@ type GradientDef struct {
 	OriginalStopCount int
 }
 
+// SpecializedGradient represents a cloned gradient with an ancestor group transform applied (Issue #56).
+type SpecializedGradient struct {
+	NewID     string
+	Parent    *GradientDef
+	Transform Matrix2D
+}
+
 // DocumentMetadata collects document-level metadata during the first XML pass.
 type DocumentMetadata struct {
-	Effects      map[string]PathEffect
-	ElementsByID map[string][]xml.Token
-	Gradients    map[string]*GradientDef
-	VBX, VBY     float64
-	VBW, VBH     float64
-	Width        float64
-	Height       float64
-	PageColor    string
-	PageOpacity  float64
-	HasPageColor bool
+	Effects             map[string]PathEffect
+	ElementsByID        map[string][]xml.Token
+	Gradients           map[string]*GradientDef
+	SpecializedByParent map[string][]*SpecializedGradient
+	SpecializedLookup   map[string]map[string]string // gradID -> matrixKey -> newID
+	VBX, VBY            float64
+	VBW, VBH            float64
+	Width               float64
+	Height              float64
+	PageColor           string
+	PageOpacity         float64
+	HasPageColor        bool
 }
 
 type idRecording struct {
@@ -575,6 +654,9 @@ func extractDocumentMetadata(data []byte) DocumentMetadata {
 			curr = parent
 		}
 	}
+
+	// Resolve specialized gradients for userSpaceOnUse in transformed groups (Issue #56)
+	meta.resolveSpecializedGradients(data)
 
 	return meta
 }
@@ -1057,4 +1139,108 @@ func normalizeStopAttrs(attrs []xml.Attr) []xml.Attr {
 		result = append(result, xml.Attr{Name: xml.Name{Local: "stop-opacity"}, Value: extractedOpacity})
 	}
 	return result
+}
+
+var reURLGrad = regexp.MustCompile(`url\(#([a-zA-Z0-9_\-\.:]+)\)`)
+
+// IsUserSpaceOnUse checks if the gradient has gradientUnits="userSpaceOnUse", inheriting from Href if needed.
+func (g *GradientDef) IsUserSpaceOnUse(gradients map[string]*GradientDef) bool {
+	curr := g
+	for depth := 0; depth < 10 && curr != nil; depth++ {
+		for _, a := range curr.Attrs {
+			if a.Name.Local == "gradientUnits" {
+				return a.Value == "userSpaceOnUse"
+			}
+		}
+		if curr.Href != "" {
+			curr = gradients[curr.Href]
+		} else {
+			break
+		}
+	}
+	return false
+}
+
+// GetGradientTransform retrieves the gradient's gradientTransform matrix, inheriting from Href if needed.
+func (g *GradientDef) GetGradientTransform(gradients map[string]*GradientDef) Matrix2D {
+	curr := g
+	for depth := 0; depth < 10 && curr != nil; depth++ {
+		for _, a := range curr.Attrs {
+			if a.Name.Local == "gradientTransform" {
+				return parseTransform(a.Value)
+			}
+		}
+		if curr.Href != "" {
+			curr = gradients[curr.Href]
+		} else {
+			break
+		}
+	}
+	return IdentityMatrix()
+}
+
+// resolveSpecializedGradients scans elements to identify userSpaceOnUse gradients referenced within transformed groups.
+func (meta *DocumentMetadata) resolveSpecializedGradients(data []byte) {
+	meta.SpecializedByParent = make(map[string][]*SpecializedGradient)
+	meta.SpecializedLookup = make(map[string]map[string]string)
+	specCount := 0
+
+	dec := xml.NewDecoder(bytes.NewReader(data))
+	transformStack := []Matrix2D{IdentityMatrix()}
+
+	for {
+		token, err := dec.Token()
+		if err != nil {
+			break
+		}
+		switch tok := token.(type) {
+		case xml.StartElement:
+			name := tok.Name.Local
+			curMatrix := transformStack[len(transformStack)-1]
+			if name == "g" {
+				for _, a := range tok.Attr {
+					if a.Name.Local == "transform" {
+						curMatrix = curMatrix.Multiply(parseTransform(a.Value))
+					}
+				}
+				transformStack = append(transformStack, curMatrix)
+			} else {
+				elemMatrix := curMatrix
+				for _, a := range tok.Attr {
+					if a.Name.Local == "transform" {
+						elemMatrix = elemMatrix.Multiply(parseTransform(a.Value))
+					}
+				}
+				if elemMatrix != IdentityMatrix() {
+					for _, a := range tok.Attr {
+						for _, match := range reURLGrad.FindAllStringSubmatch(a.Value, -1) {
+							gradID := match[1]
+							if g, ok := meta.Gradients[gradID]; ok && g.IsUserSpaceOnUse(meta.Gradients) {
+								eff := elemMatrix.Multiply(g.GetGradientTransform(meta.Gradients))
+								key := fmt.Sprintf("%.4f_%.4f_%.4f_%.4f_%.4f_%.4f", eff.A, eff.B, eff.C, eff.D, eff.E, eff.F)
+								if meta.SpecializedLookup[gradID] == nil {
+									meta.SpecializedLookup[gradID] = make(map[string]string)
+								}
+								if _, exists := meta.SpecializedLookup[gradID][key]; !exists {
+									specCount++
+									newID := fmt.Sprintf("%s__t%d", gradID, specCount)
+									meta.SpecializedLookup[gradID][key] = newID
+									spec := &SpecializedGradient{
+										NewID:     newID,
+										Parent:    g,
+										Transform: eff,
+									}
+									meta.SpecializedByParent[gradID] = append(meta.SpecializedByParent[gradID], spec)
+								}
+							}
+						}
+					}
+				}
+			}
+		case xml.EndElement:
+			if tok.Name.Local == "g" && len(transformStack) > 1 {
+				transformStack = transformStack[:len(transformStack)-1]
+			}
+		}
+	}
 }

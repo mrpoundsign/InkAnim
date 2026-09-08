@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="linGrad" x1="0" y1="0" x2="60" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#3b82f6" />
+      <stop offset="1" stop-color="#ef4444" />
+    </linearGradient>
+    <radialGradient id="radGrad" cx="30" cy="30" r="20" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#10b981" />
+      <stop offset="1" stop-color="#f59e0b" />
+    </radialGradient>
+  </defs>
+  <rect width="128" height="128" fill="#18181b" />
+  <g transform="translate(16, 16) scale(1.2, 1.2)">
+    <rect x="0" y="0" width="60" height="30" rx="6" fill="url(#linGrad)" />
+  </g>
+  <g transform="translate(34, 60)">
+    <circle cx="30" cy="30" r="20" fill="url(#radGrad)" />
+  </g>
+</svg>
