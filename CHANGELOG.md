@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.6-pre2] - 2026-09-07
 
 ### Added
+- **"Ping-Pong" (Bounce / Reverse) Loop Playback & GIF Export**: Added support for Ping-Pong looping across both the live preview playback engine and the exported GIF encoding pipeline. When enabled on animations with 3 or more frames, playback cycles from the first to last frame and reverses back down without repeating turnaround frames ($2N-2$ total sequence), ensuring seamless bouncing loops in external players like Twitch, Discord, and browsers. Automatically disabled for documents with fewer than 3 frames ([#2](https://github.com/mrpoundsign/InkAnim/issues/2)).
+- **CLI Ping-Pong Flag**: Added `-pingpong` command-line flag to `inkanim-cli` for batch exporting bounced loop animations ([#2](https://github.com/mrpoundsign/InkAnim/issues/2)).
 - **WYSIWYG Palette Quantization & Dithering Preview**: Live animation preview canvas and Twitch scale thumbnails reflect the active color palette quantization (2–256 colors) and Floyd-Steinberg dithering in real time. Added a "WYSIWYG" toggle in playback controls to effortlessly compare color-quantized GIF frames against the unquantized 32-bit true-color rasterization ([#34](https://github.com/mrpoundsign/InkAnim/issues/34)).
 - **Reusable NumericCommitInput Component**: Created a numeric-only input component with bounds checking and commit via an "OK" button or Enter key ([#33](https://github.com/mrpoundsign/InkAnim/issues/33)).
 - **Custom Palette Color Limit**: Added a "Custom" option to the palette dropdown supporting any color count between 2 and 256.

@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="256"
+   height="256"
+   viewBox="0 0 256 256"
+   version="1.1"
+   id="svg_pendulum_demo"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview_pendulum"
+     pagecolor="#2e2e35"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#1e1e24" />
+
+  <!-- Background Stand Layer (Pinned) -->
+  <g
+     inkscape:groupmode="layer"
+     id="layer_clock_stand"
+     inkscape:label="Base (Pin Me →)"
+     style="display:inline">
+    <!-- Stand Base / Pedestal -->
+    <rect x="34" y="218" width="188" height="26" rx="5" ry="5" fill="#241B30" stroke="#46385E" stroke-width="2" />
+    <rect x="48" y="214" width="160" height="5" rx="2" ry="2" fill="#322642" />
+    <!-- Stand Base Text: PING-PONG ↓ -->
+    <text x="116" y="235" font-family="sans-serif" font-size="11" font-weight="bold" fill="#FCE082" text-anchor="middle" letter-spacing="1">PING-PONG</text>
+    <path d="M 160 226 L 160 235 M 156 231 L 160 235 L 164 231" stroke="#FCE082" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+    <!-- Stand Arched Frame -->
+    <path d="M 64 220 L 64 80 Q 64 24 128 24 Q 192 24 192 80 L 192 220"
+          fill="none" stroke="#3D2E52" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" />
+    <path d="M 64 220 L 64 80 Q 64 24 128 24 Q 192 24 192 80 L 192 220"
+          fill="none" stroke="#604780" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+    <!-- Pivot Mount Housing -->
+    <circle cx="128" cy="44" r="14" fill="#241B30" stroke="#E5A93C" stroke-width="3" />
+    <circle cx="128" cy="44" r="6" fill="#FCE082" />
+    <circle cx="128" cy="44" r="3" fill="#18181B" />
+  </g>
+
+  <!-- Frame 1: Left Peak (-24 degrees) -->
+  <g
+     inkscape:groupmode="layer"
+     id="frame1_left_peak"
+     inkscape:label="1. Left Peak (-24 deg)"
+     style="display:inline">
+    <!-- Pendulum Rod -->
+    <line x1="128" y1="44" x2="73" y2="168" stroke="#E5A93C" stroke-width="5" stroke-linecap="round" />
+    <line x1="128" y1="44" x2="73" y2="168" stroke="#FCE082" stroke-width="2" stroke-linecap="round" />
+    <!-- Pendulum Bob -->
+    <circle cx="73" cy="168" r="22" fill="#E5A93C" stroke="#7A5310" stroke-width="2" />
+    <circle cx="73" cy="168" r="17" fill="#F5C252" />
+    <ellipse cx="66" cy="161" rx="6" ry="4" fill="#FFF2B8" opacity="0.85" />
+    <!-- Motion shimmer -->
+    <path d="M 52 148 Q 50 168 56 186" fill="none" stroke="#FCE082" stroke-width="2" stroke-linecap="round" opacity="0.4" />
+  </g>
+
+  <!-- Frame 2: Mid Left (-8 degrees) -->
+  <g
+     inkscape:groupmode="layer"
+     id="frame2_mid_left"
+     inkscape:label="2. Mid Left (-8 deg)"
+     style="display:none">
+    <!-- Pendulum Rod -->
+    <line x1="128" y1="44" x2="109" y2="179" stroke="#E5A93C" stroke-width="5" stroke-linecap="round" />
+    <line x1="128" y1="44" x2="109" y2="179" stroke="#FCE082" stroke-width="2" stroke-linecap="round" />
+    <!-- Pendulum Bob -->
+    <circle cx="109" cy="179" r="22" fill="#E5A93C" stroke="#7A5310" stroke-width="2" />
+    <circle cx="109" cy="179" r="17" fill="#F5C252" />
+    <ellipse cx="102" cy="172" rx="6" ry="4" fill="#FFF2B8" opacity="0.85" />
+  </g>
+
+  <!-- Frame 3: Mid Right (+8 degrees) -->
+  <g
+     inkscape:groupmode="layer"
+     id="frame3_mid_right"
+     inkscape:label="3. Mid Right (+8 deg)"
+     style="display:none">
+    <!-- Pendulum Rod -->
+    <line x1="128" y1="44" x2="147" y2="179" stroke="#E5A93C" stroke-width="5" stroke-linecap="round" />
+    <line x1="128" y1="44" x2="147" y2="179" stroke="#FCE082" stroke-width="2" stroke-linecap="round" />
+    <!-- Pendulum Bob -->
+    <circle cx="147" cy="179" r="22" fill="#E5A93C" stroke="#7A5310" stroke-width="2" />
+    <circle cx="147" cy="179" r="17" fill="#F5C252" />
+    <ellipse cx="140" cy="172" rx="6" ry="4" fill="#FFF2B8" opacity="0.85" />
+  </g>
+
+  <!-- Frame 4: Right Peak (+24 degrees) -->
+  <g
+     inkscape:groupmode="layer"
+     id="frame4_right_peak"
+     inkscape:label="4. Right Peak (+24 deg)"
+     style="display:none">
+    <!-- Pendulum Rod -->
+    <line x1="128" y1="44" x2="183" y2="168" stroke="#E5A93C" stroke-width="5" stroke-linecap="round" />
+    <line x1="128" y1="44" x2="183" y2="168" stroke="#FCE082" stroke-width="2" stroke-linecap="round" />
+    <!-- Pendulum Bob -->
+    <circle cx="183" cy="168" r="22" fill="#E5A93C" stroke="#7A5310" stroke-width="2" />
+    <circle cx="183" cy="168" r="17" fill="#F5C252" />
+    <ellipse cx="176" cy="161" rx="6" ry="4" fill="#FFF2B8" opacity="0.85" />
+    <!-- Motion shimmer -->
+    <path d="M 204 148 Q 206 168 200 186" fill="none" stroke="#FCE082" stroke-width="2" stroke-linecap="round" opacity="0.4" />
+  </g>
+</svg>

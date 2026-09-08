@@ -53,6 +53,11 @@ func NewMainWindow(appInstance fyne.App) *MainWindow {
 	})
 
 	mw.centerPanel = NewCenterPreviewPanel(sess)
+	mw.centerPanel.SetOnPingPongChange(func() {
+		if mw.rightPanel != nil {
+			mw.rightPanel.validateTwitch()
+		}
+	})
 
 	mw.rightPanel = NewRightExportPanel(sess, win, func() {
 		if mw.centerPanel != nil {

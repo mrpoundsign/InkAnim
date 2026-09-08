@@ -2,6 +2,7 @@ package gif
 
 import (
 	"bytes"
+	"fmt"
 	"image"
 	"image/color"
 	"image/gif"
@@ -90,6 +91,70 @@ func TestEncodeAnimatedGIF(t *testing.T) {
 	// Delay units: 100ms / 10 = 10 units
 	if anim.Delay[0] != 10 {
 		t.Errorf("expected delay 10, got %d", anim.Delay[0])
+	}
+}
+
+func TestEncodeAnimatedGIF_PingPong(t *testing.T) {
+	createFrames := func(count int) []FrameInput {
+		frames := make([]FrameInput, count)
+		for i := range count {
+			img := image.NewRGBA(image.Rect(0, 0, 32, 32))
+			// Color pixel at (0, 0) with frame index to verify exact frame order
+			img.Set(0, 0, color.RGBA{R: uint8(i * 40), G: 100, B: 200, A: 255})
+			frames[i] = FrameInput{
+				Index:      i,
+				Label:      fmt.Sprintf("Frame %d", i+1),
+				Image:      img,
+				DurationMs: 100 + i*10,
+			}
+		}
+		return frames
+	}
+
+	opts := DefaultOptions()
+	opts.PingPong = true
+	opts.ExportSquare = false
+
+	// Case 1: 3 frames -> should produce 4 frames: [0, 1, 2, 1]
+	f3 := createFrames(3)
+	anim3, err := EncodeAnimatedGIF(f3, opts)
+	if err != nil {
+		t.Fatalf("EncodeAnimatedGIF 3 frames failed: %v", err)
+	}
+	if len(anim3.Image) != 4 {
+		t.Fatalf("expected 4 frames for 3-frame ping-pong, got %d", len(anim3.Image))
+	}
+	expectedDelays3 := []int{10, 11, 12, 11}
+	for i, expected := range expectedDelays3 {
+		if anim3.Delay[i] != expected {
+			t.Errorf("frame %d: expected delay %d, got %d", i, expected, anim3.Delay[i])
+		}
+	}
+
+	// Case 2: 4 frames -> should produce 6 frames: [0, 1, 2, 3, 2, 1]
+	f4 := createFrames(4)
+	anim4, err := EncodeAnimatedGIF(f4, opts)
+	if err != nil {
+		t.Fatalf("EncodeAnimatedGIF 4 frames failed: %v", err)
+	}
+	if len(anim4.Image) != 6 {
+		t.Fatalf("expected 6 frames for 4-frame ping-pong, got %d", len(anim4.Image))
+	}
+	expectedDelays4 := []int{10, 11, 12, 13, 12, 11}
+	for i, expected := range expectedDelays4 {
+		if anim4.Delay[i] != expected {
+			t.Errorf("frame %d: expected delay %d, got %d", i, expected, anim4.Delay[i])
+		}
+	}
+
+	// Case 3: 2 frames -> Ping-Pong should be inactive (< 3 frames), producing 2 frames
+	f2 := createFrames(2)
+	anim2, err := EncodeAnimatedGIF(f2, opts)
+	if err != nil {
+		t.Fatalf("EncodeAnimatedGIF 2 frames failed: %v", err)
+	}
+	if len(anim2.Image) != 2 {
+		t.Fatalf("expected 2 frames for 2-frame input with ping-pong enabled, got %d", len(anim2.Image))
 	}
 }
 

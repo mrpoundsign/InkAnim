@@ -39,6 +39,7 @@ func run() error {
 	fps := flag.Int("fps", 10, "Frames per second (playback speed)")
 	colors := flag.Int("colors", 256, "Max palette colors (2-256)")
 	dither := flag.Bool("dither", false, "Apply Floyd-Steinberg dithering")
+	pingpong := flag.Bool("pingpong", false, "Enable Ping-Pong (bounce/reverse) loop playback")
 	checkTwitch := flag.Bool("check-twitch", true, "Validate output against Twitch animated emote specifications")
 	cpuprofile := flag.String("cpuprofile", "", "Write cpu profile to file")
 	memprofile := flag.String("memprofile", "", "Write memory profile to file")
@@ -105,6 +106,7 @@ func run() error {
 		NumColors:         *colors,
 		AlphaThreshold:    128,
 		Dither:            *dither,
+		PingPong:          *pingpong,
 	}
 	sess.ExportOptions = opts
 
@@ -117,7 +119,11 @@ func run() error {
 	fmt.Printf("Success! Exported %s (%0.2f KB)\n", outPath, float64(sizeBytes)/1024.0)
 
 	if *checkTwitch {
-		totalDurationMs := frameCount * frameDelayMs
+		effectiveFrames := frameCount
+		if *pingpong && frameCount >= 3 {
+			effectiveFrames = frameCount*2 - 2
+		}
+		totalDurationMs := effectiveFrames * frameDelayMs
 		exportW := int(sess.Document.Width)
 		exportH := int(sess.Document.Height)
 		if *square {
@@ -130,7 +136,7 @@ func run() error {
 			exportW, exportH = *width, *height
 		}
 
-		res := gif.ValidateTwitchEmote(frameCount, totalDurationMs, exportW, exportH, sizeBytes)
+		res := gif.ValidateTwitchEmote(effectiveFrames, totalDurationMs, exportW, exportH, sizeBytes)
 		fmt.Println("\n--- Twitch Emote Compatibility Check ---")
 		if res.IsValid && len(res.Warnings) == 0 {
 			fmt.Println("[OK] Fully compatible with Twitch Animated Emote requirements!")

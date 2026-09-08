@@ -36,6 +36,7 @@ type CenterPreviewPanel struct {
 	frameLabel      *widget.Label
 	playPauseBtn    *widget.Button
 	loopCheck          *widget.Check
+	pingPongCheck      *widget.Check
 	cropGuidesCheck    *widget.Check
 	wysiwygCheck       *widget.Check
 	inspectorCheck     *widget.Check
@@ -51,11 +52,15 @@ type CenterPreviewPanel struct {
 
 	isPlaying      bool
 	loop           bool
+	pingPong       bool
+	pingPongDir    int
 	showCropGuides bool
 	wysiwygColors  bool
 	currentIdx     int
 	speedFactor    float64
 	cachedFrames   []cachedPreviewFrame
+
+	onPingPongChange func()
 
 	mu      sync.Mutex
 	timer   *time.Timer
@@ -98,6 +103,18 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 		p.loop = checked
 	})
 	p.loopCheck.Checked = true
+
+	p.pingPongCheck = widget.NewCheck("Ping-Pong", func(checked bool) {
+		p.mu.Lock()
+		p.pingPong = checked
+		if p.session != nil {
+			p.session.ExportOptions.PingPong = checked
+		}
+		p.mu.Unlock()
+		if p.onPingPongChange != nil {
+			p.onPingPongChange()
+		}
+	})
 
 	p.cropGuidesCheck = widget.NewCheck("Crop Guides", func(checked bool) {
 		p.mu.Lock()
@@ -154,6 +171,7 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 		nextBtn,
 		speedSelect,
 		p.loopCheck,
+		p.pingPongCheck,
 		p.cropGuidesCheck,
 		p.wysiwygCheck,
 		p.inspectorCheck,
@@ -226,6 +244,16 @@ func (p *CenterPreviewPanel) SetWysiwyg(enabled bool) {
 	p.wysiwygCheck.SetChecked(enabled)
 }
 
+// SetPingPong toggles the ping-pong playback mode.
+func (p *CenterPreviewPanel) SetPingPong(enabled bool) {
+	p.pingPongCheck.SetChecked(enabled)
+}
+
+// SetOnPingPongChange registers a callback when ping-pong mode changes.
+func (p *CenterPreviewPanel) SetOnPingPongChange(fn func()) {
+	p.onPingPongChange = fn
+}
+
 func (p *CenterPreviewPanel) newScaledImage(size float32) *canvas.Image {
 	blank := image.NewRGBA(image.Rect(0, 0, int(size), int(size)))
 	img := canvas.NewImageFromImage(blank)
@@ -260,6 +288,15 @@ func (p *CenterPreviewPanel) Refresh() {
 	}
 
 	p.rebuildCachedFramesLocked()
+
+	totalFrames := len(frames)
+	if p.pingPongCheck != nil {
+		if totalFrames >= 3 {
+			p.pingPongCheck.Enable()
+		} else {
+			p.pingPongCheck.Disable()
+		}
+	}
 
 	if p.currentIdx >= len(frames) {
 		p.currentIdx = 0
@@ -350,8 +387,20 @@ func (p *CenterPreviewPanel) playLocked() {
 		return
 	}
 
+	if p.pingPongDir == 0 {
+		p.pingPongDir = 1
+	}
+
 	// If loop is disabled or already on/past the last frame, restart from beginning
-	if !p.loop || p.currentIdx >= len(frames)-1 {
+	if !p.loop {
+		if p.pingPong && len(frames) >= 3 {
+			if p.currentIdx == 0 && p.pingPongDir < 0 {
+				p.pingPongDir = 1
+			}
+		} else if p.currentIdx >= len(frames)-1 {
+			p.currentIdx = 0
+		}
+	} else if p.currentIdx >= len(frames) {
 		p.currentIdx = 0
 	}
 
@@ -392,19 +441,45 @@ func (p *CenterPreviewPanel) playLocked() {
 		}
 
 		totalFrames := len(p.session.RenderedFrames)
-		nextIdx := p.currentIdx + 1
-		if nextIdx >= totalFrames {
-			if !p.loop {
-				p.currentIdx = totalFrames - 1
-				p.pauseLocked()
-				p.renderCurrentFrameLocked()
-				p.mu.Unlock()
-				return
+		if p.pingPong && totalFrames >= 3 {
+			if p.pingPongDir <= 0 {
+				p.pingPongDir = -1
+			} else {
+				p.pingPongDir = 1
 			}
-			nextIdx = 0
+
+			nextIdx := p.currentIdx + p.pingPongDir
+			if nextIdx >= totalFrames {
+				p.pingPongDir = -1
+				nextIdx = totalFrames - 2
+			} else if nextIdx < 0 {
+				if !p.loop {
+					p.currentIdx = 0
+					p.pingPongDir = 1
+					p.pauseLocked()
+					p.renderCurrentFrameLocked()
+					p.mu.Unlock()
+					return
+				}
+				p.pingPongDir = 1
+				nextIdx = 1
+			}
+			p.currentIdx = nextIdx
+		} else {
+			nextIdx := p.currentIdx + 1
+			if nextIdx >= totalFrames {
+				if !p.loop {
+					p.currentIdx = totalFrames - 1
+					p.pauseLocked()
+					p.renderCurrentFrameLocked()
+					p.mu.Unlock()
+					return
+				}
+				nextIdx = 0
+			}
+			p.currentIdx = nextIdx
 		}
 
-		p.currentIdx = nextIdx
 		p.renderCurrentFrameLocked()
 
 		dur := p.session.RenderedFrames[p.currentIdx].DurationMs

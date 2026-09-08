@@ -19,6 +19,15 @@ func EncodeAnimatedGIF(frames []FrameInput, opts ExportOptions) (*gif.GIF, error
 		return nil, errors.New("no frames provided to encode")
 	}
 
+	if opts.PingPong && len(frames) >= 3 {
+		bounced := make([]FrameInput, 0, len(frames)*2-2)
+		bounced = append(bounced, frames...)
+		for i := len(frames) - 2; i >= 1; i-- {
+			bounced = append(bounced, frames[i])
+		}
+		frames = bounced
+	}
+
 	processedFrames := make([]*image.RGBA, len(frames))
 	delays := make([]int, len(frames))
 	disposals := make([]byte, len(frames))

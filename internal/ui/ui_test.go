@@ -249,6 +249,63 @@ func TestNoLoopPlaybackAndButtonStates(t *testing.T) {
 	mw.centerPanel.Pause()
 }
 
+func TestPingPongPlaybackAndExportUI(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	mw := NewMainWindow(app)
+	testSVGPath, err := filepath.Abs("../../testdata/character_walk.svg")
+	if err != nil {
+		t.Fatalf("failed to resolve test SVG path: %v", err)
+	}
+
+	mw.loadFilePath(testSVGPath)
+	mw.centerPanel.Pause()
+
+	// 1. character_walk.svg has 3 frames -> Ping-Pong should be enabled
+	if mw.centerPanel.pingPongCheck.Disabled() {
+		t.Errorf("expected pingPongCheck to be enabled for 3 frames")
+	}
+
+	// 2. Enable Ping-Pong
+	mw.centerPanel.pingPongCheck.SetChecked(true)
+	if !mw.session.ExportOptions.PingPong {
+		t.Errorf("expected session ExportOptions.PingPong to be true")
+	}
+
+	// 3. Verify Twitch status and export button reflect 4 frames (3*2 - 2)
+	if !strings.Contains(mw.rightPanel.twitchStatusLabel.Text, "4 frames") {
+		t.Errorf("expected twitchStatusLabel to reflect 4 bounced frames, got '%s'", mw.rightPanel.twitchStatusLabel.Text)
+	}
+
+	// 4. Test bounce playback sequence
+	mw.centerPanel.mu.Lock()
+	mw.centerPanel.currentIdx = 0
+	mw.centerPanel.pingPongDir = 1
+	mw.centerPanel.speedFactor = 2.0 // 2x speed for fast test
+	mw.centerPanel.mu.Unlock()
+
+	mw.centerPanel.Play()
+	// Run for 350ms at 2x speed (50ms per frame) to cycle through frames: 0 -> 1 -> 2 -> 1 -> 0
+	time.Sleep(350 * time.Millisecond)
+	mw.centerPanel.Pause()
+
+	// 5. Edge case: load 2-frame document -> Ping-Pong must be disabled
+	multiPagePath, err := filepath.Abs("../../testdata/multipage_walk.svg")
+	if err != nil {
+		t.Fatalf("failed to resolve multipage SVG path: %v", err)
+	}
+	mw.loadFilePath(multiPagePath)
+	mw.centerPanel.Pause()
+
+	if len(mw.session.RenderedFrames) != 2 {
+		t.Fatalf("expected 2 frames, got %d", len(mw.session.RenderedFrames))
+	}
+	if !mw.centerPanel.pingPongCheck.Disabled() {
+		t.Errorf("expected pingPongCheck to be disabled for < 3 frames")
+	}
+}
+
 func TestCropBoundaryUIAndGuides(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()

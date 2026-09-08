@@ -15,6 +15,7 @@ type ExportOptions struct {
 	NumColors        int   `json:"numColors"`        // palette size (up to 256)
 	AlphaThreshold   uint8 `json:"alphaThreshold"`   // pixels with alpha < threshold become transparent (default 128)
 	Dither           bool  `json:"dither"`           // whether to apply Floyd-Steinberg dithering
+	PingPong         bool  `json:"pingPong"`         // whether to loop in ping-pong (bounce/reverse) mode
 }
 
 // DefaultOptions provides standard defaults tailored for high-quality animated emotes.

@@ -272,8 +272,18 @@ func (p *RightExportPanel) validateTwitch() {
 	}
 
 	totalDurMs := 0
-	for _, f := range p.session.RenderedFrames {
-		totalDurMs += f.DurationMs
+	if p.session.ExportOptions.PingPong && frames >= 3 {
+		for _, f := range p.session.RenderedFrames {
+			totalDurMs += f.DurationMs
+		}
+		for i := frames - 2; i >= 1; i-- {
+			totalDurMs += p.session.RenderedFrames[i].DurationMs
+		}
+		frames = frames*2 - 2
+	} else {
+		for _, f := range p.session.RenderedFrames {
+			totalDurMs += f.DurationMs
+		}
 	}
 
 	// Realistic GIF compression estimation:
