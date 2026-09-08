@@ -129,7 +129,7 @@ Active issues and feature requests are tracked exclusively via **[GitHub Issues]
 5. **No Inkscape LPE Support**: Paths referencing unbaked Live Path Effects (e.g. `fillet_chamfer` for smooth rounded polygon corners) render as raw sharp vertices.
 
 ### The Architectural Pattern
-**Never modify or destructively flatten SVG files on disk.** Instead, [`PreprocessSVG`](file:///c:/Users/mrpou/Documents/Projects/InkAnim/internal/svg/lpe.go) intercepts the XML token stream in memory before passing it to `oksvg`:
+**Never modify or destructively flatten SVG files on disk.** Instead, [`PreprocessSVG`](internal/svg/preprocess.go) intercepts the XML token stream in memory before passing it to `oksvg`:
 - **Stage 1: Font & Element Conversion (Issue #21)**: Convert `<text>` and `<tspan>` elements into `<path>` vector glyph contours early in the pipeline.
 - **Stage 2: LPE Evaluation**: Evaluate `fillet_chamfer` LPEs on `<path>` elements referencing `<inkscape:path-effect>`.
 - **Stage 3: Rect `rx`/`ry` Normalization**: Mirror `rx` and `ry` when either is omitted.
