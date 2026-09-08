@@ -79,7 +79,7 @@ build_wasm() {
     # Copy sample SVGs
     cp -r "$ROOT_DIR/web/samples/"* "$PAGES_DIR/samples/"
 
-    echo "✓ WebAssembly demo and landing page assembled in $PAGES_DIR"
+    echo "✓ WebAssembly studio and landing page assembled in $PAGES_DIR"
 }
 
 serve_web() {
@@ -87,6 +87,11 @@ serve_web() {
     if [ ! -f "$PAGES_DIR/demo/InkAnim.wasm" ]; then
         echo "Web site not built yet. Building first..."
         build_wasm
+    else
+        # Overlay latest HTML/CSS templates so changes reflect immediately
+        cp "$ROOT_DIR/web/demo/index.html" "$PAGES_DIR/demo/index.html"
+        cp -r "$ROOT_DIR/web/landing/"* "$PAGES_DIR/"
+        cp -r "$ROOT_DIR/web/samples/"* "$PAGES_DIR/samples/"
     fi
     go run ./cmd/wasm-serve -dir "$PAGES_DIR" -port 8080
 }

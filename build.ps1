@@ -182,7 +182,7 @@ function Build-WASM {
     # Copy sample SVGs
     Copy-Item (Join-Path $PSScriptRoot "web\samples\*") (Join-Path $pagesDir "samples") -Recurse -Force
 
-    Write-Host "[OK] WebAssembly demo and landing page assembled in $pagesDir" -ForegroundColor Green
+    Write-Host "[OK] WebAssembly studio and landing page assembled in $pagesDir" -ForegroundColor Green
 }
 
 function Serve-Web {
@@ -191,6 +191,11 @@ function Serve-Web {
     if (-not (Test-Path $wasmBinary)) {
         Write-Host "Web site not built yet. Building first..." -ForegroundColor DarkGray
         Build-WASM
+    } else {
+        # Overlay latest HTML/CSS templates so changes reflect immediately
+        Copy-Item (Join-Path $PSScriptRoot "web\demo\index.html") (Join-Path $pagesDir "demo\index.html") -Force
+        Copy-Item (Join-Path $PSScriptRoot "web\landing\*") $pagesDir -Recurse -Force
+        Copy-Item (Join-Path $PSScriptRoot "web\samples\*") (Join-Path $pagesDir "samples") -Recurse -Force
     }
     & $GoExe run ./cmd/wasm-serve -dir $pagesDir -port 8080
 }

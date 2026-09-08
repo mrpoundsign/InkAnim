@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>InkAnim Studio — In-Browser WebAssembly Demo</title>
-  <meta name="description" content="Live in-browser WebAssembly demo of InkAnim. Convert layered and multi-page Inkscape SVGs to animated GIFs.">
+  <title>InkAnim Studio — In-Browser WebAssembly Studio</title>
+  <meta name="description" content="Fully functional in-browser WebAssembly studio for InkAnim. Convert layered and multi-page Inkscape SVGs to animated GIFs.">
   <link rel="icon" type="image/png" href="icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -221,6 +221,53 @@
         display: none;
       }
     }
+
+    #studio-toolbar.collapsed {
+      opacity: 0;
+      pointer-events: none;
+      transform: translate(-50%, 20px);
+    }
+
+    .tool-btn-close {
+      padding: 6px 10px;
+      color: #a1a1aa;
+      font-size: 0.85rem;
+    }
+
+    .tool-btn-close:hover {
+      color: #ef4444;
+      border-color: rgba(239, 68, 68, 0.4);
+      background: rgba(239, 68, 68, 0.15);
+    }
+
+    #toolbar-reopen-btn {
+      position: fixed;
+      bottom: 16px;
+      right: 16px;
+      z-index: 10000;
+      display: none;
+      align-items: center;
+      gap: 6px;
+      background: rgba(18, 18, 23, 0.88);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(145, 70, 255, 0.4);
+      color: #f4f4f6;
+      font-size: 0.8rem;
+      font-weight: 600;
+      padding: 7px 14px;
+      border-radius: 9999px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6), 0 0 12px rgba(145, 70, 255, 0.25);
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    #toolbar-reopen-btn:hover {
+      background: rgba(145, 70, 255, 0.25);
+      border-color: var(--accent-purple);
+      color: #fff;
+      transform: translateY(-1px);
+      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.7), 0 0 18px rgba(145, 70, 255, 0.4);
+    }
   </style>
 
   <script>
@@ -332,6 +379,29 @@
         if (btn) btn.innerText = origText;
       }
     }
+
+    function toggleToolbar(collapse) {
+      var bar = document.getElementById('studio-toolbar');
+      var reopen = document.getElementById('toolbar-reopen-btn');
+      if (!bar || !reopen) return;
+      if (collapse) {
+        bar.classList.add('collapsed');
+        reopen.style.display = 'inline-flex';
+        try { localStorage.setItem('inkanim_toolbar_collapsed', '1'); } catch(e) {}
+      } else {
+        bar.classList.remove('collapsed');
+        reopen.style.display = 'none';
+        try { localStorage.setItem('inkanim_toolbar_collapsed', '0'); } catch(e) {}
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+      try {
+        if (localStorage.getItem('inkanim_toolbar_collapsed') === '1') {
+          toggleToolbar(true);
+        }
+      } catch(e) {}
+    });
   </script>
 </head>
 <body onload="download_application()">
@@ -391,7 +461,16 @@
     <a href="https://github.com/mrpoundsign/InkAnim" target="_blank" rel="noopener noreferrer" class="tool-btn">
       ⭐ GitHub
     </a>
+    <div class="tool-sep"></div>
+    <button type="button" class="tool-btn tool-btn-close" id="toolbar-close-btn" title="Hide Quick Samples Toolbar" onclick="toggleToolbar(true)">
+      ✕
+    </button>
   </div>
+
+  <!-- Collapsed Reopen Button (Bottom Right) -->
+  <button id="toolbar-reopen-btn" onclick="toggleToolbar(false)" title="Show Quick Samples Toolbar">
+    🎨 Quick Samples ▴
+  </button>
 
   <input id="dummyEntry" style="position: absolute; left: 0; top: -100pt; z-index: -10; font-size: 32pt;" />
 </body>

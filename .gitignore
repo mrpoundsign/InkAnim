@@ -10,3 +10,4 @@ fyne-cross/
 wasm/
 *.wasm
 *.pprof
+notes/

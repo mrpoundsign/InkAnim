@@ -19,7 +19,7 @@ func main() {
 
 	fmt.Printf("==> Serving InkAnim Web:\n")
 	fmt.Printf("    Landing Page: http://localhost:%s/\n", *port)
-	fmt.Printf("    Live Demo:    http://localhost:%s/demo/\n\n", *port)
+	fmt.Printf("    Web Studio:   http://localhost:%s/demo/\n\n", *port)
 	fmt.Println("Press Ctrl+C to stop.")
 
 	if err := http.ListenAndServe(":"+*port, nil); err != nil {
