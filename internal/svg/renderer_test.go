@@ -111,3 +111,62 @@ func TestHydrateGoldenStrokeMatch(t *testing.T) {
 		t.Errorf("rendered stroke thickness differs from golden: got %d, golden %d", strokeCountRender, strokeCountGolden)
 	}
 }
+
+func TestParsePreserveAspectRatio(t *testing.T) {
+	tests := []struct {
+		input       string
+		expected    PreserveAspectRatio
+	}{
+		{"", PreserveAspectRatio{Align: "xMidYMid", MeetOrSlice: "meet"}},
+		{"none", PreserveAspectRatio{Align: "none", MeetOrSlice: "meet"}},
+		{"xMinYMin meet", PreserveAspectRatio{Align: "xMinYMin", MeetOrSlice: "meet"}},
+		{"xMaxYMax slice", PreserveAspectRatio{Align: "xMaxYMax", MeetOrSlice: "slice"}},
+		{"defer xMidYMid slice", PreserveAspectRatio{Align: "xMidYMid", MeetOrSlice: "slice"}},
+		{"  xMinYMid   meet  ", PreserveAspectRatio{Align: "xMinYMid", MeetOrSlice: "meet"}},
+	}
+
+	for _, tc := range tests {
+		got := parsePreserveAspectRatio(tc.input)
+		if got != tc.expected {
+			t.Errorf("parsePreserveAspectRatio(%q) = %+v; want %+v", tc.input, got, tc.expected)
+		}
+	}
+}
+
+func TestRenderPreserveAspectRatioModes(t *testing.T) {
+	// 200x100 rectangle filled with red, rendered into 100x100 square
+	svgMeet := `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 200 100" preserveAspectRatio="xMidYMid meet">
+		<rect width="200" height="100" fill="#ff0000" />
+	</svg>`
+
+	imgMeet, err := RenderSVGToRGBA([]byte(svgMeet), 100, 100)
+	if err != nil {
+		t.Fatalf("RenderSVGToRGBA meet failed: %v", err)
+	}
+
+	// In meet mode, 200x100 scaled to 100 wide -> height is 50.
+	// Centered: y=0..24 is transparent, y=25..74 is red, y=75..99 is transparent.
+	_, _, _, alphaTop := imgMeet.At(50, 10).RGBA()
+	if alphaTop != 0 {
+		t.Errorf("expected transparent top pillarbox in meet mode, got alpha %d", alphaTop)
+	}
+	rCenter, _, _, alphaCenter := imgMeet.At(50, 50).RGBA()
+	if alphaCenter == 0 || (rCenter>>8) < 200 {
+		t.Errorf("expected red content at center in meet mode, got RGBA (%d, _, _, %d)", rCenter>>8, alphaCenter)
+	}
+
+	// In none mode, 200x100 stretches to fill entire 100x100
+	svgNone := `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 200 100" preserveAspectRatio="none">
+		<rect width="200" height="100" fill="#ff0000" />
+	</svg>`
+
+	imgNone, err := RenderSVGToRGBA([]byte(svgNone), 100, 100)
+	if err != nil {
+		t.Fatalf("RenderSVGToRGBA none failed: %v", err)
+	}
+	rNone, _, _, aNone := imgNone.At(50, 10).RGBA()
+	if aNone == 0 || (rNone>>8) < 200 {
+		t.Errorf("expected filled content across top in none mode, got RGBA (%d, _, _, %d)", rNone>>8, aNone)
+	}
+}
+

@@ -92,6 +92,7 @@ Each fixture lives in `testdata/fixtures/` as `<operation_name>.svg` and `<opera
 | `use_element_clone` | Reusable cloned objects (`<use href="#id">` and `<use xlink:href="#id">`) with transforms and translations |
 | `image_embedded_raster` | Embedded raster graphic (`<image href="data:image/png;base64,...">`) with z-ordered compositing |
 | `gradient_transform` | Multi-level stop inheritance via `xlink:href` and normalized 2D affine `gradientTransform` in linear and radial gradients |
+| `preserve_aspect_ratio` | SVG standard `preserveAspectRatio` (default `xMidYMid meet`) with uniform scaling and letterbox/pillarbox alignment |
 
 ---
 

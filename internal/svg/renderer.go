@@ -2,9 +2,11 @@ package svg
 
 import (
 	"bytes"
+	"encoding/xml"
 	"fmt"
 	"image"
 	"math"
+	"strings"
 
 	"github.com/srwiley/oksvg"
 	"github.com/srwiley/rasterx"
@@ -44,18 +46,57 @@ func RenderSVGToRGBA(svgData []byte, targetW, targetH int) (*image.RGBA, error) 
 	// this caused an unintended shift of ViewBox * (scale - 1), shoving the drawing down/right
 	// and clipping shapes against the bottom/right canvas edges.
 	if icon.ViewBox.W > 0 && icon.ViewBox.H > 0 {
-		scaleW := w / icon.ViewBox.W
-		scaleH := h / icon.ViewBox.H
+		par := parsePreserveAspectRatio(extractRootPreserveAspectRatio(svgData))
+
+		var scaleW, scaleH, offsetX, offsetY, scaleFactor float64
+
+		if par.Align == "none" {
+			scaleW = w / icon.ViewBox.W
+			scaleH = h / icon.ViewBox.H
+			scaleFactor = math.Sqrt(scaleW * scaleH)
+		} else {
+			scaleX := w / icon.ViewBox.W
+			scaleY := h / icon.ViewBox.H
+			var s float64
+			if par.MeetOrSlice == "slice" {
+				s = math.Max(scaleX, scaleY)
+			} else {
+				s = math.Min(scaleX, scaleY)
+			}
+			scaleW = s
+			scaleH = s
+			scaleFactor = s
+
+			deltaX := w - icon.ViewBox.W*s
+			deltaY := h - icon.ViewBox.H*s
+
+			switch {
+			case strings.HasPrefix(par.Align, "xMin"):
+				offsetX = 0
+			case strings.HasPrefix(par.Align, "xMax"):
+				offsetX = deltaX
+			default: // xMid
+				offsetX = deltaX / 2.0
+			}
+
+			switch {
+			case strings.HasSuffix(par.Align, "YMin"):
+				offsetY = 0
+			case strings.HasSuffix(par.Align, "YMax"):
+				offsetY = deltaY
+			default: // YMid
+				offsetY = deltaY / 2.0
+			}
+		}
+
 		icon.Transform = rasterx.Matrix2D{
 			A: scaleW,
 			D: scaleH,
-			E: -icon.ViewBox.X * scaleW,
-			F: -icon.ViewBox.Y * scaleH,
+			E: -icon.ViewBox.X*scaleW + offsetX,
+			F: -icon.ViewBox.Y*scaleH + offsetY,
 		}
 
-		// oksvg draws strokes using raw LineWidth in user units without scaling by the viewBox-to-canvas
-		// transformation matrix. Scale each path's LineWidth proportionally so strokes scale with image resolution.
-		scaleFactor := math.Sqrt(scaleW * scaleH)
+		// Scale each path's LineWidth proportionally so strokes scale with image resolution.
 		for i := range icon.SVGPaths {
 			icon.SVGPaths[i].LineWidth *= scaleFactor
 		}
@@ -88,3 +129,69 @@ func RenderSVGToRGBA(svgData []byte, targetW, targetH int) (*image.RGBA, error) 
 
 	return img, nil
 }
+
+// PreserveAspectRatio defines viewBox aspect ratio preservation rules.
+type PreserveAspectRatio struct {
+	Align       string // "none", "xMinYMin", "xMidYMin", "xMaxYMin", "xMinYMid", "xMidYMid", etc.
+	MeetOrSlice string // "meet" or "slice"
+}
+
+// parsePreserveAspectRatio parses standard SVG preserveAspectRatio attribute syntax.
+// Defaults to xMidYMid meet if empty or omitted per SVG specification.
+func parsePreserveAspectRatio(attr string) PreserveAspectRatio {
+	attr = strings.TrimSpace(attr)
+	if attr == "" {
+		return PreserveAspectRatio{
+			Align:       "xMidYMid",
+			MeetOrSlice: "meet",
+		}
+	}
+
+	parts := strings.Fields(attr)
+	idx := 0
+	if parts[0] == "defer" {
+		idx++
+		if idx >= len(parts) {
+			return PreserveAspectRatio{
+				Align:       "xMidYMid",
+				MeetOrSlice: "meet",
+			}
+		}
+	}
+
+	align := parts[idx]
+	idx++
+
+	meetOrSlice := "meet"
+	if idx < len(parts) && parts[idx] == "slice" {
+		meetOrSlice = "slice"
+	}
+
+	return PreserveAspectRatio{
+		Align:       align,
+		MeetOrSlice: meetOrSlice,
+	}
+}
+
+// extractRootPreserveAspectRatio extracts the preserveAspectRatio attribute from the root <svg> tag.
+func extractRootPreserveAspectRatio(svgData []byte) string {
+	decoder := xml.NewDecoder(bytes.NewReader(svgData))
+	for {
+		tok, err := decoder.Token()
+		if err != nil {
+			break
+		}
+		if start, ok := tok.(xml.StartElement); ok {
+			if start.Name.Local == "svg" {
+				for _, a := range start.Attr {
+					if a.Name.Local == "preserveAspectRatio" {
+						return a.Value
+					}
+				}
+				return ""
+			}
+		}
+	}
+	return ""
+}
+
