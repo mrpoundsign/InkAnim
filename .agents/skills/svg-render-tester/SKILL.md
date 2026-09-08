@@ -29,8 +29,13 @@ This skill provides a standardized protocol to transform bug reports and real-wo
 
 ### 🏛️ 4. Uncompromising Ground Truth (Authoring-Time Inkscape CLI)
 - **The agent/developer MUST run headless Inkscape in the terminal to generate the golden file**:
-  - `inkscape testdata/fixtures/<name>.svg --export-type=png --export-filename=testdata/fixtures/<name>.golden.png -w 128 -h 128`
+  - `go run ./cmd/dev golden --generate <name>`
+  - (Or direct CLI: `inkscape testdata/fixtures/<name>.svg --export-type=png --export-filename=testdata/fixtures/<name>.golden.png -w 128 -h 128`)
   - (Use `-w 512 -h 512` for 512×512 fixtures like `text_full_alphabet`).
+- **Developer CLI (`cmd/dev`)**:
+  - `go run ./cmd/dev golden <name>`: Compare fixture with golden and report pixel diff metrics / diff bounds.
+  - `go run ./cmd/dev golden --generate <name>`: Auto-invoke headless Inkscape with proper dimensions.
+  - `go run ./cmd/dev inspect <path> --color "#hex"`: Inspect pixel bounds, centroids, and cluster coordinates.
 - **Tests DO NOT invoke Inkscape**: CI environments, Docker containers, and `go test` runners do not have Inkscape installed. If a `.golden.png` is missing, `TestAtomicFixtures` will fail immediately.
 - **Always Version-Control Goldens**: Both `<name>.svg` and `<name>.golden.png` must be committed together to git.
 - **Never bypass Inkscape CLI**: Never generate golden PNGs via temporary helper scripts, Python scripts, mock SVGs, or manually pre-calculated arc paths.
