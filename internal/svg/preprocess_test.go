@@ -105,3 +105,50 @@ func TestGradientStopInliningAndTransform(t *testing.T) {
 	}
 }
 
+func TestDesugarPathArcs(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "single arc untouched",
+			input:    "M 10 20 a 5 5 0 0 1 10 10 Z",
+			expected: "M 10 20 a 5 5 0 0 1 10 10 Z",
+		},
+		{
+			name:     "no arcs fast path",
+			input:    "M 0 0 L 10 10 C 20 20 30 30 40 40 Z",
+			expected: "M 0 0 L 10 10 C 20 20 30 30 40 40 Z",
+		},
+		{
+			name:     "implicit repeated relative arcs",
+			input:    "M 10 50 a 20 20 0 0 1 40 0 20 20 0 0 1 40 0 Z",
+			expected: "M 10 50 a 20 20 0 0 1 40 0 a 20 20 0 0 1 40 0 Z",
+		},
+		{
+			name:     "implicit repeated absolute arcs",
+			input:    "M 10 50 A 20 20 0 0 1 50 50 20 20 0 0 1 90 50",
+			expected: "M 10 50 A 20 20 0 0 1 50 50 A 20 20 0 0 1 90 50",
+		},
+		{
+			name:     "concatenated flags in repeated arcs",
+			input:    "M 10 50 a 20 20 0 01 40 0 20 20 0 01 40 0",
+			expected: "M 10 50 a 20 20 0 0 1 40 0 a 20 20 0 0 1 40 0",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			actual := DesugarPathArcs(tt.input)
+			// Normalize whitespace runs for comparison
+			normAct := strings.Join(strings.Fields(actual), " ")
+			normExp := strings.Join(strings.Fields(tt.expected), " ")
+			if normAct != normExp {
+				t.Errorf("DesugarPathArcs(%q) =\n  %q\nexpected:\n  %q", tt.input, normAct, normExp)
+			}
+		})
+	}
+}
+
+

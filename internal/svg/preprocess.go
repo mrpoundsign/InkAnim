@@ -258,6 +258,11 @@ func PreprocessSVG(data []byte) ([]byte, error) {
 						elem.Attr[dAttrIdx].Value = filletedD
 					}
 				}
+
+				// Desugar implicit repeated arc commands in path d data (Issue #57)
+				if dAttrIdx >= 0 {
+					elem.Attr[dAttrIdx].Value = DesugarPathArcs(elem.Attr[dAttrIdx].Value)
+				}
 			}
 
 			// Normalize rx/ry for rect elements: if only one is specified or one is zero while the
@@ -1244,3 +1249,139 @@ func (meta *DocumentMetadata) resolveSpecializedGradients(data []byte) {
 		}
 	}
 }
+
+func isPathCommand(r rune) bool {
+	switch r {
+	case 'M', 'm', 'L', 'l', 'H', 'h', 'V', 'v',
+		'C', 'c', 'S', 's', 'Q', 'q', 'T', 't',
+		'A', 'a', 'Z', 'z':
+		return true
+	}
+	return false
+}
+
+// tokenizeArcParams extracts individual numeric parameter strings for an arc command body.
+// It properly handles commas, whitespace, signs, multiple decimal points, and concatenated arc flags.
+func tokenizeArcParams(s string) []string {
+	var tokens []string
+	var cur strings.Builder
+
+	flush := func() {
+		if cur.Len() > 0 {
+			tokens = append(tokens, cur.String())
+			cur.Reset()
+		}
+	}
+
+	runes := []rune(s)
+	n := len(runes)
+
+	for i := 0; i < n; i++ {
+		r := runes[i]
+		if r == ',' || unicode.IsSpace(r) {
+			flush()
+			continue
+		}
+		if r == '-' || r == '+' {
+			prev := ' '
+			if cur.Len() > 0 {
+				prevR := []rune(cur.String())
+				prev = prevR[len(prevR)-1]
+			}
+			if prev != 'e' && prev != 'E' {
+				flush()
+			}
+			cur.WriteRune(r)
+			continue
+		}
+		if r == '.' {
+			if strings.ContainsRune(cur.String(), '.') {
+				flush()
+			}
+			cur.WriteRune(r)
+			continue
+		}
+		// Check if we are expecting an arc flag (param index 3 or 4 within a 7-param group)
+		// and the current token starts with '0' or '1'.
+		paramIdx := len(tokens) % 7
+		if (paramIdx == 3 || paramIdx == 4) && cur.Len() == 1 {
+			c := cur.String()
+			if c == "0" || c == "1" {
+				flush()
+			}
+		}
+
+		cur.WriteRune(r)
+	}
+	flush()
+	return tokens
+}
+
+// DesugarPathArcs converts implicit repeated arc commands in SVG path data into explicit arc commands (Issue #57).
+// For example: "M 0 0 a 1 2 3 4 5 6 7 8 9 10 11 12 13 14 Z" -> "M 0 0 a 1 2 3 4 5 6 7 a 8 9 10 11 12 13 14 Z"
+func DesugarPathArcs(d string) string {
+	type segment struct {
+		cmd  rune
+		body string
+	}
+	var segs []segment
+	lastIdx := -1
+	runes := []rune(d)
+
+	for i, r := range runes {
+		if isPathCommand(r) {
+			if lastIdx != -1 {
+				segs = append(segs, segment{
+					cmd:  runes[lastIdx],
+					body: string(runes[lastIdx+1 : i]),
+				})
+			}
+			lastIdx = i
+		}
+	}
+	if lastIdx != -1 {
+		segs = append(segs, segment{
+			cmd:  runes[lastIdx],
+			body: string(runes[lastIdx+1:]),
+		})
+	}
+
+	hasImplicitArcs := false
+	for _, seg := range segs {
+		if seg.cmd == 'a' || seg.cmd == 'A' {
+			nums := tokenizeArcParams(seg.body)
+			if len(nums) > 7 && len(nums)%7 == 0 {
+				hasImplicitArcs = true
+				break
+			}
+		}
+	}
+	if !hasImplicitArcs {
+		return d
+	}
+
+	var sb strings.Builder
+	for _, seg := range segs {
+		if seg.cmd == 'a' || seg.cmd == 'A' {
+			nums := tokenizeArcParams(seg.body)
+			if len(nums) > 7 && len(nums)%7 == 0 {
+				for i := 0; i < len(nums); i += 7 {
+					if sb.Len() > 0 {
+						sb.WriteByte(' ')
+					}
+					sb.WriteRune(seg.cmd)
+					sb.WriteByte(' ')
+					sb.WriteString(strings.Join(nums[i:i+7], " "))
+				}
+				continue
+			}
+		}
+		if sb.Len() > 0 {
+			sb.WriteByte(' ')
+		}
+		sb.WriteRune(seg.cmd)
+		sb.WriteString(seg.body)
+	}
+	return sb.String()
+}
+
