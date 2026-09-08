@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.6-pre1] - 2026-09-07
 
 ### Added
+- **WYSIWYG Palette Quantization & Dithering Preview**: Live animation preview canvas and Twitch scale thumbnails reflect the active color palette quantization (2–256 colors) and Floyd-Steinberg dithering in real time. Added a "WYSIWYG" toggle in playback controls to effortlessly compare color-quantized GIF frames against the unquantized 32-bit true-color rasterization ([#34](https://github.com/mrpoundsign/InkAnim/issues/34)).
 - **Reusable NumericCommitInput Component**: Created a numeric-only input component with bounds checking and commit via an "OK" button or Enter key ([#33](https://github.com/mrpoundsign/InkAnim/issues/33)).
 - **Custom Palette Color Limit**: Added a "Custom" option to the palette dropdown supporting any color count between 2 and 256.
 

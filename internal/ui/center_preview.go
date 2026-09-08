@@ -37,6 +37,7 @@ type CenterPreviewPanel struct {
 	playPauseBtn    *widget.Button
 	loopCheck          *widget.Check
 	cropGuidesCheck    *widget.Check
+	wysiwygCheck       *widget.Check
 	inspectorCheck     *widget.Check
 	twitchEmulationBox *fyne.Container
 
@@ -51,6 +52,7 @@ type CenterPreviewPanel struct {
 	isPlaying      bool
 	loop           bool
 	showCropGuides bool
+	wysiwygColors  bool
 	currentIdx     int
 	speedFactor    float64
 	cachedFrames   []cachedPreviewFrame
@@ -66,6 +68,7 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 		session:        sess,
 		loop:           true,
 		showCropGuides: true,
+		wysiwygColors:  true,
 		speedFactor:    1.0,
 	}
 
@@ -136,6 +139,15 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 	})
 	p.inspectorCheck.Checked = true
 
+	p.wysiwygCheck = widget.NewCheck("WYSIWYG", func(checked bool) {
+		p.mu.Lock()
+		p.wysiwygColors = checked
+		p.rebuildCachedFramesLocked()
+		p.renderCurrentFrameLocked()
+		p.mu.Unlock()
+	})
+	p.wysiwygCheck.Checked = true
+
 	playbackButtons := container.NewHBox(
 		prevBtn,
 		p.playPauseBtn,
@@ -143,6 +155,7 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 		speedSelect,
 		p.loopCheck,
 		p.cropGuidesCheck,
+		p.wysiwygCheck,
 		p.inspectorCheck,
 	)
 
@@ -206,6 +219,11 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 // SetInspectorVisible toggles visibility of the bottom chat-scale inspector dock.
 func (p *CenterPreviewPanel) SetInspectorVisible(visible bool) {
 	p.inspectorCheck.SetChecked(visible)
+}
+
+// SetWysiwyg toggles whether preview frames display color quantization and dithering.
+func (p *CenterPreviewPanel) SetWysiwyg(enabled bool) {
+	p.wysiwygCheck.SetChecked(enabled)
 }
 
 func (p *CenterPreviewPanel) newScaledImage(size float32) *canvas.Image {
@@ -420,6 +438,38 @@ func (p *CenterPreviewPanel) rebuildCachedFramesLocked() {
 	p.cachedFrames = make([]cachedPreviewFrame, len(frames))
 	previewRect := p.session.GetPreviewBoundaryRect()
 
+	displayImgs := make([]*image.RGBA, len(frames))
+	for i, curr := range frames {
+		if curr.Image == nil {
+			continue
+		}
+		if p.session.ExportOptions.ExportSquare {
+			displayImgs[i] = gif.MakeSquare(curr.Image, 0)
+		} else {
+			displayImgs[i] = curr.Image
+		}
+	}
+
+	// Apply WYSIWYG quantization and dithering if enabled
+	if p.wysiwygColors {
+		numColors := p.session.ExportOptions.NumColors
+		if numColors <= 0 || numColors > 256 {
+			numColors = 256
+		}
+		alphaThreshold := p.session.ExportOptions.AlphaThreshold
+		if alphaThreshold == 0 {
+			alphaThreshold = 128
+		}
+
+		palette := gif.GeneratePalette(displayImgs, numColors, alphaThreshold)
+		for i, img := range displayImgs {
+			if img != nil {
+				paletted := gif.QuantizeFrame(img, palette, alphaThreshold, p.session.ExportOptions.Dither)
+				displayImgs[i] = gif.PalettedToRGBA(paletted)
+			}
+		}
+	}
+
 	for i, curr := range frames {
 		if curr.Image == nil {
 			continue
@@ -434,13 +484,9 @@ func (p *CenterPreviewPanel) rebuildCachedFramesLocked() {
 		cropH := int(math.Round(activeRect.Height * scaleY))
 		cropRect := image.Rect(cropX0, cropY0, cropX0+cropW, cropY0+cropH)
 
-		// Crop for Twitch preview
-		croppedForTwitch := cropImage(curr.Image, cropRect)
-
-		displayImg := curr.Image
+		displayImg := displayImgs[i]
 		var contentRect image.Rectangle
 		if p.session.ExportOptions.ExportSquare {
-			displayImg = gif.MakeSquare(curr.Image, 0)
 			origB := curr.Image.Bounds()
 			sqB := displayImg.Bounds()
 			offsetX := (sqB.Dx() - origB.Dx()) / 2
@@ -449,6 +495,8 @@ func (p *CenterPreviewPanel) rebuildCachedFramesLocked() {
 		} else {
 			contentRect = cropRect
 		}
+
+		croppedForTwitch := cropImage(displayImg, contentRect)
 
 		withGuides := drawCropGuides(displayImg, contentRect)
 		withoutGuides := displayImg

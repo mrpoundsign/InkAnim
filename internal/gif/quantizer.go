@@ -209,3 +209,43 @@ func QuantizeFrame(src *image.RGBA, palette color.Palette, alphaThreshold uint8,
 
 	return paletted
 }
+
+// PalettedToRGBA converts an image.Paletted back to image.RGBA for display and scaling.
+func PalettedToRGBA(p *image.Paletted) *image.RGBA {
+	if p == nil {
+		return nil
+	}
+	b := p.Bounds()
+	rgba := image.NewRGBA(b)
+
+	pal := make([]color.RGBA, len(p.Palette))
+	for i, c := range p.Palette {
+		if rgbaCol, ok := c.(color.RGBA); ok {
+			pal[i] = rgbaCol
+		} else {
+			r, g, b, a := c.RGBA()
+			pal[i] = color.RGBA{R: uint8(r >> 8), G: uint8(g >> 8), B: uint8(b >> 8), A: uint8(a >> 8)}
+		}
+	}
+
+	w := b.Dx()
+	h := b.Dy()
+	minX := b.Min.X - p.Rect.Min.X
+	minY := b.Min.Y - p.Rect.Min.Y
+	dstMinX := b.Min.X - rgba.Rect.Min.X
+	dstMinY := b.Min.Y - rgba.Rect.Min.Y
+
+	for y := range h {
+		srcRow := p.Pix[(minY+y)*p.Stride+minX : (minY+y)*p.Stride+minX+w]
+		dstRow := rgba.Pix[(dstMinY+y)*rgba.Stride+dstMinX*4 : (dstMinY+y)*rgba.Stride+(dstMinX+w)*4]
+		for x := range w {
+			c := pal[srcRow[x]]
+			dstRow[x*4] = c.R
+			dstRow[x*4+1] = c.G
+			dstRow[x*4+2] = c.B
+			dstRow[x*4+3] = c.A
+		}
+	}
+
+	return rgba
+}

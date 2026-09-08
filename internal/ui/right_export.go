@@ -60,16 +60,25 @@ func NewRightExportPanel(sess *app.Session, win fyne.Window, onOptionsChange fun
 	p.squareSizeInput = NewNumericCommitInput(512, 16, 4096, "Resolution (px):", func(val int) {
 		p.session.ExportOptions.SquareSize = val
 		p.validateTwitch()
+		if p.onOptionsChange != nil {
+			p.onOptionsChange()
+		}
 	})
 
 	p.widthInput = NewNumericCommitInput(512, 16, 4096, "W:", func(val int) {
 		p.session.ExportOptions.TargetWidth = val
 		p.validateTwitch()
+		if p.onOptionsChange != nil {
+			p.onOptionsChange()
+		}
 	})
 
 	p.heightInput = NewNumericCommitInput(512, 16, 4096, "H:", func(val int) {
 		p.session.ExportOptions.TargetHeight = val
 		p.validateTwitch()
+		if p.onOptionsChange != nil {
+			p.onOptionsChange()
+		}
 	})
 
 	p.widthHeightRow = container.NewGridWithColumns(2,
@@ -162,6 +171,9 @@ func NewRightExportPanel(sess *app.Session, win fyne.Window, onOptionsChange fun
 	p.customColorsInput = NewNumericCommitInput(256, 2, 256, "Colors (2-256):", func(val int) {
 		p.session.ExportOptions.NumColors = val
 		p.validateTwitch()
+		if p.onOptionsChange != nil {
+			p.onOptionsChange()
+		}
 	})
 	p.customColorsRow = container.NewVBox(p.customColorsInput.Container)
 	p.customColorsRow.Hide()
@@ -176,11 +188,18 @@ func NewRightExportPanel(sess *app.Session, win fyne.Window, onOptionsChange fun
 			p.session.ExportOptions.NumColors = c
 			p.validateTwitch()
 		}
+		if p.onOptionsChange != nil {
+			p.onOptionsChange()
+		}
 	})
 	p.colorsSelect.Selected = "256"
 
 	p.ditherCheck = widget.NewCheck("Dithering (Floyd-Steinberg)", func(b bool) {
 		p.session.ExportOptions.Dither = b
+		p.validateTwitch()
+		if p.onOptionsChange != nil {
+			p.onOptionsChange()
+		}
 	})
 
 	p.exportBtn = widget.NewButton("Export Animated GIF...", func() {

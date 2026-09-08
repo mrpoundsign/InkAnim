@@ -609,3 +609,61 @@ func TestScaleInspectorToggle(t *testing.T) {
 		t.Errorf("expected main canvas to restore size when inspector shown: got %f, want %f", mw.centerPanel.mainCanvasImage.Size().Height, hWithInspector)
 	}
 }
+
+func TestWysiwygPreview(t *testing.T) {
+	testApp := test.NewApp()
+	defer testApp.Quit()
+
+	mw := NewMainWindow(testApp)
+	testSVGPath, err := filepath.Abs("../../testdata/bouncing_walker.svg")
+	if err != nil {
+		t.Fatalf("failed to resolve test SVG path: %v", err)
+	}
+
+	mw.loadFilePath(testSVGPath)
+	mw.centerPanel.Pause()
+
+	if mw.centerPanel.wysiwygCheck == nil {
+		t.Fatal("expected wysiwygCheck to be non-nil")
+	}
+
+	// Initially checked
+	if !mw.centerPanel.wysiwygCheck.Checked {
+		t.Errorf("expected wysiwygCheck to be checked by default")
+	}
+	if !mw.centerPanel.wysiwygColors {
+		t.Errorf("expected wysiwygColors to be true by default")
+	}
+
+	// Capture frame with WYSIWYG
+	imgWysiwyg := mw.centerPanel.mainCanvasImage.Image
+
+	// Toggle WYSIWYG off
+	mw.centerPanel.wysiwygCheck.SetChecked(false)
+	if mw.centerPanel.wysiwygColors {
+		t.Errorf("expected wysiwygColors to be false after unchecking")
+	}
+	imgRaw := mw.centerPanel.mainCanvasImage.Image
+
+	if imgWysiwyg == nil || imgRaw == nil {
+		t.Fatal("expected non-nil images for preview")
+	}
+
+	// Change palette colors to 32 and re-enable WYSIWYG
+	mw.rightPanel.colorsSelect.SetSelected("32")
+	if mw.session.ExportOptions.NumColors != 32 {
+		t.Errorf("expected 32 colors in session options, got %d", mw.session.ExportOptions.NumColors)
+	}
+
+	mw.centerPanel.SetWysiwyg(true)
+	if !mw.centerPanel.wysiwygCheck.Checked || !mw.centerPanel.wysiwygColors {
+		t.Errorf("expected wysiwyg enabled after SetWysiwyg(true)")
+	}
+
+	// Toggle Dithering
+	mw.rightPanel.ditherCheck.SetChecked(true)
+	if !mw.session.ExportOptions.Dither {
+		t.Errorf("expected session Dither to be true")
+	}
+}
+

@@ -147,6 +147,51 @@ func TestValidateTwitchEmote(t *testing.T) {
 	}
 }
 
+func TestPalettedToRGBA(t *testing.T) {
+	pal := color.Palette{
+		color.RGBA{R: 0, G: 0, B: 0, A: 0},       // 0: transparent
+		color.RGBA{R: 255, G: 0, B: 0, A: 255},   // 1: red
+		color.RGBA{R: 0, G: 255, B: 0, A: 255},   // 2: green
+		color.RGBA{R: 0, G: 0, B: 255, A: 255},   // 3: blue
+	}
+
+	p := image.NewPaletted(image.Rect(0, 0, 2, 2), pal)
+	p.SetColorIndex(0, 0, 0)
+	p.SetColorIndex(1, 0, 1)
+	p.SetColorIndex(0, 1, 2)
+	p.SetColorIndex(1, 1, 3)
+
+	rgba := PalettedToRGBA(p)
+	if rgba == nil {
+		t.Fatal("expected non-nil RGBA")
+	}
+	if rgba.Bounds() != p.Bounds() {
+		t.Errorf("expected bounds %v, got %v", p.Bounds(), rgba.Bounds())
+	}
+
+	c00 := rgba.RGBAAt(0, 0)
+	if c00 != (color.RGBA{R: 0, G: 0, B: 0, A: 0}) {
+		t.Errorf("expected transparent at (0,0), got %+v", c00)
+	}
+	c10 := rgba.RGBAAt(1, 0)
+	if c10 != (color.RGBA{R: 255, G: 0, B: 0, A: 255}) {
+		t.Errorf("expected red at (1,0), got %+v", c10)
+	}
+	c01 := rgba.RGBAAt(0, 1)
+	if c01 != (color.RGBA{R: 0, G: 255, B: 0, A: 255}) {
+		t.Errorf("expected green at (0,1), got %+v", c01)
+	}
+	c11 := rgba.RGBAAt(1, 1)
+	if c11 != (color.RGBA{R: 0, G: 0, B: 255, A: 255}) {
+		t.Errorf("expected blue at (1,1), got %+v", c11)
+	}
+
+	// Nil safety
+	if PalettedToRGBA(nil) != nil {
+		t.Errorf("expected nil for nil paletted")
+	}
+}
+
 func BenchmarkGeneratePalette(b *testing.B) {
 	const numFrames = 6
 	frames := make([]*image.RGBA, numFrames)
