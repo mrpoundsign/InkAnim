@@ -128,17 +128,63 @@ func RenderSVGToRGBA(svgData []byte, targetW, targetH int) (*image.RGBA, error) 
 	raster := rasterx.NewDasher(widthInt, heightInt, scanner)
 
 	embeddedImages := extractEmbeddedImages(svgData)
-	if len(embeddedImages) == 0 {
+	clipPaths := extractClipPaths(svgData)
+	pathClipIDs := extractPathClipIDs(svgData)
+
+	if len(embeddedImages) == 0 && len(clipPaths) == 0 {
 		icon.Draw(raster, 1.0)
 	} else {
+		clipMasks := make(map[string]*image.RGBA)
+		for id, content := range clipPaths {
+			mask, err := renderClipMask(content, svgData, widthInt, heightInt, icon.Transform)
+			if err == nil {
+				clipMasks[id] = mask
+			}
+		}
+
+		var layerImg *image.RGBA
+		var layerRaster *rasterx.Dasher
+		if len(clipPaths) > 0 {
+			layerImg = image.NewRGBA(image.Rect(0, 0, widthInt, heightInt))
+			layerScanner := rasterx.NewScannerGV(widthInt, heightInt, layerImg, layerImg.Bounds())
+			layerRaster = rasterx.NewDasher(widthInt, heightInt, layerScanner)
+		}
+
+		activeClipID := ""
 		imgIdx := 0
 		for pathIdx := range icon.SVGPaths {
+			targetClip := ""
+			if pathIdx < len(pathClipIDs) {
+				targetClip = pathClipIDs[pathIdx]
+			}
+
+			if targetClip != activeClipID {
+				if activeClipID != "" && layerImg != nil {
+					compositeLayerWithClip(img, layerImg, activeClipID, clipMasks)
+				}
+				activeClipID = targetClip
+			}
+
 			for imgIdx < len(embeddedImages) && embeddedImages[imgIdx].PathIndex <= pathIdx {
-				drawEmbeddedImage(img, embeddedImages[imgIdx], icon.Transform)
+				target := img
+				if activeClipID != "" && layerImg != nil {
+					target = layerImg
+				}
+				drawEmbeddedImage(target, embeddedImages[imgIdx], icon.Transform)
 				imgIdx++
 			}
-			icon.SVGPaths[pathIdx].DrawTransformed(raster, 1.0, icon.Transform)
+
+			if activeClipID != "" && layerRaster != nil {
+				icon.SVGPaths[pathIdx].DrawTransformed(layerRaster, 1.0, icon.Transform)
+			} else {
+				icon.SVGPaths[pathIdx].DrawTransformed(raster, 1.0, icon.Transform)
+			}
 		}
+
+		if activeClipID != "" && layerImg != nil {
+			compositeLayerWithClip(img, layerImg, activeClipID, clipMasks)
+		}
+
 		for imgIdx < len(embeddedImages) {
 			drawEmbeddedImage(img, embeddedImages[imgIdx], icon.Transform)
 			imgIdx++

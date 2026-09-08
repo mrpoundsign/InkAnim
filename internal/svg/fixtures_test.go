@@ -54,15 +54,29 @@ func TestAtomicFixtures(t *testing.T) {
 					goldenPath, svgPath, goldenPath, renderWidth, renderHeight)
 			}
 
-			// Preprocess SVG (runs font conversion, LPE, rect rx/ry, paint-order, transform stroke scaling)
-			preprocessed, err := PreprocessSVG(data)
+			doc, err := ParseSVG(data)
 			if err != nil {
-				t.Fatalf("PreprocessSVG failed for %s: %v", entry.Name(), err)
+				t.Fatalf("ParseSVG failed for %s: %v", entry.Name(), err)
 			}
 
-			actualImg, err := RenderSVGToRGBA(preprocessed, renderWidth, renderHeight)
+			// Render through full session frame building pipeline (as used by GUI preview & export)
+			layerID := ""
+			if len(doc.Layers) > 0 {
+				layerID = doc.Layers[0].ID
+			}
+			frameSVG, err := BuildLayerFrameSVG(doc, layerID, nil, doc.GetDocumentRect())
+			if err != nil {
+				t.Fatalf("BuildLayerFrameSVG failed for %s: %v", entry.Name(), err)
+			}
+
+			actualImg, err := RenderSVGToRGBA(frameSVG, renderWidth, renderHeight)
 			if err != nil {
 				t.Fatalf("RenderSVGToRGBA failed for %s: %v", entry.Name(), err)
+			}
+
+			// Also verify that scaling to standard GUI preview dimensions (512x512) completes cleanly
+			if _, err := RenderSVGToRGBA(frameSVG, 512, 512); err != nil {
+				t.Fatalf("Scaled GUI preview render (512x512) failed for %s: %v", entry.Name(), err)
 			}
 
 			opts := GoldenCompareOptions{

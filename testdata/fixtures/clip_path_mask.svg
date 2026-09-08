@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <clipPath id="circleClip">
+      <circle cx="64" cy="64" r="44" />
+    </clipPath>
+  </defs>
+
+  <!-- Dark background -->
+  <rect width="128" height="128" fill="#18181b" />
+
+  <!-- Clipped group with rectangle and thick diagonal line -->
+  <g clip-path="url(#circleClip)">
+    <rect x="10" y="10" width="108" height="108" fill="#3b82f6" />
+    <line x1="10" y1="10" x2="118" y2="118" stroke="#f59e0b" stroke-width="12" />
+  </g>
+</svg>
