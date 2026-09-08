@@ -135,6 +135,49 @@ func PreprocessSVG(data []byte) ([]byte, error) {
 				continue
 			}
 
+			// Inline inherited stops and normalize gradientTransform on gradients (Issue #49)
+			if name == "linearGradient" || name == "radialGradient" {
+				var gradID string
+				for _, a := range elem.Attr {
+					if a.Name.Local == "id" {
+						gradID = a.Value
+						break
+					}
+				}
+
+				gradDef := meta.Gradients[gradID]
+				var newAttrs []xml.Attr
+				for _, a := range elem.Attr {
+					if a.Name.Local == "href" {
+						// Strip href/xlink:href since stops are inlined directly
+						continue
+					}
+					if a.Name.Local == "gradientTransform" {
+						parsed := parseTransform(a.Value)
+						if parsed != IdentityMatrix() {
+							matStr := fmt.Sprintf("matrix(%f %f %f %f %f %f)", parsed.A, parsed.B, parsed.C, parsed.D, parsed.E, parsed.F)
+							newAttrs = append(newAttrs, xml.Attr{Name: a.Name, Value: matStr})
+							continue
+						}
+					}
+					newAttrs = append(newAttrs, a)
+				}
+				elem.Attr = newAttrs
+
+				if err := encoder.EncodeToken(elem); err != nil {
+					return nil, err
+				}
+
+				if gradDef != nil && gradDef.OriginalStopCount == 0 && len(gradDef.Stops) > 0 {
+					for _, st := range gradDef.Stops {
+						if err := encoder.EncodeToken(st); err != nil {
+							return nil, err
+						}
+					}
+				}
+				continue
+			}
+
 			// Stage 1: Convert SVG <text> elements into <path> vectors (Issue #21)
 			if name == "text" {
 				if err := ProcessTextElementToPaths(elem, decoder, encoder, &transformStack); err != nil {
@@ -291,10 +334,21 @@ func PreprocessSVG(data []byte) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// GradientDef stores parsed gradient definitions and their color stop tokens.
+type GradientDef struct {
+	ID                string
+	IsRadial          bool
+	Href              string
+	Attrs             []xml.Attr
+	Stops             []xml.Token
+	OriginalStopCount int
+}
+
 // DocumentMetadata collects document-level metadata during the first XML pass.
 type DocumentMetadata struct {
 	Effects      map[string]PathEffect
 	ElementsByID map[string][]xml.Token
+	Gradients    map[string]*GradientDef
 	VBX, VBY     float64
 	VBW, VBH     float64
 	Width        float64
@@ -315,9 +369,12 @@ func extractDocumentMetadata(data []byte) DocumentMetadata {
 	meta := DocumentMetadata{
 		Effects:      make(map[string]PathEffect),
 		ElementsByID: make(map[string][]xml.Token),
+		Gradients:    make(map[string]*GradientDef),
 	}
 	decoder := xml.NewDecoder(bytes.NewReader(data))
 	var activeRecordings []*idRecording
+	var curGrad *GradientDef
+	var curStopDepth int
 
 	for {
 		token, err := decoder.Token()
@@ -327,6 +384,7 @@ func extractDocumentMetadata(data []byte) DocumentMetadata {
 
 		switch tok := token.(type) {
 		case xml.StartElement:
+			name := tok.Name.Local
 			var elemID string
 			for _, a := range tok.Attr {
 				if a.Name.Local == "id" && a.Value != "" {
@@ -342,7 +400,37 @@ func extractDocumentMetadata(data []byte) DocumentMetadata {
 				rec.depth++
 			}
 
-			switch tok.Name.Local {
+			if name == "linearGradient" || name == "radialGradient" {
+				var id, href string
+				for _, a := range tok.Attr {
+					switch a.Name.Local {
+					case "id":
+						id = a.Value
+					case "href":
+						href = strings.TrimPrefix(a.Value, "#")
+					}
+				}
+				curGrad = &GradientDef{
+					ID:       id,
+					IsRadial: name == "radialGradient",
+					Href:     href,
+					Attrs:    tok.Attr,
+				}
+				if id != "" {
+					meta.Gradients[id] = curGrad
+				}
+			}
+
+			if curGrad != nil {
+				if name == "stop" {
+					curStopDepth++
+					curGrad.Stops = append(curGrad.Stops, tok.Copy())
+				} else if curStopDepth > 0 {
+					curGrad.Stops = append(curGrad.Stops, tok.Copy())
+				}
+			}
+
+			switch name {
 			case "svg":
 				if meta.VBW == 0 && meta.Width == 0 {
 					for _, a := range tok.Attr {
@@ -407,6 +495,17 @@ func extractDocumentMetadata(data []byte) DocumentMetadata {
 			}
 
 		case xml.EndElement:
+			if curGrad != nil {
+				switch tok.Name.Local {
+				case "stop":
+					curGrad.Stops = append(curGrad.Stops, tok)
+					curStopDepth--
+					curGrad.OriginalStopCount++
+				case "linearGradient", "radialGradient":
+					curGrad = nil
+				}
+			}
+
 			var remaining []*idRecording
 			for _, rec := range activeRecordings {
 				rec.tokens = append(rec.tokens, tok)
@@ -420,9 +519,31 @@ func extractDocumentMetadata(data []byte) DocumentMetadata {
 			activeRecordings = remaining
 
 		default:
+			if curGrad != nil && curStopDepth > 0 {
+				curGrad.Stops = append(curGrad.Stops, xml.CopyToken(tok))
+			}
 			for _, rec := range activeRecordings {
 				rec.tokens = append(rec.tokens, xml.CopyToken(tok))
 			}
+		}
+	}
+
+	// Resolve gradient stop inheritance (xlink:href / href template references)
+	for _, grad := range meta.Gradients {
+		curr := grad
+		for depth := 0; grad.OriginalStopCount == 0 && curr.Href != "" && depth < 10; depth++ {
+			parent, ok := meta.Gradients[curr.Href]
+			if !ok {
+				break
+			}
+			if len(parent.Stops) > 0 {
+				grad.Stops = make([]xml.Token, len(parent.Stops))
+				for i, st := range parent.Stops {
+					grad.Stops[i] = xml.CopyToken(st)
+				}
+				break
+			}
+			curr = parent
 		}
 	}
 

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="palette">
+      <stop offset="0%" stop-color="#3b82f6" />
+      <stop offset="100%" stop-color="#ef4444" />
+    </linearGradient>
+    <linearGradient id="linGrad" xlink:href="#palette" x1="16" y1="36" x2="112" y2="36" gradientUnits="userSpaceOnUse" gradientTransform="rotate(15 64 36)" />
+    <radialGradient id="radGrad" xlink:href="#palette" cx="64" cy="92" r="28" gradientUnits="userSpaceOnUse" gradientTransform="matrix(1 0 0 0.7 0 27.6)" />
+  </defs>
+  <rect width="128" height="128" fill="#18181b" />
+  <rect x="16" y="16" width="96" height="40" rx="8" fill="url(#linGrad)" />
+  <circle cx="64" cy="92" r="28" fill="url(#radGrad)" />
+</svg>
