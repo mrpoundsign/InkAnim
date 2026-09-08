@@ -11,8 +11,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"inkanim/internal/svg"
 )
@@ -29,6 +31,8 @@ func main() {
 	switch subcmd {
 	case "golden":
 		runGolden(subArgs)
+	case "scan":
+		runScan(subArgs)
 	case "inspect":
 		runInspect(subArgs)
 	case "help", "-h", "--help":
@@ -48,12 +52,15 @@ Usage:
 
 Commands:
   golden   Compare SVG fixtures against golden PNGs or generate ground truth
+  scan     Recursively scan a directory of SVGs and perform differential testing against Inkscape
   inspect  Inspect pixel bounds, centroids, and colors of an image
 
 Examples:
   go run ./cmd/dev golden use_element_clone
   go run ./cmd/dev golden --all
   go run ./cmd/dev golden --generate use_element_clone
+  go run ./cmd/dev scan testdata/fixtures
+  go run ./cmd/dev scan testdata/ --max-mismatch 0.50
   go run ./cmd/dev inspect testdata/fixtures/use_element_clone.golden.png
   go run ./cmd/dev inspect testdata/fixtures/use_element_clone.golden.png --color "#facc15"`)
 }
@@ -301,7 +308,7 @@ func diffImages(actual, golden image.Image, tolerance uint8) (diffStats, *image.
 				if y > stats.MaxY {
 					stats.MaxY = y
 				}
-				diffImg.Set(x, y, color.RGBA{R: 255, G: 0, B: 0, A: 255})
+				diffImg.Set(x, y, color.RGBA{R: 255, G: 0, B: 255, A: 255})
 			} else {
 				diffImg.Set(x, y, color.RGBA{R: g8[0] / 3, G: g8[1] / 3, B: g8[2] / 3, A: 255})
 			}
@@ -574,4 +581,359 @@ func reorderArgs(args []string, boolFlags map[string]bool) []string {
 	}
 	return append(flags, nonFlags...)
 }
+
+type scanResult struct {
+	path        string
+	relPath     string
+	mismatch    float64
+	threshold   float64
+	diffPixels  int
+	totalPixels int
+	features    []string
+	err         error
+}
+
+func runScan(args []string) {
+	fs := flag.NewFlagSet("scan", flag.ExitOnError)
+	tolerance := fs.Int("tol", 35, "Per-pixel color channel tolerance (0-255)")
+	maxMismatch := fs.Float64("max-mismatch", 0.50, "Max allowed mismatch percentage for vector shapes (0-100)")
+	textMaxMismatch := fs.Float64("text-max-mismatch", 3.00, "Max allowed mismatch percentage for SVGs containing text (0-100)")
+	size := fs.Int("size", 256, "Max render dimension (width/height) for scanned SVGs")
+	saveDiff := fs.Bool("save-diff", true, "Save diff, actual, and golden PNGs into testdata/scratch/ on failure")
+	failFast := fs.Bool("fail-fast", false, "Stop scanning immediately on the first failure")
+	filter := fs.String("filter", "", "Filter SVGs by substring in filename or path")
+
+	_ = fs.Parse(reorderArgs(args, map[string]bool{"save-diff": true, "fail-fast": true}))
+
+	targetDir := "testdata"
+	if fs.NArg() > 0 {
+		targetDir = fs.Arg(0)
+	}
+
+	targetDir, err := filepath.Abs(targetDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Invalid target directory: %v\n", err)
+		os.Exit(1)
+	}
+
+	if _, err := os.Stat(targetDir); os.IsNotExist(err) {
+		fmt.Fprintf(os.Stderr, "Target directory does not exist: %s\n", targetDir)
+		os.Exit(1)
+	}
+
+	if _, lookErr := exec.LookPath("inkscape"); lookErr != nil {
+		fmt.Fprintf(os.Stderr, "Error: headless Inkscape CLI not found in PATH.\nInkscape is required for ground-truth differential scanning.\n")
+		os.Exit(1)
+	}
+
+	var svgFiles []string
+	_ = filepath.WalkDir(targetDir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			name := d.Name()
+			if strings.HasPrefix(name, ".") || name == "scratch" || name == "node_modules" || name == "vendor" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if strings.EqualFold(filepath.Ext(path), ".svg") {
+			if *filter != "" && !strings.Contains(strings.ToLower(path), strings.ToLower(*filter)) {
+				return nil
+			}
+			svgFiles = append(svgFiles, path)
+		}
+		return nil
+	})
+
+	if len(svgFiles) == 0 {
+		fmt.Printf("No SVG files found in %s\n", targetDir)
+		return
+	}
+
+	sort.Strings(svgFiles)
+
+	scratchDir := filepath.Join("testdata", "scratch", "scan")
+	if *saveDiff {
+		_ = os.MkdirAll(scratchDir, 0755)
+	}
+
+	cwd, _ := os.Getwd()
+	fmt.Printf("🔍 Scanning %d SVG files in %s...\n\n", len(svgFiles), targetDir)
+
+	startTime := time.Now()
+	var results []scanResult
+	featureTotal := make(map[string]int)
+	featureFailed := make(map[string]int)
+
+	for _, svgPath := range svgFiles {
+		relPath, relErr := filepath.Rel(cwd, svgPath)
+		if relErr != nil {
+			relPath = svgPath
+		}
+
+		data, readErr := os.ReadFile(svgPath)
+		if readErr != nil {
+			fmt.Printf("❌ FAIL  %-45s Could not read file: %v\n", truncateMiddle(relPath, 45), readErr)
+			results = append(results, scanResult{path: svgPath, relPath: relPath, err: readErr})
+			if *failFast {
+				break
+			}
+			continue
+		}
+
+		features := detectSVGFeatures(data)
+		for _, f := range features {
+			featureTotal[f]++
+		}
+
+		threshold := *maxMismatch
+		if sliceContains(features, "text") {
+			threshold = *textMaxMismatch
+		}
+
+		existingGolden := strings.TrimSuffix(svgPath, filepath.Ext(svgPath)) + ".golden.png"
+		var goldenImg image.Image
+		var w, h int
+
+		if _, statErr := os.Stat(existingGolden); statErr == nil {
+			w, h = resolveFixtureDimensions(svgPath, existingGolden)
+			gf, openErr := os.Open(existingGolden)
+			if openErr == nil {
+				goldenImg, _ = png.Decode(gf)
+				_ = gf.Close()
+			}
+		}
+
+		safeBase := strings.Map(func(r rune) rune {
+			if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-' {
+				return r
+			}
+			return '_'
+		}, strings.TrimSuffix(filepath.Base(svgPath), filepath.Ext(svgPath)))
+
+		if goldenImg == nil {
+			w, h = resolveScanDimensions(data, *size)
+			tempGolden := filepath.Join(scratchDir, fmt.Sprintf("%s_%dx%d_golden.png", safeBase, w, h))
+			if genErr := generateGoldenWithInkscape(svgPath, tempGolden, w, h); genErr != nil {
+				fmt.Printf("❌ FAIL  %-45s Inkscape CLI export failed: %v\n", truncateMiddle(relPath, 45), genErr)
+				results = append(results, scanResult{path: svgPath, relPath: relPath, err: genErr, features: features})
+				if *failFast {
+					break
+				}
+				continue
+			}
+			gf, openErr := os.Open(tempGolden)
+			if openErr != nil {
+				fmt.Printf("❌ FAIL  %-45s Could not open generated golden: %v\n", truncateMiddle(relPath, 45), openErr)
+				results = append(results, scanResult{path: svgPath, relPath: relPath, err: openErr, features: features})
+				if *failFast {
+					break
+				}
+				continue
+			}
+			goldenImg, _ = png.Decode(gf)
+			_ = gf.Close()
+		}
+
+		preprocessed, prepErr := svg.PreprocessSVG(data)
+		if prepErr != nil {
+			fmt.Printf("❌ FAIL  %-45s PreprocessSVG failed: %v\n", truncateMiddle(relPath, 45), prepErr)
+			results = append(results, scanResult{path: svgPath, relPath: relPath, err: prepErr, features: features})
+			for _, f := range features {
+				featureFailed[f]++
+			}
+			if *failFast {
+				break
+			}
+			continue
+		}
+
+		actualImg, rendErr := svg.RenderSVGToRGBA(preprocessed, w, h)
+		if rendErr != nil {
+			fmt.Printf("❌ FAIL  %-45s RenderSVGToRGBA failed: %v\n", truncateMiddle(relPath, 45), rendErr)
+			results = append(results, scanResult{path: svgPath, relPath: relPath, err: rendErr, features: features})
+			for _, f := range features {
+				featureFailed[f]++
+			}
+			if *failFast {
+				break
+			}
+			continue
+		}
+
+		stats, diffImg := diffImages(actualImg, goldenImg, uint8(*tolerance))
+		res := scanResult{
+			path:        svgPath,
+			relPath:     relPath,
+			mismatch:    stats.MismatchPercent,
+			threshold:   threshold,
+			diffPixels:  stats.MismatchedPixels,
+			totalPixels: stats.TotalPixels,
+			features:    features,
+		}
+		results = append(results, res)
+
+		featStr := ""
+		if len(features) > 0 {
+			featStr = fmt.Sprintf(" [%s]", strings.Join(features, ", "))
+		}
+
+		if stats.MismatchPercent > threshold {
+			for _, f := range features {
+				featureFailed[f]++
+			}
+			fmt.Printf("❌ FAIL  %-45s %6.2f%% mismatch (threshold: %.2f%%, %d/%d px differ, max diff: %d)%s\n",
+				truncateMiddle(relPath, 45), stats.MismatchPercent, threshold, stats.MismatchedPixels, stats.TotalPixels, stats.MaxChannelDiff, featStr)
+
+			if *saveDiff {
+				diffPath := filepath.Join(scratchDir, safeBase+"_diff.png")
+				actualPath := filepath.Join(scratchDir, safeBase+"_actual.png")
+				goldenSavePath := filepath.Join(scratchDir, safeBase+"_golden.png")
+				_ = savePNGFile(actualPath, actualImg)
+				_ = savePNGFile(goldenSavePath, goldenImg)
+				_ = savePNGFile(diffPath, diffImg)
+			}
+
+			if *failFast {
+				break
+			}
+		} else {
+			fmt.Printf("✅ PASS  %-45s %6.2f%% mismatch (%d/%d px)%s\n",
+				truncateMiddle(relPath, 45), stats.MismatchPercent, stats.MismatchedPixels, stats.TotalPixels, featStr)
+		}
+	}
+
+	elapsed := time.Since(startTime)
+
+	var passed, failed int
+	var failList []scanResult
+	for _, r := range results {
+		if r.err != nil || r.mismatch > r.threshold {
+			failed++
+			failList = append(failList, r)
+		} else {
+			passed++
+		}
+	}
+
+	fmt.Println()
+	fmt.Println(strings.Repeat("=", 80))
+	fmt.Printf("SCAN SUMMARY: %d files scanned in %s\n", len(results), elapsed.Round(time.Millisecond))
+	fmt.Printf("Passed: %d | Failed: %d\n", passed, failed)
+	fmt.Println(strings.Repeat("-", 80))
+
+	if len(failList) > 0 {
+		fmt.Println("FAILURES:")
+		for _, f := range failList {
+			if f.err != nil {
+				fmt.Printf("  ❌ %-40s ERROR: %v\n", f.relPath, f.err)
+			} else {
+				featInfo := ""
+				if len(f.features) > 0 {
+					featInfo = " [" + strings.Join(f.features, ", ") + "]"
+				}
+				fmt.Printf("  ❌ %-40s %6.2f%% mismatch (threshold: %.2f%%, %d/%d px)%s\n",
+					f.relPath, f.mismatch, f.threshold, f.diffPixels, f.totalPixels, featInfo)
+			}
+		}
+		fmt.Println()
+	}
+
+	if len(featureTotal) > 0 {
+		fmt.Println("FEATURE BREAKDOWN:")
+		var featNames []string
+		for k := range featureTotal {
+			featNames = append(featNames, k)
+		}
+		sort.Strings(featNames)
+		for _, k := range featNames {
+			tot := featureTotal[k]
+			bad := featureFailed[k]
+			good := tot - bad
+			pct := (float64(good) / float64(tot)) * 100.0
+			statusIcon := "✓"
+			if bad > 0 {
+				statusIcon = "✗"
+			}
+			fmt.Printf("  %s %-18s %2d/%2d passed (%5.1f%%)", statusIcon, k+":", good, tot, pct)
+			if bad > 0 {
+				fmt.Printf(" — %d failed", bad)
+			}
+			fmt.Println()
+		}
+	}
+	fmt.Println(strings.Repeat("=", 80))
+
+	if failed > 0 {
+		os.Exit(1)
+	}
+}
+
+func detectSVGFeatures(data []byte) []string {
+	s := strings.ToLower(string(data))
+	var features []string
+	check := func(name string, patterns ...string) {
+		for _, p := range patterns {
+			if strings.Contains(s, p) {
+				features = append(features, name)
+				return
+			}
+		}
+	}
+
+	check("text", "<text", "<tspan")
+	check("filter", "<filter", "filter=\"url(", "filter:url(")
+	check("clip-path", "<clippath", "clip-path=\"url(", "clip-path:url(")
+	check("mask", "<mask", "mask=\"url(", "mask:url(")
+	check("pattern", "<pattern")
+	check("linear-gradient", "<lineargradient")
+	check("radial-gradient", "<radialgradient")
+	check("image", "<image")
+	check("marker", "<marker", "marker-end", "marker-start", "marker-mid")
+	check("evenodd", `fill-rule="evenodd"`, "fill-rule:evenodd", `clip-rule="evenodd"`, "clip-rule:evenodd")
+	check("lpe", "inkscape:path-effect")
+	check("css", "<style")
+
+	return features
+}
+
+func resolveScanDimensions(data []byte, maxDim int) (int, int) {
+	if maxDim <= 0 {
+		maxDim = 256
+	}
+	doc, err := svg.ParseSVG(data)
+	if err == nil && doc.Width > 0 && doc.Height > 0 {
+		scale := float64(maxDim) / math.Max(doc.Width, doc.Height)
+		w := int(math.Round(doc.Width * scale))
+		h := int(math.Round(doc.Height * scale))
+		if w < 16 {
+			w = 16
+		}
+		if h < 16 {
+			h = 16
+		}
+		return w, h
+	}
+	return maxDim, maxDim
+}
+
+func sliceContains(slice []string, val string) bool {
+	for _, s := range slice {
+		if s == val {
+			return true
+		}
+	}
+	return false
+}
+
+func truncateMiddle(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	half := (maxLen - 3) / 2
+	return s[:half] + "..." + s[len(s)-half:]
+}
+
 

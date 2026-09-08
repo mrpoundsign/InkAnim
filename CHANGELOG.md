@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.6-pre5] - 2026-09-08
 
 ### Added
+- **Bulk Differential Testing Scanner (`cmd/dev scan`)**: Added a dedicated `scan` subcommand to `cmd/dev` that recursively scans directories of SVGs, computes perceptual pixel differences against headless Inkscape ground truth, generates visual diff PNGs with neon magenta highlights on failures, and prints a comprehensive summary table with per-feature breakdown metrics ([#59](https://github.com/mrpoundsign/InkAnim/issues/59)).
 - **Automated Golden Test Suite & GitHub Actions CI Gate**: Added an integration test suite validating pixel-level rendering accuracy against headless Inkscape goldens, enforced automatically via GitHub Actions on all PRs and pushes ([#40](https://github.com/mrpoundsign/InkAnim/issues/40)).
 - **Developer Golden & Diff CLI (`cmd/dev`)**: Added developer CLI tool with subcommands `golden --generate` and `diff` for canonical headless Inkscape golden generation and visual diff inspection ([#51](https://github.com/mrpoundsign/InkAnim/issues/51)).
 
