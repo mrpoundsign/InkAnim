@@ -142,3 +142,6 @@ Active issues and feature requests are tracked exclusively via **[GitHub Issues]
 3. **Inkscape Flowed Text (`shape-inside`)**: Inkscape 1.0+ flowed text objects (`shape-inside:url(...)`) typically embed explicit baseline anchors on `<tspan x="..." y="...">`. Using `<tspan>` coordinates avoids the need for a complex text-wrapping engine for simple labels.
 4. **WASM / Cross-Platform Font Fallbacks**: System font paths (`C:\Windows\Fonts`, `/usr/share/fonts`) are inaccessible in WebAssembly. The converter must bundle or fall back to standard Go / Fyne embedded TTF glyphs when system fonts cannot be resolved.
 
+### Future Modularization Roadmap (Issue #50)
+The in-memory SVG preprocessor (`internal/svg/preprocess.go`, `internal/svg/text.go`, `internal/svg/lpe.go`) maintains a clean, self-contained middleware contract (`PreprocessSVG(data []byte) ([]byte, error)`). Once core SVG compatibility features are completed and battle-tested in InkAnim, it is planned to be extracted into a standalone public open-source Go module (e.g. `mrpoundsign/inksvg` or `svgprep`) to benefit the wider Go/Fyne/WASM ecosystem.
+
