@@ -68,7 +68,23 @@ func RenderSVGToRGBA(svgData []byte, targetW, targetH int) (*image.RGBA, error) 
 	scanner := rasterx.NewScannerGV(widthInt, heightInt, img, img.Bounds())
 	raster := rasterx.NewDasher(widthInt, heightInt, scanner)
 
-	icon.Draw(raster, 1.0)
+	embeddedImages := extractEmbeddedImages(svgData)
+	if len(embeddedImages) == 0 {
+		icon.Draw(raster, 1.0)
+	} else {
+		imgIdx := 0
+		for pathIdx := range icon.SVGPaths {
+			for imgIdx < len(embeddedImages) && embeddedImages[imgIdx].PathIndex <= pathIdx {
+				drawEmbeddedImage(img, embeddedImages[imgIdx], icon.Transform)
+				imgIdx++
+			}
+			icon.SVGPaths[pathIdx].DrawTransformed(raster, 1.0, icon.Transform)
+		}
+		for imgIdx < len(embeddedImages) {
+			drawEmbeddedImage(img, embeddedImages[imgIdx], icon.Transform)
+			imgIdx++
+		}
+	}
 
 	return img, nil
 }

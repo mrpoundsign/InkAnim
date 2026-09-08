@@ -167,3 +167,15 @@ type RenderedFrame struct {
 	Image      *image.RGBA
 	DurationMs int
 }
+
+// EmbeddedImage represents an embedded raster graphic (<image> tag) decoded from a data URI.
+type EmbeddedImage struct {
+	Data      image.Image
+	X, Y      float64
+	Width     float64
+	Height    float64
+	Transform Matrix2D
+	Opacity   float64
+	PathIndex int
+}
+
