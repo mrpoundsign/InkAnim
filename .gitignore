@@ -11,3 +11,6 @@ wasm/
 *.wasm
 *.pprof
 notes/
+testdata/scratch/
+*_diff.png
+*_actual.png

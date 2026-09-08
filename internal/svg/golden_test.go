@@ -90,10 +90,12 @@ func AssertImageMatchesGolden(t *testing.T, actual image.Image, goldenRelPath st
 		stats.MinX, stats.MinY, stats.MaxX, stats.MaxY, stats.MaxChannelDiff, opts.MaxMismatchPercent)
 
 	if stats.MismatchPercent > opts.MaxMismatchPercent {
-		ext := filepath.Ext(goldenRelPath)
-		base := strings.TrimSuffix(goldenRelPath, ext)
-		diffPath := base + "_diff.png"
-		actualPath := base + "_actual.png"
+		scratchDir := filepath.Join("..", "..", "testdata", "scratch")
+		_ = os.MkdirAll(scratchDir, 0755)
+
+		baseName := strings.TrimSuffix(filepath.Base(goldenRelPath), filepath.Ext(goldenRelPath))
+		diffPath := filepath.Join(scratchDir, baseName+"_diff.png")
+		actualPath := filepath.Join(scratchDir, baseName+"_actual.png")
 
 		_ = savePNG(diffPath, diffImg)
 		_ = savePNG(actualPath, actual)
