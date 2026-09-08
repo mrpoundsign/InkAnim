@@ -17,7 +17,6 @@ type LeftFramesPanel struct {
 	session           *app.Session
 	container         *fyne.Container
 	listContainer     *fyne.Container
-	modeRadio         *widget.RadioGroup
 	cropBoundaryRadio *widget.RadioGroup
 	cropPageSelect    *widget.Select
 	speedPresetSelect *widget.Select
@@ -33,22 +32,6 @@ func NewLeftFramesPanel(sess *app.Session, onFramesChange func()) *LeftFramesPan
 		listContainer:  container.NewVBox(),
 		onFramesChange: onFramesChange,
 	}
-
-	p.modeRadio = widget.NewRadioGroup([]string{"Layers", "Pages"}, func(selected string) {
-		if p.isUpdating {
-			return
-		}
-		if selected == "Pages" {
-			_ = p.session.SetMode(svg.ModePages)
-		} else {
-			_ = p.session.SetMode(svg.ModeLayers)
-		}
-		p.Refresh()
-		if p.onFramesChange != nil {
-			p.onFramesChange()
-		}
-	})
-	p.modeRadio.Selected = "Layers"
 
 	p.cropBoundaryRadio = widget.NewRadioGroup([]string{"Drawing", "Page"}, func(selected string) {
 		if p.isUpdating {
@@ -92,7 +75,6 @@ func NewLeftFramesPanel(sess *app.Session, onFramesChange func()) *LeftFramesPan
 	})
 
 	header := widget.NewLabelWithStyle("Animation Frames", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
-	modeLabel := widget.NewLabel("Frame Source:")
 	cropLabel := widget.NewLabel("Crop Boundary:")
 
 
@@ -154,9 +136,6 @@ func NewLeftFramesPanel(sess *app.Session, onFramesChange func()) *LeftFramesPan
 
 	topControls := container.NewVBox(
 		header,
-		modeLabel,
-		p.modeRadio,
-		widget.NewSeparator(),
 		cropLabel,
 		p.cropBoundaryRadio,
 		p.cropPageSelect,
@@ -231,182 +210,106 @@ func (p *LeftFramesPanel) Refresh() {
 	}
 
 
-	if p.session.CurrentMode == svg.ModePages {
-		if p.modeRadio.Selected != "Pages" {
-			p.modeRadio.SetSelected("Pages")
+	if len(p.session.Layers) == 0 {
+		p.listContainer.Add(widget.NewLabel("No Inkscape layers found."))
+		p.listContainer.Refresh()
+		return
+	}
+
+	for i, layer := range p.session.Layers {
+		idx := i
+		activeCheck := widget.NewCheck(fmt.Sprintf("%d. %s", idx+1, layer.Label), func(checked bool) {
+			_ = p.session.ToggleLayerActive(idx)
+			p.Refresh()
+			if p.onFramesChange != nil {
+				p.onFramesChange()
+			}
+		})
+		activeCheck.Checked = layer.IsActive
+
+		pinCheck := widget.NewCheck("Pin BG", func(checked bool) {
+			_ = p.session.ToggleLayerPinned(idx)
+			p.Refresh()
+			if p.onFramesChange != nil {
+				p.onFramesChange()
+			}
+		})
+		pinCheck.Checked = layer.IsPinned
+
+		durEntry := widget.NewEntry()
+		durVal := p.session.ExportOptions.DefaultDurationMs
+		if layer.HasOverride && layer.OverrideMs > 0 {
+			durVal = layer.OverrideMs
 		}
-		if len(p.session.Pages) == 0 {
-			p.listContainer.Add(widget.NewLabel("No Inkscape pages found.\nTry Layers mode."))
-			p.listContainer.Refresh()
-			return
+		durEntry.SetText(strconv.Itoa(durVal))
+		if !layer.HasOverride {
+			durEntry.Disable()
 		}
 
-		for i, page := range p.session.Pages {
-			idx := i
-			activeCheck := widget.NewCheck(fmt.Sprintf("%d. %s", idx+1, page.Label), func(checked bool) {
-				p.session.Pages[idx].IsActive = checked
-				_ = p.session.RerenderAllFrames()
+		durEntry.OnChanged = func(val string) {
+			if ms, err := strconv.Atoi(val); err == nil && ms > 0 {
+				p.session.SetFrameOverride(idx, true, ms)
 				if p.onFramesChange != nil {
 					p.onFramesChange()
 				}
-			})
-			activeCheck.Checked = page.IsActive
-
-			durEntry := widget.NewEntry()
-			durVal := p.session.ExportOptions.DefaultDurationMs
-			if page.HasOverride && page.OverrideMs > 0 {
-				durVal = page.OverrideMs
 			}
-			durEntry.SetText(strconv.Itoa(durVal))
-			if !page.HasOverride {
+		}
+
+		overrideCheck := widget.NewCheck("Override", func(checked bool) {
+			if checked {
+				durEntry.Enable()
+				ms := p.session.ExportOptions.DefaultDurationMs
+				if parsed, err := strconv.Atoi(durEntry.Text); err == nil && parsed > 0 {
+					ms = parsed
+				}
+				p.session.SetFrameOverride(idx, true, ms)
+			} else {
 				durEntry.Disable()
+				durEntry.SetText(strconv.Itoa(p.session.ExportOptions.DefaultDurationMs))
+				p.session.SetFrameOverride(idx, false, 0)
 			}
-
-			durEntry.OnChanged = func(val string) {
-				if ms, err := strconv.Atoi(val); err == nil && ms > 0 {
-					p.session.SetFrameOverride(idx, true, ms)
-					if p.onFramesChange != nil {
-						p.onFramesChange()
-					}
-				}
+			if p.onFramesChange != nil {
+				p.onFramesChange()
 			}
+		})
+		overrideCheck.Checked = layer.HasOverride
 
-			overrideCheck := widget.NewCheck("Override", func(checked bool) {
-				if checked {
-					durEntry.Enable()
-					ms := p.session.ExportOptions.DefaultDurationMs
-					if parsed, err := strconv.Atoi(durEntry.Text); err == nil && parsed > 0 {
-						ms = parsed
-					}
-					p.session.SetFrameOverride(idx, true, ms)
-				} else {
-					durEntry.Disable()
-					durEntry.SetText(strconv.Itoa(p.session.ExportOptions.DefaultDurationMs))
-					p.session.SetFrameOverride(idx, false, 0)
-				}
-				if p.onFramesChange != nil {
-					p.onFramesChange()
-				}
-			})
-			overrideCheck.Checked = page.HasOverride
-
-			bottomRow := container.NewHBox(
-				overrideCheck,
-				widget.NewLabel("ms:"),
-				container.NewGridWrap(fyne.NewSize(50, 30), durEntry),
-			)
-			card := container.NewVBox(
-				activeCheck,
-				bottomRow,
-				widget.NewSeparator(),
-			)
-			p.listContainer.Add(card)
-		}
-	} else {
-		if p.modeRadio.Selected != "Layers" {
-			p.modeRadio.SetSelected("Layers")
-		}
-		if len(p.session.Layers) == 0 {
-			p.listContainer.Add(widget.NewLabel("No Inkscape layers found."))
-			p.listContainer.Refresh()
-			return
-		}
-
-		for i, layer := range p.session.Layers {
-			idx := i
-			activeCheck := widget.NewCheck(fmt.Sprintf("%d. %s", idx+1, layer.Label), func(checked bool) {
-				_ = p.session.ToggleLayerActive(idx)
+		upBtn := widget.NewButton("▲", func() {
+			if idx > 0 {
+				_ = p.session.MoveLayer(idx, idx-1)
 				p.Refresh()
 				if p.onFramesChange != nil {
 					p.onFramesChange()
 				}
-			})
-			activeCheck.Checked = layer.IsActive
-
-			pinCheck := widget.NewCheck("Pin BG", func(checked bool) {
-				_ = p.session.ToggleLayerPinned(idx)
+			}
+		})
+		downBtn := widget.NewButton("▼", func() {
+			if idx < len(p.session.Layers)-1 {
+				_ = p.session.MoveLayer(idx, idx+1)
 				p.Refresh()
 				if p.onFramesChange != nil {
 					p.onFramesChange()
 				}
-			})
-			pinCheck.Checked = layer.IsPinned
-
-			durEntry := widget.NewEntry()
-			durVal := p.session.ExportOptions.DefaultDurationMs
-			if layer.HasOverride && layer.OverrideMs > 0 {
-				durVal = layer.OverrideMs
 			}
-			durEntry.SetText(strconv.Itoa(durVal))
-			if !layer.HasOverride {
-				durEntry.Disable()
-			}
+		})
 
-			durEntry.OnChanged = func(val string) {
-				if ms, err := strconv.Atoi(val); err == nil && ms > 0 {
-					p.session.SetFrameOverride(idx, true, ms)
-					if p.onFramesChange != nil {
-						p.onFramesChange()
-					}
-				}
-			}
-
-			overrideCheck := widget.NewCheck("Override", func(checked bool) {
-				if checked {
-					durEntry.Enable()
-					ms := p.session.ExportOptions.DefaultDurationMs
-					if parsed, err := strconv.Atoi(durEntry.Text); err == nil && parsed > 0 {
-						ms = parsed
-					}
-					p.session.SetFrameOverride(idx, true, ms)
-				} else {
-					durEntry.Disable()
-					durEntry.SetText(strconv.Itoa(p.session.ExportOptions.DefaultDurationMs))
-					p.session.SetFrameOverride(idx, false, 0)
-				}
-				if p.onFramesChange != nil {
-					p.onFramesChange()
-				}
-			})
-			overrideCheck.Checked = layer.HasOverride
-
-			upBtn := widget.NewButton("▲", func() {
-				if idx > 0 {
-					_ = p.session.MoveLayer(idx, idx-1)
-					p.Refresh()
-					if p.onFramesChange != nil {
-						p.onFramesChange()
-					}
-				}
-			})
-			downBtn := widget.NewButton("▼", func() {
-				if idx < len(p.session.Layers)-1 {
-					_ = p.session.MoveLayer(idx, idx+1)
-					p.Refresh()
-					if p.onFramesChange != nil {
-						p.onFramesChange()
-					}
-				}
-			})
-
-			topRow := container.NewHBox(
-				activeCheck,
-				pinCheck,
-			)
-			bottomRow := container.NewHBox(
-				container.NewGridWrap(fyne.NewSize(28, 28), upBtn),
-				container.NewGridWrap(fyne.NewSize(28, 28), downBtn),
-				overrideCheck,
-				widget.NewLabel("ms:"),
-				container.NewGridWrap(fyne.NewSize(50, 30), durEntry),
-			)
-			card := container.NewVBox(
-				topRow,
-				bottomRow,
-				widget.NewSeparator(),
-			)
-			p.listContainer.Add(card)
-		}
+		topRow := container.NewHBox(
+			activeCheck,
+			pinCheck,
+		)
+		bottomRow := container.NewHBox(
+			container.NewGridWrap(fyne.NewSize(28, 28), upBtn),
+			container.NewGridWrap(fyne.NewSize(28, 28), downBtn),
+			overrideCheck,
+			widget.NewLabel("ms:"),
+			container.NewGridWrap(fyne.NewSize(50, 30), durEntry),
+		)
+		card := container.NewVBox(
+			topRow,
+			bottomRow,
+			widget.NewSeparator(),
+		)
+		p.listContainer.Add(card)
 	}
 
 	p.listContainer.Refresh()

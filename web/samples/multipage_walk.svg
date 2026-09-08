@@ -22,7 +22,7 @@
   </sodipodi:namedview>
 
   <!-- Content on Page 1 (Centered around x=128) -->
-  <g id="page1_content">
+  <g id="page1_content" inkscape:groupmode="layer" inkscape:label="Frame 1 - Neutral">
     <ellipse cx="128" cy="225" rx="46" ry="12" fill="#202028" opacity="0.6" />
     <circle cx="128" cy="135" r="62" fill="#9146FF" />
     <circle cx="108" cy="126" r="11" fill="#FFFFFF" />
@@ -33,7 +33,7 @@
   </g>
 
   <!-- Content on Page 2 (Centered around x=428) -->
-  <g id="page2_content">
+  <g id="page2_content" inkscape:groupmode="layer" inkscape:label="Frame 2 - Jump">
     <ellipse cx="428" cy="230" rx="32" ry="8" fill="#202028" opacity="0.35" />
     <ellipse cx="428" cy="115" rx="54" ry="72" fill="#9146FF" />
     <circle cx="408" cy="104" r="13" fill="#FFFFFF" />

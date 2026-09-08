@@ -238,14 +238,18 @@ func TestSessionCropBoundaryModes(t *testing.T) {
 	}
 
 	// multipage_walk.svg has 2 pages (each 256x256), doc is 560x256
-	// Default mode for multipage_walk is ModePages
-	if sess.CurrentMode != "pages" {
-		t.Errorf("expected default mode pages, got %s", sess.CurrentMode)
+	// Default mode is always ModeLayers, CropBoundaryMode is BoundaryDrawing
+	if sess.CurrentMode != svg.ModeLayers {
+		t.Errorf("expected default mode layers, got %s", sess.CurrentMode)
 	}
-	if sess.CropBoundaryMode != "page" {
-		t.Errorf("expected default boundary mode page, got %s", sess.CropBoundaryMode)
+	if sess.CropBoundaryMode != svg.BoundaryDrawing {
+		t.Errorf("expected default boundary mode drawing, got %s", sess.CropBoundaryMode)
 	}
 
+	// Switch to Page boundary mode for Page 1 (pageIndex 1 = Page 1)
+	if err := sess.SetCropBoundary(svg.BoundaryPage, 1); err != nil {
+		t.Fatalf("SetCropBoundary page 1 failed: %v", err)
+	}
 	// Active boundary dimensions should be 256x256
 	w, h := sess.GetActiveBoundaryDimensions()
 	if w != 256 || h != 256 {

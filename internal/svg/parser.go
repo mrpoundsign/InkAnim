@@ -132,12 +132,8 @@ func ParseSVG(data []byte) (*SVGDocument, error) {
 		}
 	}
 
-	// Determine default mode based on what's found
-	if len(doc.Pages) > 1 && len(doc.Layers) <= 1 {
-		doc.DefaultMode = ModePages
-	} else {
-		doc.DefaultMode = ModeLayers
-	}
+	// Default mode is always ModeLayers (pages serve as artboard crop boundaries)
+	doc.DefaultMode = ModeLayers
 
 	doc.DrawingRect = ComputeDrawingRect(processedData)
 

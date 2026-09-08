@@ -31,7 +31,7 @@ func run() error {
 	showVersion := flag.Bool("v", false, "Show version information")
 	inputFile := flag.String("i", "", "Input Inkscape SVG file path (required)")
 	outputFile := flag.String("o", "", "Output animated GIF file path (default: input with .gif extension)")
-	modeStr := flag.String("mode", "layers", "Frame extraction mode: 'layers' or 'pages'")
+	modeStr := flag.String("mode", "layers", "Frame extraction mode: 'layers' (default; 'pages' is deprecated)")
 	square := flag.Bool("square", true, "Export Square: center graphic on max(width, height) with transparent padding")
 	squareSize := flag.Int("size", 0, "Target square size (e.g. 512, max 4096). 0 uses max(width, height)")
 	width := flag.Int("width", 0, "Custom target width (if not using square mode)")
@@ -52,7 +52,7 @@ func run() error {
 	}
 
 	if *inputFile == "" {
-		fmt.Println("InkAnim CLI — Convert Inkscape SVG layers/pages to a single animated GIF")
+		fmt.Println("InkAnim CLI — Convert Inkscape SVG layers to a single animated GIF")
 		fmt.Println("\nUsage:")
 		flag.PrintDefaults()
 		return errors.New("missing required input file (-i)")
@@ -78,13 +78,10 @@ func run() error {
 	}
 
 	if strings.ToLower(*modeStr) == "pages" {
-		if err := sess.SetMode(svg.ModePages); err != nil {
-			return fmt.Errorf("setting pages mode: %w", err)
-		}
-	} else {
-		if err := sess.SetMode(svg.ModeLayers); err != nil {
-			return fmt.Errorf("setting layers mode: %w", err)
-		}
+		fmt.Println("Warning: -mode pages is deprecated; animation frames are extracted from layers. Pages serve as artboard crop boundaries.")
+	}
+	if err := sess.SetMode(svg.ModeLayers); err != nil {
+		return fmt.Errorf("setting layers mode: %w", err)
 	}
 
 	frameCount := len(sess.RenderedFrames)
