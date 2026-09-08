@@ -135,6 +135,20 @@ func ParseSVG(data []byte) (*SVGDocument, error) {
 	// Default mode is always ModeLayers (pages serve as artboard crop boundaries)
 	doc.DefaultMode = ModeLayers
 
+	// Fallback: if no explicit layers were found, treat the document as a single layer
+	if len(doc.Layers) == 0 {
+		doc.Layers = []Layer{
+			{
+				ID:         "layer_default",
+				Label:      "Layer 1",
+				Index:      0,
+				Visible:    true,
+				IsActive:   true,
+				DurationMs: 100,
+			},
+		}
+	}
+
 	doc.DrawingRect = ComputeDrawingRect(processedData)
 
 	return doc, nil

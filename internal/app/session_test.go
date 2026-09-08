@@ -396,3 +396,26 @@ func BenchmarkRenderExportFrames(b *testing.B) {
 	}
 }
 
+func TestSessionLoadSVGWithoutLayers(t *testing.T) {
+	fixturePath, err := filepath.Abs("../../testdata/fixtures/namedview_pagecolor.svg")
+	if err != nil {
+		t.Fatalf("failed to resolve fixture path: %v", err)
+	}
+
+	sess := NewSession()
+	if err := sess.LoadSVG(fixturePath); err != nil {
+		t.Fatalf("failed to load fixture SVG: %v", err)
+	}
+
+	if len(sess.Layers) != 1 {
+		t.Fatalf("expected 1 fallback layer, got %d", len(sess.Layers))
+	}
+	if len(sess.RenderedFrames) != 1 {
+		t.Fatalf("expected 1 rendered frame, got %d", len(sess.RenderedFrames))
+	}
+	if sess.RenderedFrames[0].Image == nil {
+		t.Fatalf("expected non-nil rendered frame image")
+	}
+}
+
+

@@ -543,3 +543,34 @@ func TestAlertIconDrawingBounds(t *testing.T) {
 		t.Errorf("expected 0 colored pixels on bottom row (no clipping), got %d", bottomRowColored)
 	}
 }
+
+func TestParseSVG_NoExplicitLayersFallback(t *testing.T) {
+	raw := `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">
+		<circle cx="50" cy="50" r="25" fill="#ff0000" />
+	</svg>`
+	doc, err := ParseSVG([]byte(raw))
+	if err != nil {
+		t.Fatalf("ParseSVG failed: %v", err)
+	}
+	if len(doc.Layers) != 1 {
+		t.Fatalf("expected 1 fallback layer, got %d", len(doc.Layers))
+	}
+	if doc.Layers[0].Label != "Layer 1" {
+		t.Errorf("expected layer label 'Layer 1', got %q", doc.Layers[0].Label)
+	}
+
+	frameSVG, err := BuildLayerFrameSVG(doc, doc.Layers[0].ID, nil, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("BuildLayerFrameSVG failed: %v", err)
+	}
+	img, err := RenderSVGToRGBA(frameSVG, 100, 100)
+	if err != nil {
+		t.Fatalf("RenderSVGToRGBA failed: %v", err)
+	}
+	c := img.At(50, 50)
+	r, _, _, a := c.RGBA()
+	if r == 0 || a == 0 {
+		t.Errorf("expected non-zero red pixel at center, got %v", c)
+	}
+}
+
