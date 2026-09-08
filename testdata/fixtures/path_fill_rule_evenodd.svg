@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- Outer square clockwise, inner square clockwise; fill-rule="evenodd" creates a hole in the center -->
+  <path fill-rule="evenodd" fill="#ec4899" stroke="#9d174d" stroke-width="4"
+        d="M 16,16 L 112,16 L 112,112 L 16,112 Z M 36,36 L 92,36 L 92,92 L 36,92 Z" />
+</svg>

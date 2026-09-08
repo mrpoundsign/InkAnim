@@ -42,6 +42,7 @@ func PreprocessSVG(data []byte) ([]byte, error) {
 	encoder := xml.NewEncoder(&buf)
 
 	transformStack := []Matrix2D{IdentityMatrix()}
+	fillRuleStack := []string{"nonzero"}
 	var rootSVGSeen bool
 
 	for {
@@ -231,9 +232,10 @@ func PreprocessSVG(data []byte) ([]byte, error) {
 				continue
 			}
 
-			// Track 2D affine transformation matrices on nested <g> elements
+			// Track 2D affine transformation matrices and fill-rules on nested <g> elements
 			if name == "g" {
 				curMatrix := transformStack[len(transformStack)-1]
+				curRule := fillRuleStack[len(fillRuleStack)-1]
 				for i, attr := range elem.Attr {
 					if attr.Name.Local == "transform" {
 						parsed := parseTransform(attr.Value)
@@ -241,8 +243,17 @@ func PreprocessSVG(data []byte) ([]byte, error) {
 						// Normalize transform to canonical matrix to avoid oksvg single-param scale(s, 0) bug
 						elem.Attr[i].Value = fmt.Sprintf("matrix(%f %f %f %f %f %f)", parsed.A, parsed.B, parsed.C, parsed.D, parsed.E, parsed.F)
 					}
+					if attr.Name.Local == "fill-rule" {
+						curRule = strings.ToLower(strings.TrimSpace(attr.Value))
+					}
+					if attr.Name.Local == "style" {
+						if fr := extractCSSProp(attr.Value, "fill-rule"); fr != "" {
+							curRule = strings.ToLower(strings.TrimSpace(fr))
+						}
+					}
 				}
 				transformStack = append(transformStack, curMatrix)
+				fillRuleStack = append(fillRuleStack, curRule)
 			}
 
 			// Evaluate fillet_chamfer Live Path Effects on <path> elements
@@ -270,6 +281,32 @@ func PreprocessSVG(data []byte) ([]byte, error) {
 				// Desugar implicit repeated arc commands in path d data (Issue #57)
 				if dAttrIdx >= 0 {
 					elem.Attr[dAttrIdx].Value = DesugarPathArcs(elem.Attr[dAttrIdx].Value)
+				}
+
+				// Normalize evenodd fill-rules to NonZero winding (Issue #62)
+				pathRule := fillRuleStack[len(fillRuleStack)-1]
+				var fillRuleAttrIdx = -1
+				var pathStyleAttrIdx = -1
+				for i, attr := range elem.Attr {
+					if attr.Name.Local == "fill-rule" {
+						fillRuleAttrIdx = i
+						pathRule = strings.ToLower(strings.TrimSpace(attr.Value))
+					}
+					if attr.Name.Local == "style" {
+						pathStyleAttrIdx = i
+						if fr := extractCSSProp(attr.Value, "fill-rule"); fr != "" {
+							pathRule = strings.ToLower(strings.TrimSpace(fr))
+						}
+					}
+				}
+				if pathRule == "evenodd" && dAttrIdx >= 0 {
+					elem.Attr[dAttrIdx].Value = NormalizeEvenOddPath(elem.Attr[dAttrIdx].Value)
+					if fillRuleAttrIdx >= 0 {
+						elem.Attr[fillRuleAttrIdx].Value = "nonzero"
+					}
+					if pathStyleAttrIdx >= 0 {
+						elem.Attr[pathStyleAttrIdx].Value = setStyleProp(elem.Attr[pathStyleAttrIdx].Value, "fill-rule", "nonzero")
+					}
 				}
 			}
 
@@ -423,8 +460,13 @@ func PreprocessSVG(data []byte) ([]byte, error) {
 			}
 
 		case xml.EndElement:
-			if elem.Name.Local == "g" && len(transformStack) > 1 {
-				transformStack = transformStack[:len(transformStack)-1]
+			if elem.Name.Local == "g" {
+				if len(transformStack) > 1 {
+					transformStack = transformStack[:len(transformStack)-1]
+				}
+				if len(fillRuleStack) > 1 {
+					fillRuleStack = fillRuleStack[:len(fillRuleStack)-1]
+				}
 			}
 			if err := encoder.EncodeToken(elem); err != nil {
 				return nil, err
