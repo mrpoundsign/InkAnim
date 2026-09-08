@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.6-pre1] - 2026-09-07
+## [0.1.6-pre2] - 2026-09-07
 
 ### Added
 - **WYSIWYG Palette Quantization & Dithering Preview**: Live animation preview canvas and Twitch scale thumbnails reflect the active color palette quantization (2–256 colors) and Floyd-Steinberg dithering in real time. Added a "WYSIWYG" toggle in playback controls to effortlessly compare color-quantized GIF frames against the unquantized 32-bit true-color rasterization ([#34](https://github.com/mrpoundsign/InkAnim/issues/34)).
