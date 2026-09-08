@@ -163,6 +163,12 @@ func (fm *FontManager) findSystemFont(family string, bold, italic bool) *sfnt.Fo
 
 	// Special aliases for standard fonts
 	switch normFam {
+	case "sansserif", "sans":
+		if bold {
+			candidates = append([]string{"dejavusansbold", "liberationsansbold", "segoeuib", "arialbd"}, candidates...)
+		} else {
+			candidates = append([]string{"dejavusans", "liberationsans", "segoeui", "arial"}, candidates...)
+		}
 	case "segoeuivariable":
 		if bold {
 			candidates = append([]string{"segoeuib", "seguivarbd", "seguivarbold"}, candidates...)

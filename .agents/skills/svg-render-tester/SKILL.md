@@ -27,9 +27,12 @@ This skill provides a standardized protocol to transform bug reports and real-wo
   - Exactly one minimal element (or the minimal nested group) triggering the behavior.
   - Clean, human-readable coordinates.
 
-### 🏛️ 4. Uncompromising Ground Truth (Direct Inkscape CLI)
-- **Always export golden PNGs directly from the fixture SVG using headless Inkscape**:
+### 🏛️ 4. Uncompromising Ground Truth (Authoring-Time Inkscape CLI)
+- **The agent/developer MUST run headless Inkscape in the terminal to generate the golden file**:
   - `inkscape testdata/fixtures/<name>.svg --export-type=png --export-filename=testdata/fixtures/<name>.golden.png -w 128 -h 128`
+  - (Use `-w 512 -h 512` for 512×512 fixtures like `text_full_alphabet`).
+- **Tests DO NOT invoke Inkscape**: CI environments, Docker containers, and `go test` runners do not have Inkscape installed. If a `.golden.png` is missing, `TestAtomicFixtures` will fail immediately.
+- **Always Version-Control Goldens**: Both `<name>.svg` and `<name>.golden.png` must be committed together to git.
 - **Never bypass Inkscape CLI**: Never generate golden PNGs via temporary helper scripts, Python scripts, mock SVGs, or manually pre-calculated arc paths.
 - **Fix the Fixture, Never Fake the Golden**: If headless Inkscape renders something unexpected, the fixture SVG itself is missing necessary Inkscape attributes (e.g., LPE metadata, path format). Adjust the fixture SVG so Inkscape naturally renders the ground truth.
 
@@ -55,13 +58,13 @@ This skill provides a standardized protocol to transform bug reports and real-wo
   (Generate synthetic generic shape exercising only that operation)
               │
               ▼
-    4. Generate Ground-Truth Golden via Headless Inkscape DIRECTLY from Fixture
+    4. Run Headless Inkscape in Terminal to Generate Ground-Truth Golden
   `inkscape testdata/fixtures/<name>.svg --export-type=png --export-filename=testdata/fixtures/<name>.golden.png -w 128 -h 128`
-  (Never use temporary files or helper scripts; always run directly on the fixture)
+  (Must be run by agent/developer in shell before running tests; tests do NOT invoke Inkscape)
               │
               ▼
     5. Register in Integration Suite
-  (Add to `testdata/fixtures/` and execute `go test ./internal/svg/...`)
+  (Commit both .svg and .golden.png, then execute `go test ./internal/svg/...`)
 ```
 
 ---
@@ -77,6 +80,7 @@ Each fixture lives in `testdata/fixtures/` as `<operation_name>.svg` and `<opera
 | `transform_group_stroke` | Nested `<g transform="scale(...)">` verifying stroke width scales proportionally |
 | `rect_rx_ry_mirror` | `<rect ry="15">` with omitted `rx` verifying spec-compliant rounded corners |
 | `text_tspan_basic` | Text with `<tspan>` baseline offset converting to vector glyph contours |
+| `text_full_alphabet` | Comprehensive character set (A-Z, a-z, 0-9, punctuation) verifying glyph geometry and holes |
 | `crop_boundary_clip` | Drawing with paths extending outside viewBox verifying clean boundary clipping |
 
 ---

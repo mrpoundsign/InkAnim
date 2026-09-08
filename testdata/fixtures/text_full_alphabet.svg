@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <text x="32" y="70" style="font-size:32px;font-family:'DejaVu Sans';font-weight:bold;fill:#9146ff;">
+    <tspan x="32" y="70">ABCDEFGHIJKLM</tspan>
+    <tspan x="32" y="135">NOPQRSTUVWXYZ</tspan>
+    <tspan x="32" y="200">abcdefghijklm</tspan>
+    <tspan x="32" y="265">nopqrstuvwxyz</tspan>
+    <tspan x="32" y="330">0123456789</tspan>
+    <tspan x="32" y="395">~!?@#$%^&amp;*+-=</tspan>
+    <tspan x="32" y="460">()[]{}&lt;&gt;:;,._/</tspan>
+  </text>
+</svg>

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Atomic Integration Rendering Test Suite & Automated Golden Verification**: Built a parallelized integration testing harness in `internal/svg/fixtures_test.go` that renders minimal, synthetic SVG test fixtures and validates pixel-level accuracy against genuine headless Inkscape reference goldens. Mismatches automatically output composite visual diffs (`_diff.png`) highlighting divergent pixels in neon magenta into git-ignored `testdata/scratch/` ([#40](https://github.com/mrpoundsign/InkAnim/issues/40)).
+- **Comprehensive Alphabet & Symbol Fixture**: Added `text_full_alphabet.svg` (512×512) validating full character set coverage (uppercase, lowercase, digits, and punctuation) against headless Inkscape with 0.00% pixel mismatch ([#42](https://github.com/mrpoundsign/InkAnim/issues/42)).
 - **SVG Render Tester Antigravity Skill**: Created `.agents/skills/svg-render-tester/SKILL.md` establishing standardized protocols for anonymizing, deduplicating, and synthesizing real-world SVG bug reports into minimal unit tests with strict headless Inkscape ground-truth rules ([#40](https://github.com/mrpoundsign/InkAnim/issues/40)).
 
 ### Changed
@@ -16,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **LPE `fillet_chamfer` Vertex Wrapping & Closing Arc**: Fixed closed polygon handling in `internal/svg/lpe.go#filletSegments` to round all vertices including vertex 0 across `Z` subpaths and correctly calculate non-inverted closing tangent arcs ([#41](https://github.com/mrpoundsign/InkAnim/issues/41)).
+- **Standard CI Font Resolution for SVG Text Rendering**: Enhanced `fontManager` in `internal/svg/text.go` with alias mappings for generic `sans-serif` and `sans` to probe standard system fonts (`DejaVu Sans`, `Liberation Sans`, `Segoe UI`, `Arial`) before falling back to embedded fonts, and updated `text_tspan_basic.svg` to use CI-identifiable standard font `DejaVu Sans` for 100% pixel-perfect matching against headless Inkscape ([#42](https://github.com/mrpoundsign/InkAnim/issues/42)).
 
 ---
 
