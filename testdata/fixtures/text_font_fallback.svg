@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <rect width="128" height="128" fill="#18181b" />
+  <text x="16" y="48" style="font-family:'NonexistentCustomSans';font-size:24px;fill:#3b82f6;">Fallback</text>
+  <text x="16" y="96" style="font-family:'NonexistentCustomMono';font-size:24px;fill:#ef4444;">12345</text>
+</svg>

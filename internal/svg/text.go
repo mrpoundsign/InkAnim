@@ -113,7 +113,11 @@ func (fm *FontManager) ResolveFont(family string, bold, italic bool) *sfnt.Font 
 	// Try finding system font
 	f := fm.findSystemFont(family, bold, italic)
 	if f == nil {
-		// Fallback to embedded Fyne cross-platform fonts
+		// Fallback to standard system sans-serif
+		f = fm.findSystemFont("sans-serif", bold, italic)
+	}
+	if f == nil {
+		// Ultimate fallback to embedded Fyne cross-platform fonts
 		f = fm.loadEmbeddedFont(bold)
 	}
 
@@ -168,6 +172,18 @@ func (fm *FontManager) findSystemFont(family string, bold, italic bool) *sfnt.Fo
 			candidates = append([]string{"dejavusansbold", "liberationsansbold", "segoeuib", "arialbd"}, candidates...)
 		} else {
 			candidates = append([]string{"dejavusans", "liberationsans", "segoeui", "arial"}, candidates...)
+		}
+	case "monospace", "mono":
+		if bold {
+			candidates = append([]string{"dejavusansmonobold", "liberationmonobold", "consolasb", "couriernewbold"}, candidates...)
+		} else {
+			candidates = append([]string{"dejavusansmono", "liberationmono", "consolas", "couriernew"}, candidates...)
+		}
+	case "serif":
+		if bold {
+			candidates = append([]string{"dejavuserifbold", "liberationserifbold", "timesbd", "georgiab"}, candidates...)
+		} else {
+			candidates = append([]string{"dejavuserif", "liberationserif", "times", "georgia"}, candidates...)
 		}
 	case "segoeuivariable":
 		if bold {
