@@ -23,6 +23,14 @@ jobs:
           go-version: '1.27'
           cache: true
 
+      - name: Cache APT Packages
+        uses: actions/cache@v4
+        with:
+          path: /var/cache/apt/archives
+          key: ${{ runner.os }}-apt-gui-deps-v1
+          restore-keys: |
+            ${{ runner.os }}-apt-gui-deps-
+
       - name: Install Linux GUI Dependencies for Tests
         run: |
           sudo apt-get update -qq

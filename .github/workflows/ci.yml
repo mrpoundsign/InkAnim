@@ -31,8 +31,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  lint:
-    name: Lint (golangci-lint-v2)
+  quality-gate:
+    name: Lint & Test Suite (Quality Gate)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -43,6 +43,22 @@ jobs:
         with:
           go-version: '1.27'
           cache: true
+
+      - name: Cache APT Packages
+        uses: actions/cache@v4
+        with:
+          path: /var/cache/apt/archives
+          key: ${{ runner.os }}-apt-gui-deps-v1
+          restore-keys: |
+            ${{ runner.os }}-apt-gui-deps-
+
+      - name: Install Linux GUI & Font Dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            libgl1-mesa-dev xorg-dev libxcursor-dev libxrandr-dev \
+            libxinerama-dev libxi-dev libxxf86vm-dev libwayland-dev \
+            libxkbcommon-dev fonts-dejavu-core
 
       - name: Cache golangci-lint-v2 binary
         id: cache-golangci-lint-v2
@@ -57,35 +73,9 @@ jobs:
           go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2
           mv ~/go/bin/golangci-lint ~/go/bin/golangci-lint-v2
 
-      - name: Install Linux GUI Dependencies
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq libgl1-mesa-dev xorg-dev
-
       - name: Run golangci-lint-v2
         run: |
           golangci-lint-v2 run ./...
-
-  test:
-    name: Test Suite & Integration Rendering
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.27'
-          cache: true
-
-      - name: Install Linux GUI & Font Dependencies
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq \
-            libgl1-mesa-dev xorg-dev libxcursor-dev libxrandr-dev \
-            libxinerama-dev libxi-dev libxxf86vm-dev libwayland-dev \
-            libxkbcommon-dev fonts-dejavu-core
 
       - name: Run Full Test Suite (Unit & Integration Fixtures)
         run: go test -v ./...
