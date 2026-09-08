@@ -27,6 +27,12 @@ This skill provides a standardized protocol to transform bug reports and real-wo
   - Exactly one minimal element (or the minimal nested group) triggering the behavior.
   - Clean, human-readable coordinates.
 
+### 🏛️ 4. Uncompromising Ground Truth (Direct Inkscape CLI)
+- **Always export golden PNGs directly from the fixture SVG using headless Inkscape**:
+  - `inkscape testdata/fixtures/<name>.svg --export-type=png --export-filename=testdata/fixtures/<name>.golden.png -w 128 -h 128`
+- **Never bypass Inkscape CLI**: Never generate golden PNGs via temporary helper scripts, Python scripts, mock SVGs, or manually pre-calculated arc paths.
+- **Fix the Fixture, Never Fake the Golden**: If headless Inkscape renders something unexpected, the fixture SVG itself is missing necessary Inkscape attributes (e.g., LPE metadata, path format). Adjust the fixture SVG so Inkscape naturally renders the ground truth.
+
 ---
 
 ## 2. The Bug-to-Fixture Workflow
@@ -49,8 +55,9 @@ This skill provides a standardized protocol to transform bug reports and real-wo
   (Generate synthetic generic shape exercising only that operation)
               │
               ▼
-    4. Generate Ground-Truth Golden via Headless Inkscape
-  `inkscape fixture.svg --export-type=png -o fixture.golden.png -w 128 -h 128`
+    4. Generate Ground-Truth Golden via Headless Inkscape DIRECTLY from Fixture
+  `inkscape testdata/fixtures/<name>.svg --export-type=png --export-filename=testdata/fixtures/<name>.golden.png -w 128 -h 128`
+  (Never use temporary files or helper scripts; always run directly on the fixture)
               │
               ▼
     5. Register in Integration Suite
@@ -82,7 +89,6 @@ Each fixture lives in `testdata/fixtures/` as `<operation_name>.svg` and `<opera
   - `testdata/fixtures/<name>.golden.png`
 - **Failure Artifacts (`testdata/scratch/`)**:
   - If a test exceeds perceptual mismatch thresholds, `AssertImageMatchesGolden` automatically outputs:
-    - `testdata/scratch/<name>_actual.png` (InkAnim's rasterization)
-    - `testdata/scratch/<name>_diff.png` (Annotated visual diff highlighting mismatched pixels)
+    - `testdata/scratch/<name>_diff.png` (Composite visual diff: dimmed artwork with mismatched pixels highlighted in neon magenta)
   - `testdata/scratch/` is git-ignored so temporary failure artifacts never pollute the git working tree or PR diffs.
 

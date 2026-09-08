@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.6-pre4] - 2026-09-08
+
+### Added
+- **Atomic Integration Rendering Test Suite & Automated Golden Verification**: Built a parallelized integration testing harness in `internal/svg/fixtures_test.go` that renders minimal, synthetic SVG test fixtures and validates pixel-level accuracy against genuine headless Inkscape reference goldens. Mismatches automatically output composite visual diffs (`_diff.png`) highlighting divergent pixels in neon magenta into git-ignored `testdata/scratch/` ([#40](https://github.com/mrpoundsign/InkAnim/issues/40)).
+- **SVG Render Tester Antigravity Skill**: Created `.agents/skills/svg-render-tester/SKILL.md` establishing standardized protocols for anonymizing, deduplicating, and synthesizing real-world SVG bug reports into minimal unit tests with strict headless Inkscape ground-truth rules ([#40](https://github.com/mrpoundsign/InkAnim/issues/40)).
+
+### Changed
+- **Positioned WebAssembly as Fully Featured Web Studio**: Updated landing page, README, and CLI messaging to present the WebAssembly edition as a complete, browser-based Web Studio. Added a collapsible "Sample Animations" toolbar with one-click preview loading of bundled sample SVGs.
+
+### Fixed
+- **LPE `fillet_chamfer` Vertex Wrapping & Closing Arc**: Fixed closed polygon handling in `internal/svg/lpe.go#filletSegments` to round all vertices including vertex 0 across `Z` subpaths and correctly calculate non-inverted closing tangent arcs ([#41](https://github.com/mrpoundsign/InkAnim/issues/41)).
+
+---
+
 ## [0.1.6-pre3] - 2026-09-07
 
 ### Added

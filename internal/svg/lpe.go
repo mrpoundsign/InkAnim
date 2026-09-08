@@ -809,34 +809,97 @@ func tokenizePathD(d string) []string {
 
 // filletSegments applies the fillet radius to corners formed by adjacent line segments.
 func filletSegments(segs []SubPathSegment, radius float64) []SubPathSegment {
-	if len(segs) < 3 {
+	if len(segs) < 3 || radius <= 0 {
 		return segs
 	}
 
+	// Group segments into discrete subpaths beginning with 'M'
+	var subpaths [][]SubPathSegment
+	var curSub []SubPathSegment
+	for _, s := range segs {
+		if s.Type == 'M' && len(curSub) > 0 {
+			subpaths = append(subpaths, curSub)
+			curSub = nil
+		}
+		curSub = append(curSub, s)
+	}
+	if len(curSub) > 0 {
+		subpaths = append(subpaths, curSub)
+	}
+
 	var result []SubPathSegment
-	n := len(segs)
+	for _, sp := range subpaths {
+		result = append(result, filletSingleSubPath(sp, radius)...)
+	}
+	return result
+}
 
-	for i := range n {
-		cur := segs[i]
-		if cur.Type != 'L' {
-			result = append(result, cur)
+func filletSingleSubPath(sp []SubPathSegment, radius float64) []SubPathSegment {
+	if len(sp) < 3 || sp[0].Type != 'M' {
+		return sp
+	}
+
+	// Check if subpath consists exclusively of linear segments
+	for _, s := range sp {
+		if s.Type != 'M' && s.Type != 'L' && s.Type != 'Z' {
+			return sp
+		}
+	}
+
+	// Extract vertices
+	var vertices []Point2D
+	vertices = append(vertices, sp[0].End)
+	isClosed := false
+
+	for _, s := range sp[1:] {
+		switch s.Type {
+		case 'Z':
+			isClosed = true
+		case 'L':
+			vertices = append(vertices, s.End)
+		}
+	}
+
+	// If closed and last vertex is duplicate of first vertex, drop duplicate
+	if isClosed && len(vertices) > 1 {
+		last := vertices[len(vertices)-1]
+		first := vertices[0]
+		if math.Hypot(last.X-first.X, last.Y-first.Y) < 1e-4 {
+			vertices = vertices[:len(vertices)-1]
+		}
+	}
+
+	m := len(vertices)
+	if m < 3 {
+		return sp
+	}
+
+	type cornerInfo struct {
+		hasArc    bool
+		t1, t2    Point2D
+		effRadius float64
+		sweep     bool
+	}
+
+	corners := make([]cornerInfo, m)
+
+	for i := range m {
+		if !isClosed && (i == 0 || i == m-1) {
 			continue
 		}
 
-		nextIdx := (i + 1) % n
-		if segs[nextIdx].Type == 'Z' {
-			nextIdx = 1
-		}
-		next := segs[nextIdx]
+		prevIdx := (i - 1 + m) % m
+		nextIdx := (i + 1) % m
 
-		if next.Type != 'L' {
-			result = append(result, cur)
-			continue
-		}
+		vCurr := vertices[i]
+		vPrev := vertices[prevIdx]
+		vNext := vertices[nextIdx]
 
-		v := cur.End
-		u1 := normalizeVec(Point2D{X: cur.End.X - cur.Start.X, Y: cur.End.Y - cur.Start.Y})
-		u2 := normalizeVec(Point2D{X: next.End.X - next.Start.X, Y: next.End.Y - next.Start.Y})
+		vin := Point2D{X: vCurr.X - vPrev.X, Y: vCurr.Y - vPrev.Y}
+		vout := Point2D{X: vNext.X - vCurr.X, Y: vNext.Y - vCurr.Y}
+
+		u1 := normalizeVec(vin)
+		u2 := normalizeVec(vout)
 
 		dot := u1.X*u2.X + u1.Y*u2.Y
 		if dot < -1.0 {
@@ -848,42 +911,139 @@ func filletSegments(segs []SubPathSegment, radius float64) []SubPathSegment {
 
 		theta := math.Acos(dot)
 		if theta < 0.01 || theta > math.Pi-0.01 {
-			result = append(result, cur)
 			continue
 		}
 
 		d := radius * math.Tan(theta/2.0)
-		len1 := math.Hypot(cur.End.X-cur.Start.X, cur.End.Y-cur.Start.Y)
-		len2 := math.Hypot(next.End.X-next.Start.X, next.End.Y-next.Start.Y)
+		len1 := math.Hypot(vin.X, vin.Y)
+		len2 := math.Hypot(vout.X, vout.Y)
 		maxD := math.Min(len1, len2) * 0.49
+		effRadius := radius
 		if d > maxD {
 			d = maxD
+			effRadius = d / math.Tan(theta/2.0)
 		}
 
-		t1 := Point2D{X: v.X - d*u1.X, Y: v.Y - d*u1.Y}
-		t2 := Point2D{X: v.X + d*u2.X, Y: v.Y + d*u2.Y}
+		t1 := Point2D{X: vCurr.X - d*u1.X, Y: vCurr.Y - d*u1.Y}
+		t2 := Point2D{X: vCurr.X + d*u2.X, Y: vCurr.Y + d*u2.Y}
 
 		cross := u1.X*u2.Y - u1.Y*u2.X
 		sweep := cross > 0
 
-		cur.End = t1
-		result = append(result, cur)
-
-		result = append(result, SubPathSegment{
-			Type:     'A',
-			Start:    t1,
-			End:      t2,
-			Rx:       radius,
-			Ry:       radius,
-			XRot:     0,
-			LargeArc: false,
-			Sweep:    sweep,
-		})
-
-		segs[nextIdx].Start = t2
+		corners[i] = cornerInfo{
+			hasArc:    true,
+			t1:        t1,
+			t2:        t2,
+			effRadius: effRadius,
+			sweep:     sweep,
+		}
 	}
 
-	return result
+	var res []SubPathSegment
+	if isClosed {
+		// Closed polygon: start at t2 of vertex 0
+		startPt := vertices[0]
+		if corners[0].hasArc {
+			startPt = corners[0].t2
+		}
+		res = append(res, SubPathSegment{
+			Type:  'M',
+			Start: startPt,
+			End:   startPt,
+		})
+
+		for i := 1; i < m; i++ {
+			c := corners[i]
+			if c.hasArc {
+				res = append(res, SubPathSegment{
+					Type:  'L',
+					Start: res[len(res)-1].End,
+					End:   c.t1,
+				})
+				res = append(res, SubPathSegment{
+					Type:  'A',
+					Start: c.t1,
+					End:   c.t2,
+					Rx:    c.effRadius,
+					Ry:    c.effRadius,
+					Sweep: c.sweep,
+				})
+			} else {
+				res = append(res, SubPathSegment{
+					Type:  'L',
+					Start: res[len(res)-1].End,
+					End:   vertices[i],
+				})
+			}
+		}
+
+		// Connect to vertex 0
+		c0 := corners[0]
+		if c0.hasArc {
+			res = append(res, SubPathSegment{
+				Type:  'L',
+				Start: res[len(res)-1].End,
+				End:   c0.t1,
+			})
+			res = append(res, SubPathSegment{
+				Type:  'A',
+				Start: c0.t1,
+				End:   c0.t2,
+				Rx:    c0.effRadius,
+				Ry:    c0.effRadius,
+				Sweep: c0.sweep,
+			})
+		} else {
+			res = append(res, SubPathSegment{
+				Type:  'L',
+				Start: res[len(res)-1].End,
+				End:   vertices[0],
+			})
+		}
+		res = append(res, SubPathSegment{
+			Type:  'Z',
+			Start: res[len(res)-1].End,
+			End:   startPt,
+		})
+	} else {
+		// Open polyline: endpoints stay sharp
+		res = append(res, SubPathSegment{
+			Type:  'M',
+			Start: vertices[0],
+			End:   vertices[0],
+		})
+		for i := 1; i < m-1; i++ {
+			c := corners[i]
+			if c.hasArc {
+				res = append(res, SubPathSegment{
+					Type:  'L',
+					Start: res[len(res)-1].End,
+					End:   c.t1,
+				})
+				res = append(res, SubPathSegment{
+					Type:  'A',
+					Start: c.t1,
+					End:   c.t2,
+					Rx:    c.effRadius,
+					Ry:    c.effRadius,
+					Sweep: c.sweep,
+				})
+			} else {
+				res = append(res, SubPathSegment{
+					Type:  'L',
+					Start: res[len(res)-1].End,
+					End:   vertices[i],
+				})
+			}
+		}
+		res = append(res, SubPathSegment{
+			Type:  'L',
+			Start: res[len(res)-1].End,
+			End:   vertices[m-1],
+		})
+	}
+
+	return res
 }
 
 func normalizeVec(p Point2D) Point2D {

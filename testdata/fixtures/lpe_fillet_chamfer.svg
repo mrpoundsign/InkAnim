@@ -1,17 +1,19 @@
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="128" height="128" viewBox="0 0 128 128">
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="500" height="500" viewBox="0 0 500 500">
   <defs>
     <inkscape:path-effect
        effect="fillet_chamfer"
-       id="fc1"
+       id="path-effect3"
        is_visible="true"
-       radius="20"
+       radius="42"
        unit="px"
        mode="F"
        use_knot_distance="true"
-       nodesatellites_param="F,0,0,1,0,20,0,1 @ F,0,0,1,0,20,0,1 @ F,0,0,1,0,20,0,1" />
+       nodesatellites_param="F,0,0,1,0,11.1125,0,1 @ F,0,0,1,0,11.1125,0,1 @ F,0,0,1,0,11.1125,0,1" />
   </defs>
   <path
-     d="M 64,16 L 112,112 L 16,112 Z"
-     inkscape:path-effect="#fc1"
-     style="fill:#3b82f6;stroke:#1d4ed8;stroke-width:4;" />
+     id="path3"
+     d="m -235.85,285.84183 -446.80445,0 a 6.4158049,6.4158049 60 0 1 -5.55625,-9.62371 l 223.40222,-386.94401 a 6.4158049,6.4158049 2.5219883e-7 0 1 11.1125,0 l 223.40223,386.94401 a 6.4158049,6.4158049 120 0 1 -5.55625,9.62371 z"
+     transform="matrix(0.94019737,0,0,0.94019737,681.78774,166.13465)"
+     inkscape:path-effect="#path-effect3"
+     style="fill:#1f1f1f;stroke:#bb2222;stroke-width:60;stroke-linecap:square;stroke-linejoin:bevel;stroke-dasharray:none;stroke-opacity:1;paint-order:stroke fill markers;" />
 </svg>

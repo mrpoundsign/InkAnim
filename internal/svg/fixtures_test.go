@@ -51,9 +51,6 @@ func TestAtomicFixtures(t *testing.T) {
 		t.Run(baseName, func(t *testing.T) {
 			t.Parallel()
 
-			if baseName == "lpe_fillet_chamfer" {
-				t.Skip("Skipping lpe_fillet_chamfer pending Issue #41 fix")
-			}
 			if baseName == "text_tspan_basic" {
 				t.Skip("Skipping text_tspan_basic pending Issue #42 CI font resolution")
 			}
@@ -85,7 +82,6 @@ func TestAtomicFixtures(t *testing.T) {
 				t.Fatalf("RenderSVGToRGBA failed for %s: %v", entry.Name(), err)
 			}
 
-			// Tolerance options tailored for vector rasterizer antialiasing vs Inkscape cairo/skia
 			opts := GoldenCompareOptions{
 				PerPixelTolerance:  35,
 				MaxMismatchPercent: 3.0,
