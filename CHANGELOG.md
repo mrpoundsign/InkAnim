@@ -9,11 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Automated Golden Test Suite & GitHub Actions CI Gate**: Added an integration test suite validating pixel-level rendering accuracy against headless Inkscape goldens, enforced automatically via GitHub Actions on all PRs and pushes ([#40](https://github.com/mrpoundsign/InkAnim/issues/40)).
+- **Developer Golden & Diff CLI (`cmd/dev`)**: Added developer CLI tool with subcommands `golden --generate` and `diff` for canonical headless Inkscape golden generation and visual diff inspection ([#51](https://github.com/mrpoundsign/InkAnim/issues/51)).
 
 ### Changed
 - **Web Studio & WebAssembly Edition**: Positioned the WebAssembly edition as a complete in-browser studio, adding a collapsible "Sample Animations" toolbar with one-click preview loading of bundled sample SVGs.
 
 ### Fixed
+- **Implicit Repeated Arc Command Desugaring in Path `d` Data**: Desugared implicit repeated `a` and `A` commands into explicit consecutive arc commands during `PreprocessSVG`, circumventing upstream `oksvg` multi-arc indexing bugs and restoring missing/corrupted arc curves across drawings ([#57](https://github.com/mrpoundsign/InkAnim/issues/57)).
 - **Group-Transformed `userSpaceOnUse` Gradient Alignment**: Composed ancestor group transformation matrices onto `gradientTransform` for `userSpaceOnUse` linear and radial gradients during `PreprocessSVG`, and normalized group `scale(s)` transforms into canonical `matrix(...)` syntax, fixing misaligned and zero-height clamped gradient fills across drawings authored with transformed groups ([#56](https://github.com/mrpoundsign/InkAnim/issues/56)).
 - **Gradient Stop Style Normalization (`stop-color` / `stop-opacity`)**: Extracted `stop-color` and `stop-opacity` properties from inline CSS `style="..."` attributes on `<stop>` elements and promoted them to explicit XML attributes in `PreprocessSVG`, preventing upstream `oksvg` from silently dropping stop colors and defaulting to solid black fills on Inkscape-authored gradients ([#55](https://github.com/mrpoundsign/InkAnim/issues/55)).
 - **Uninstalled Font Family Fallback to System Sans-Serif**: Updated `FontManager.ResolveFont` to fall back to the system's standard `sans-serif` font (`DejaVu Sans` on Linux, `Segoe UI` on Windows) when custom or uninstalled font families are requested, ensuring consistent glyph metrics and text layout matching standard desktop SVG user agents ([#54](https://github.com/mrpoundsign/InkAnim/issues/54)).
