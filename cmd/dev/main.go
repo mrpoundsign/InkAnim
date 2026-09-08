@@ -64,10 +64,11 @@ func runGolden(args []string) {
 	generate := fs.Bool("generate", false, "Generate golden PNG(s) using headless Inkscape CLI")
 	all := fs.Bool("all", false, "Process all fixtures in testdata/fixtures")
 	saveDiff := fs.Bool("save-diff", true, "Save diff PNG on comparison failure")
+	dump := fs.Bool("dump", false, "Print preprocessed SVG to stdout")
 	tolerance := fs.Int("tol", 35, "Per-pixel color channel tolerance (0-255)")
 	maxMismatch := fs.Float64("max-mismatch", 3.0, "Max allowed mismatch percentage (0-100)")
 
-	_ = fs.Parse(reorderArgs(args, map[string]bool{"generate": true, "all": true, "save-diff": true}))
+	_ = fs.Parse(reorderArgs(args, map[string]bool{"generate": true, "all": true, "save-diff": true, "dump": true}))
 
 	fixturesDir := filepath.Join("testdata", "fixtures")
 	if _, err := os.Stat(fixturesDir); os.IsNotExist(err) {
@@ -137,6 +138,10 @@ func runGolden(args []string) {
 			continue
 		}
 
+		if *dump {
+			fmt.Printf("--- [%s] Preprocessed SVG ---\n%s\n----------------------------\n", name, string(preprocessed))
+		}
+
 		actualImg, err := svg.RenderSVGToRGBA(preprocessed, w, h)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "[%s] RenderSVGToRGBA failed: %v\n", name, err)
@@ -170,8 +175,10 @@ func runGolden(args []string) {
 				scratchDir := filepath.Join("testdata", "scratch")
 				_ = os.MkdirAll(scratchDir, 0755)
 				diffPath := filepath.Join(scratchDir, name+"_diff.png")
+				actualPath := filepath.Join(scratchDir, name+"_actual.png")
+				_ = savePNGFile(actualPath, actualImg)
 				if err := savePNGFile(diffPath, diffImg); err == nil {
-					fmt.Printf("   Diff saved to: %s\n", diffPath)
+					fmt.Printf("   Diff saved to: %s (actual: %s)\n", diffPath, actualPath)
 				}
 			}
 		} else {

@@ -89,6 +89,7 @@ Each fixture lives in `testdata/fixtures/` as `<operation_name>.svg` and `<opera
 | `crop_boundary_clip` | Drawing with paths extending outside viewBox verifying clean boundary clipping |
 | `namedview_pagecolor` | Document background color (`sodipodi:namedview pagecolor` & `pageopacity`) synthesis |
 | `dimension_units` | Physical length units (`in`, `mm`, `cm`, `pt`, `pc`) converted to standard 96 DPI pixels |
+| `use_element_clone` | Reusable cloned objects (`<use href="#id">` and `<use xlink:href="#id">`) with transforms and translations |
 
 ---
 

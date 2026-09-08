@@ -14,15 +14,25 @@ import (
 // PreprocessSVG applies in-memory transformations to raw SVG data:
 //  1. Normalizes root <svg> dimensions and viewBox to user-space pixels (Issue #45).
 //  2. Injects canvas background rect if sodipodi:namedview specifies pagecolor with opacity (Issue #43).
-//  3. Converts SVG <text> and <tspan> elements into standard <path> vector glyph contours (Issue #21).
-//  4. Evaluates Inkscape fillet_chamfer Live Path Effects on paths referencing them (when unbaked, Issue #41).
-//  5. Normalizes rect rx/ry arcs.
-//  6. Scales shape stroke-width by cumulative group transform scaling.
-//  7. Desugars paint-order: stroke fill (and stroke fill markers) into consecutive stroke-then-fill elements
+//  3. Expands and inlines SVG <use> element clones into <g> groups (Issue #46).
+//  4. Converts SVG <text> and <tspan> elements into standard <path> vector glyph contours (Issue #21).
+//  5. Evaluates Inkscape fillet_chamfer Live Path Effects on paths referencing them (when unbaked, Issue #41).
+//  6. Normalizes rect rx/ry arcs.
+//  7. Scales shape stroke-width by cumulative group transform scaling.
+//  8. Desugars paint-order: stroke fill (and stroke fill markers) into consecutive stroke-then-fill elements
 //     so renderers like oksvg (which lack native paint-order support) render strokes under fills correctly.
 func PreprocessSVG(data []byte) ([]byte, error) {
 	// First pass: extract document metadata, namedview background, and LPE definitions
 	meta := extractDocumentMetadata(data)
+
+	// Expand SVG <use> elements early so inlined clones benefit from all downstream stages
+	if len(meta.ElementsByID) > 0 {
+		expanded, err := expandUseElements(data, meta.ElementsByID)
+		if err == nil {
+			data = expanded
+		}
+	}
+
 	effects := meta.Effects
 
 	// Second pass: stream transform XML tokens
@@ -284,6 +294,7 @@ func PreprocessSVG(data []byte) ([]byte, error) {
 // DocumentMetadata collects document-level metadata during the first XML pass.
 type DocumentMetadata struct {
 	Effects      map[string]PathEffect
+	ElementsByID map[string][]xml.Token
 	VBX, VBY     float64
 	VBW, VBH     float64
 	Width        float64
@@ -293,12 +304,20 @@ type DocumentMetadata struct {
 	HasPageColor bool
 }
 
-// extractDocumentMetadata scans XML for root dimensions, namedview pagecolor, and LPE definitions.
+type idRecording struct {
+	id     string
+	depth  int
+	tokens []xml.Token
+}
+
+// extractDocumentMetadata scans XML for root dimensions, namedview pagecolor, LPE definitions, and elements with IDs.
 func extractDocumentMetadata(data []byte) DocumentMetadata {
 	meta := DocumentMetadata{
-		Effects: make(map[string]PathEffect),
+		Effects:      make(map[string]PathEffect),
+		ElementsByID: make(map[string][]xml.Token),
 	}
 	decoder := xml.NewDecoder(bytes.NewReader(data))
+	var activeRecordings []*idRecording
 
 	for {
 		token, err := decoder.Token()
@@ -306,11 +325,27 @@ func extractDocumentMetadata(data []byte) DocumentMetadata {
 			break
 		}
 
-		if elem, ok := token.(xml.StartElement); ok {
-			switch elem.Name.Local {
+		switch tok := token.(type) {
+		case xml.StartElement:
+			var elemID string
+			for _, a := range tok.Attr {
+				if a.Name.Local == "id" && a.Value != "" {
+					elemID = a.Value
+					break
+				}
+			}
+			if elemID != "" {
+				activeRecordings = append(activeRecordings, &idRecording{id: elemID})
+			}
+			for _, rec := range activeRecordings {
+				rec.tokens = append(rec.tokens, tok.Copy())
+				rec.depth++
+			}
+
+			switch tok.Name.Local {
 			case "svg":
 				if meta.VBW == 0 && meta.Width == 0 {
-					for _, a := range elem.Attr {
+					for _, a := range tok.Attr {
 						switch a.Name.Local {
 						case "viewBox":
 							parts := strings.Fields(a.Value)
@@ -329,7 +364,7 @@ func extractDocumentMetadata(data []byte) DocumentMetadata {
 				}
 			case "namedview":
 				var pageColor, pageOpacityStr string
-				for _, a := range elem.Attr {
+				for _, a := range tok.Attr {
 					if a.Name.Local == "pagecolor" {
 						pageColor = a.Value
 					}
@@ -346,7 +381,7 @@ func extractDocumentMetadata(data []byte) DocumentMetadata {
 				}
 			case "path-effect":
 				var eff PathEffect
-				for _, attr := range elem.Attr {
+				for _, attr := range tok.Attr {
 					switch attr.Name.Local {
 					case "id":
 						eff.ID = attr.Value
@@ -370,10 +405,187 @@ func extractDocumentMetadata(data []byte) DocumentMetadata {
 					meta.Effects[eff.ID] = eff
 				}
 			}
+
+		case xml.EndElement:
+			var remaining []*idRecording
+			for _, rec := range activeRecordings {
+				rec.tokens = append(rec.tokens, tok)
+				rec.depth--
+				if rec.depth == 0 {
+					meta.ElementsByID[rec.id] = rec.tokens
+				} else {
+					remaining = append(remaining, rec)
+				}
+			}
+			activeRecordings = remaining
+
+		default:
+			for _, rec := range activeRecordings {
+				rec.tokens = append(rec.tokens, xml.CopyToken(tok))
+			}
 		}
 	}
 
 	return meta
+}
+
+// expandUseElements recursively inlines <use> element clones into <g> groups up to 10 iterations.
+func expandUseElements(data []byte, elementsByID map[string][]xml.Token) ([]byte, error) {
+	current := data
+	for iter := 0; iter < 10; iter++ {
+		expanded, changed, err := expandUseElementsOnce(current, elementsByID)
+		if err != nil {
+			return nil, err
+		}
+		if !changed {
+			break
+		}
+		current = expanded
+	}
+	return current, nil
+}
+
+func expandUseElementsOnce(data []byte, elementsByID map[string][]xml.Token) ([]byte, bool, error) {
+	decoder := xml.NewDecoder(bytes.NewReader(data))
+	var buf bytes.Buffer
+	encoder := xml.NewEncoder(&buf)
+	var changed bool
+
+	for {
+		token, err := decoder.Token()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return nil, false, err
+		}
+
+		switch tok := token.(type) {
+		case xml.StartElement:
+			if tok.Name.Local == "use" {
+				var targetID string
+				var xStr, yStr, origTransform, useID string
+				var passAttrs []xml.Attr
+
+				for _, a := range tok.Attr {
+					switch a.Name.Local {
+					case "href", "xlink:href":
+						targetID = strings.TrimPrefix(a.Value, "#")
+					case "x":
+						xStr = a.Value
+					case "y":
+						yStr = a.Value
+					case "transform":
+						origTransform = a.Value
+					case "id":
+						useID = a.Value
+					case "width", "height":
+						// SVG spec: width/height on <use> only apply to <svg> or <symbol>
+					default:
+						passAttrs = append(passAttrs, a)
+					}
+				}
+
+				// Consume any child tokens inside <use> until its matching </use>
+				depth := 1
+				for depth > 0 {
+					childTok, err := decoder.Token()
+					if err != nil {
+						break
+					}
+					switch childTok.(type) {
+					case xml.StartElement:
+						depth++
+					case xml.EndElement:
+						depth--
+					}
+				}
+
+				targetTokens, ok := elementsByID[targetID]
+				if !ok || len(targetTokens) == 0 {
+					// Referenced element not found; output as original <use></use>
+					if err := encoder.EncodeToken(tok); err != nil {
+						return nil, false, err
+					}
+					if err := encoder.EncodeToken(xml.EndElement{Name: tok.Name}); err != nil {
+						return nil, false, err
+					}
+					continue
+				}
+
+				changed = true
+
+				origM := IdentityMatrix()
+				if origTransform != "" {
+					origM = parseTransform(origTransform)
+				}
+				xVal := parseDimension(xStr)
+				yVal := parseDimension(yStr)
+				transM := Matrix2D{A: 1, D: 1, E: xVal, F: yVal}
+				finalM := origM.Multiply(transM)
+
+				var wrapperAttrs []xml.Attr
+				if useID != "" {
+					wrapperAttrs = append(wrapperAttrs, xml.Attr{Name: xml.Name{Local: "id"}, Value: useID})
+				}
+				if finalM != IdentityMatrix() {
+					matStr := fmt.Sprintf("matrix(%f %f %f %f %f %f)", finalM.A, finalM.B, finalM.C, finalM.D, finalM.E, finalM.F)
+					wrapperAttrs = append(wrapperAttrs, xml.Attr{Name: xml.Name{Local: "transform"}, Value: matStr})
+				}
+				wrapperAttrs = append(wrapperAttrs, passAttrs...)
+
+				wrapperStart := xml.StartElement{
+					Name: xml.Name{Local: "g"},
+					Attr: wrapperAttrs,
+				}
+				if err := encoder.EncodeToken(wrapperStart); err != nil {
+					return nil, false, err
+				}
+
+				// Clone target tokens, stripping the 'id' attribute on the root target element
+				cloned := make([]xml.Token, len(targetTokens))
+				for i, t := range targetTokens {
+					cloned[i] = xml.CopyToken(t)
+				}
+				if rootStart, ok := cloned[0].(xml.StartElement); ok {
+					var nonIDAttrs []xml.Attr
+					for _, a := range rootStart.Attr {
+						if a.Name.Local != "id" {
+							nonIDAttrs = append(nonIDAttrs, a)
+						}
+					}
+					rootStart.Attr = nonIDAttrs
+					cloned[0] = rootStart
+				}
+
+				for _, t := range cloned {
+					if err := encoder.EncodeToken(t); err != nil {
+						return nil, false, err
+					}
+				}
+
+				if err := encoder.EncodeToken(xml.EndElement{Name: wrapperStart.Name}); err != nil {
+					return nil, false, err
+				}
+				continue
+			}
+
+			if err := encoder.EncodeToken(tok); err != nil {
+				return nil, false, err
+			}
+
+		default:
+			if err := encoder.EncodeToken(tok); err != nil {
+				return nil, false, err
+			}
+		}
+	}
+
+	if err := encoder.Flush(); err != nil {
+		return nil, false, err
+	}
+
+	return buf.Bytes(), changed, nil
 }
 
 // needsPaintOrderDesugar returns true if stroke is ordered before fill and both stroke and fill are present.
