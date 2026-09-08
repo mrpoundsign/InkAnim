@@ -84,6 +84,7 @@ Each fixture lives in `testdata/fixtures/` as `<operation_name>.svg` and `<opera
 | `paint_order_stroke_fill` | Path with `style="paint-order: stroke fill"` verifying stroke sits under fill |
 | `transform_group_stroke` | Nested `<g transform="scale(...)">` verifying stroke width scales proportionally |
 | `rect_rx_ry_mirror` | `<rect ry="15">` with omitted `rx` verifying spec-compliant rounded corners |
+| `rect_rx_ry_zero` | `<rect>` with explicit `rx="0"` or `ry="0"` alongside positive radius verifying rounded corner normalization |
 | `text_tspan_basic` | Text with `<tspan>` baseline offset converting to vector glyph contours |
 | `text_full_alphabet` | Comprehensive character set (A-Z, a-z, 0-9, punctuation) verifying glyph geometry and holes |
 | `crop_boundary_clip` | Drawing with paths extending outside viewBox verifying clean boundary clipping |

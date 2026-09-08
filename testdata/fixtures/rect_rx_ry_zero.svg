@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <rect width="128" height="128" fill="#18181b" />
+  <!-- Rect with rx="0" and ry="16": should render with 16px rounded corners -->
+  <rect x="16" y="16" width="96" height="40" rx="0" ry="16" fill="#3b82f6" stroke="#93c5fd" stroke-width="2" />
+  <!-- Rect with rx="16" and ry="0": should render with 16px rounded corners -->
+  <rect x="16" y="72" width="96" height="40" rx="16" ry="0" fill="#ef4444" stroke="#fca5a5" stroke-width="2" />
+</svg>

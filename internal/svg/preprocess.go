@@ -221,22 +221,38 @@ func PreprocessSVG(data []byte) ([]byte, error) {
 				}
 			}
 
-			// Normalize rx/ry for rect elements: if only one is specified, SVG spec requires copying to the other.
-			// oksvg only inspects rx; if rx is omitted, oksvg incorrectly renders square corners.
+			// Normalize rx/ry for rect elements: if only one is specified or one is zero while the
+			// other is positive, mirror the non-zero radius. oksvg only inspects rx; if rx is omitted
+			// or zero, oksvg incorrectly renders square corners.
 			if name == "rect" {
 				var rxVal, ryVal string
-				for _, attr := range elem.Attr {
+				var rxIdx, ryIdx = -1, -1
+				for i, attr := range elem.Attr {
 					if attr.Name.Local == "rx" {
 						rxVal = attr.Value
+						rxIdx = i
 					}
 					if attr.Name.Local == "ry" {
 						ryVal = attr.Value
+						ryIdx = i
 					}
 				}
-				if rxVal == "" && ryVal != "" {
-					elem.Attr = append(elem.Attr, xml.Attr{Name: xml.Name{Local: "rx"}, Value: ryVal})
-				} else if ryVal == "" && rxVal != "" {
-					elem.Attr = append(elem.Attr, xml.Attr{Name: xml.Name{Local: "ry"}, Value: rxVal})
+
+				rxNum := parseDimension(rxVal)
+				ryNum := parseDimension(ryVal)
+
+				if (rxVal == "" || rxNum <= 0) && (ryVal != "" && ryNum > 0) {
+					if rxIdx >= 0 {
+						elem.Attr[rxIdx].Value = ryVal
+					} else {
+						elem.Attr = append(elem.Attr, xml.Attr{Name: xml.Name{Local: "rx"}, Value: ryVal})
+					}
+				} else if (ryVal == "" || ryNum <= 0) && (rxVal != "" && rxNum > 0) {
+					if ryIdx >= 0 {
+						elem.Attr[ryIdx].Value = rxVal
+					} else {
+						elem.Attr = append(elem.Attr, xml.Attr{Name: xml.Name{Local: "ry"}, Value: rxVal})
+					}
 				}
 			}
 
