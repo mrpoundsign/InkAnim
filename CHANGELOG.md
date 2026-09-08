@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.6-pre2] - 2026-09-07
+## [0.1.6-pre3] - 2026-09-07
 
 ### Added
 - **"Ping-Pong" (Bounce / Reverse) Loop Playback & GIF Export**: Added support for Ping-Pong looping across both the live preview playback engine and the exported GIF encoding pipeline. When enabled on animations with 3 or more frames, playback cycles from the first to last frame and reverses back down without repeating turnaround frames ($2N-2$ total sequence), ensuring seamless bouncing loops in external players like Twitch, Discord, and browsers. Automatically disabled for documents with fewer than 3 frames ([#2](https://github.com/mrpoundsign/InkAnim/issues/2)).
