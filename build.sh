@@ -30,8 +30,6 @@ run_lint() {
     echo "==> Running golangci-lint-v2..."
     if command -v golangci-lint-v2 &>/dev/null; then
         golangci-lint-v2 run ./...
-    elif command -v golangci-lint &>/dev/null; then
-        golangci-lint run ./...
     else
         echo "Error: golangci-lint-v2 not found in PATH"
         exit 1

@@ -126,14 +126,8 @@ function Run-Check {
 function Run-Lint {
     Write-Host "`n==> Running golangci-lint-v2..." -ForegroundColor Cyan
     $linter = Find-Tool "golangci-lint-v2" @(
-        (Join-Path $env:USERPROFILE "go\bin\golangci-lint-v2.exe"),
-        (Join-Path $env:USERPROFILE "go\bin\golangci-lint.exe")
+        (Join-Path $env:USERPROFILE "go\bin\golangci-lint-v2.exe")
     )
-    if (-not $linter) {
-        $linter = Find-Tool "golangci-lint" @(
-            (Join-Path $env:USERPROFILE "go\bin\golangci-lint.exe")
-        )
-    }
     if (-not $linter) {
         Write-Error "golangci-lint-v2 not found in PATH or ~/go/bin."
     }
