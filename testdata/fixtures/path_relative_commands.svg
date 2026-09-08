@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- Path using only relative commands: m, l, h, v, c, s, z -->
+  <path d="m 24,24 h 80 v 20 h -80 z" fill="#3b82f6" />
+  <path d="m 24,64 l 30,20 l 30,-20 l 20,40 h -80 z" fill="#10b981" stroke="#047857" stroke-width="4" />
+</svg>
