@@ -178,6 +178,11 @@ func PreprocessSVG(data []byte) ([]byte, error) {
 				continue
 			}
 
+			// Normalize gradient stop style attributes to XML attributes (Issue #55)
+			if name == "stop" {
+				elem.Attr = normalizeStopAttrs(elem.Attr)
+			}
+
 			// Stage 1: Convert SVG <text> elements into <path> vectors (Issue #21)
 			if name == "text" {
 				if err := ProcessTextElementToPaths(elem, decoder, encoder, &transformStack); err != nil {
@@ -446,7 +451,9 @@ func extractDocumentMetadata(data []byte) DocumentMetadata {
 			if curGrad != nil {
 				if name == "stop" {
 					curStopDepth++
-					curGrad.Stops = append(curGrad.Stops, tok.Copy())
+					normalized := tok.Copy()
+					normalized.Attr = normalizeStopAttrs(normalized.Attr)
+					curGrad.Stops = append(curGrad.Stops, normalized)
 				} else if curStopDepth > 0 {
 					curGrad.Stops = append(curGrad.Stops, tok.Copy())
 				}
@@ -1001,4 +1008,53 @@ func setStyleProp(style, prop, val string) string {
 		return prop + ":" + val
 	}
 	return cleaned + ";" + prop + ":" + val
+}
+
+// normalizeStopAttrs extracts stop-color and stop-opacity from style="..." on <stop> elements
+// and ensures they are set as explicit XML attributes for oksvg compatibility (Issue #55).
+func normalizeStopAttrs(attrs []xml.Attr) []xml.Attr {
+	var hasStopColor, hasStopOpacity bool
+	var styleVal string
+	for _, a := range attrs {
+		switch a.Name.Local {
+		case "stop-color":
+			hasStopColor = true
+		case "stop-opacity":
+			hasStopOpacity = true
+		case "style":
+			styleVal = a.Value
+		}
+	}
+
+	if styleVal == "" || (hasStopColor && hasStopOpacity) {
+		return attrs
+	}
+
+	var extractedColor, extractedOpacity string
+	for _, part := range strings.Split(styleVal, ";") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		kv := strings.SplitN(part, ":", 2)
+		if len(kv) != 2 {
+			continue
+		}
+		k := strings.TrimSpace(kv[0])
+		v := strings.TrimSpace(kv[1])
+		if k == "stop-color" && !hasStopColor {
+			extractedColor = v
+		} else if k == "stop-opacity" && !hasStopOpacity {
+			extractedOpacity = v
+		}
+	}
+
+	result := attrs
+	if extractedColor != "" {
+		result = append(result, xml.Attr{Name: xml.Name{Local: "stop-color"}, Value: extractedColor})
+	}
+	if extractedOpacity != "" {
+		result = append(result, xml.Attr{Name: xml.Name{Local: "stop-opacity"}, Value: extractedOpacity})
+	}
+	return result
 }

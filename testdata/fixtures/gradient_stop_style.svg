@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="linGrad" x1="16" y1="36" x2="112" y2="36" gradientUnits="userSpaceOnUse">
+      <stop offset="0" style="stop-color:#3b82f6;stop-opacity:1;" />
+      <stop offset="1" style="stop-color:#ef4444;stop-opacity:1;" />
+    </linearGradient>
+    <radialGradient id="radGrad" cx="64" cy="92" r="28" gradientUnits="userSpaceOnUse">
+      <stop offset="0" style="stop-color:#10b981;stop-opacity:1;" />
+      <stop offset="1" style="stop-color:#f59e0b;stop-opacity:0.2;" />
+    </radialGradient>
+  </defs>
+  <rect width="128" height="128" fill="#18181b" />
+  <rect x="16" y="16" width="96" height="40" rx="8" fill="url(#linGrad)" />
+  <circle cx="64" cy="92" r="28" fill="url(#radGrad)" />
+</svg>
