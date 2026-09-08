@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- Shapes overlapping all four boundaries to verify clean viewBox boundary clipping -->
+  <rect x="-20" y="-20" width="64" height="64" style="fill:#ef4444;stroke:#991b1b;stroke-width:4;" />
+  <rect x="84" y="-20" width="64" height="64" style="fill:#3b82f6;stroke:#1e40af;stroke-width:4;" />
+  <rect x="-20" y="84" width="64" height="64" style="fill:#10b981;stroke:#065f46;stroke-width:4;" />
+  <rect x="84" y="84" width="64" height="64" style="fill:#f59e0b;stroke:#92400e;stroke-width:4;" />
+  <circle cx="64" cy="64" r="24" style="fill:#6366f1;stroke:#3730a3;stroke-width:4;" />
+</svg>

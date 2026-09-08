@@ -8,8 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.6-pre4] - 2026-09-08
 
 ### Added
+- **GitHub Actions PR CI Quality Gate**: Added `.github/workflows/ci.yml` running `golangci-lint` and `go test -v ./...` on all Pull Requests and pushes to `main`, validating linting, unit tests, and integration rendering fixtures as a required blocking gate ([#40](https://github.com/mrpoundsign/InkAnim/issues/40)).
 - **Atomic Integration Rendering Test Suite & Automated Golden Verification**: Built a parallelized integration testing harness in `internal/svg/fixtures_test.go` that renders minimal, synthetic SVG test fixtures and validates pixel-level accuracy against genuine headless Inkscape reference goldens. Mismatches automatically output composite visual diffs (`_diff.png`) highlighting divergent pixels in neon magenta into git-ignored `testdata/scratch/` ([#40](https://github.com/mrpoundsign/InkAnim/issues/40)).
 - **Comprehensive Alphabet & Symbol Fixture**: Added `text_full_alphabet.svg` (512×512) validating full character set coverage (uppercase, lowercase, digits, and punctuation) against headless Inkscape with 0.00% pixel mismatch ([#42](https://github.com/mrpoundsign/InkAnim/issues/42)).
+- **ViewBox Boundary Clipping Fixture**: Added `crop_boundary_clip.svg` verifying that shapes extending outside the `viewBox` across all four edges clip cleanly without distortion ([#40](https://github.com/mrpoundsign/InkAnim/issues/40)).
 - **SVG Render Tester Antigravity Skill**: Created `.agents/skills/svg-render-tester/SKILL.md` establishing standardized protocols for anonymizing, deduplicating, and synthesizing real-world SVG bug reports into minimal unit tests with strict headless Inkscape ground-truth rules ([#40](https://github.com/mrpoundsign/InkAnim/issues/40)).
 
 ### Changed
