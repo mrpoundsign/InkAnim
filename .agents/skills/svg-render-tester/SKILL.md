@@ -98,6 +98,7 @@ Each fixture lives in `testdata/fixtures/` as `<operation_name>.svg` and `<opera
 | `gradient_stop_style` | Gradient `<stop>` elements with inline CSS `style="stop-color:...;stop-opacity:..."` normalized to explicit XML attributes |
 | `preserve_aspect_ratio` | SVG standard `preserveAspectRatio` (default `xMidYMid meet`) with uniform scaling and letterbox/pillarbox alignment |
 | `transform_shape_stroke` | Direct shape-level `transform="matrix(...)"` or `scale(...)` verifying `stroke-width` scales proportionally |
+| `gradient_viewport_scale` | `userSpaceOnUse` linear and radial gradients scaled to non-native viewport resolutions verifying gradientTransform scales with document |
 
 ---
 

@@ -5,6 +5,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"image"
+	"io"
 	"math"
 	"strings"
 
@@ -94,6 +95,23 @@ func RenderSVGToRGBA(svgData []byte, targetW, targetH int) (*image.RGBA, error) 
 			D: scaleH,
 			E: -icon.ViewBox.X*scaleW + offsetX,
 			F: -icon.ViewBox.Y*scaleH + offsetY,
+		}
+
+		isNonIdentity := math.Abs(scaleW-1.0) > 0.0001 || math.Abs(scaleH-1.0) > 0.0001 ||
+			math.Abs(icon.Transform.E) > 0.0001 || math.Abs(icon.Transform.F) > 0.0001
+
+		// Upstream oksvg transforms path coordinates by icon.Transform, but passes Identity to
+		// rasterx.GetColorFunctionUS. For userSpaceOnUse gradients, this causes coordinates to remain
+		// in document user-space while the rasterizer scans in screen pixel coordinates.
+		// Pre-compose icon.Transform onto gradientTransform for all userSpaceOnUse gradients so they
+		// scale and align accurately with image resolution (Issue #58).
+		if isNonIdentity && bytes.Contains(svgData, []byte("userSpaceOnUse")) {
+			scaledSVG := applyViewportTransformToUserGradients(svgData, icon.Transform)
+			if scaledIcon, err := oksvg.ReadIconStream(bytes.NewReader(scaledSVG)); err == nil {
+				scaledIcon.ViewBox = icon.ViewBox
+				scaledIcon.Transform = icon.Transform
+				icon = scaledIcon
+			}
 		}
 
 		// Scale each path's LineWidth proportionally so strokes scale with image resolution.
@@ -194,4 +212,71 @@ func extractRootPreserveAspectRatio(svgData []byte) string {
 	}
 	return ""
 }
+
+// applyViewportTransformToUserGradients composes the root viewport transformation matrix tm
+// onto the gradientTransform of any <linearGradient> or <radialGradient> element that uses
+// gradientUnits="userSpaceOnUse". This fixes upstream oksvg/rasterx where userSpaceOnUse gradients
+// are evaluated against unscaled document coordinates instead of screen pixel coordinates (Issue #58).
+func applyViewportTransformToUserGradients(svgData []byte, tm rasterx.Matrix2D) []byte {
+	var buf bytes.Buffer
+	dec := xml.NewDecoder(bytes.NewReader(svgData))
+	enc := xml.NewEncoder(&buf)
+
+	vpMatrix := Matrix2D{
+		A: tm.A,
+		B: tm.B,
+		C: tm.C,
+		D: tm.D,
+		E: tm.E,
+		F: tm.F,
+	}
+
+	for {
+		tok, err := dec.Token()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return svgData
+		}
+
+		if se, ok := tok.(xml.StartElement); ok {
+			name := se.Name.Local
+			if name == "linearGradient" || name == "radialGradient" {
+				var isUserSpace bool
+				var gradTransformIdx = -1
+				var existingTransform = IdentityMatrix()
+
+				for i, attr := range se.Attr {
+					if attr.Name.Local == "gradientUnits" && strings.TrimSpace(attr.Value) == "userSpaceOnUse" {
+						isUserSpace = true
+					}
+					if attr.Name.Local == "gradientTransform" {
+						gradTransformIdx = i
+						existingTransform = parseTransform(attr.Value)
+					}
+				}
+
+				if isUserSpace {
+					composed := vpMatrix.Multiply(existingTransform)
+					matStr := fmt.Sprintf("matrix(%f %f %f %f %f %f)", composed.A, composed.B, composed.C, composed.D, composed.E, composed.F)
+					if gradTransformIdx >= 0 {
+						se.Attr[gradTransformIdx].Value = matStr
+					} else {
+						se.Attr = append(se.Attr, xml.Attr{
+							Name:  xml.Name{Local: "gradientTransform"},
+							Value: matStr,
+						})
+					}
+				}
+			}
+			_ = enc.EncodeToken(se)
+		} else {
+			_ = enc.EncodeToken(tok)
+		}
+	}
+	_ = enc.Flush()
+	return buf.Bytes()
+}
+
 

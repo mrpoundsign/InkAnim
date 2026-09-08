@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.6-pre4] - 2026-09-08
+## [0.1.6-pre5] - 2026-09-08
 
 ### Added
 - **Automated Golden Test Suite & GitHub Actions CI Gate**: Added an integration test suite validating pixel-level rendering accuracy against headless Inkscape goldens, enforced automatically via GitHub Actions on all PRs and pushes ([#40](https://github.com/mrpoundsign/InkAnim/issues/40)).
@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Web Studio & WebAssembly Edition**: Positioned the WebAssembly edition as a complete in-browser studio, adding a collapsible "Sample Animations" toolbar with one-click preview loading of bundled sample SVGs.
 
 ### Fixed
+- **Root Viewport Transform Composition on `userSpaceOnUse` Gradients**: Pre-composed the root viewport scaling and translation matrix onto `gradientTransform` attributes for `userSpaceOnUse` linear and radial gradients in `RenderSVGToRGBA`, fixing severe color shifts, misalignment, and clamped rendering when SVGs are scaled to non-native preview and export dimensions ([#58](https://github.com/mrpoundsign/InkAnim/issues/58)).
 - **Implicit Repeated Arc Command Desugaring in Path `d` Data**: Desugared implicit repeated `a` and `A` commands into explicit consecutive arc commands during `PreprocessSVG`, circumventing upstream `oksvg` multi-arc indexing bugs and restoring missing/corrupted arc curves across drawings ([#57](https://github.com/mrpoundsign/InkAnim/issues/57)).
 - **Group-Transformed `userSpaceOnUse` Gradient Alignment**: Composed ancestor group transformation matrices onto `gradientTransform` for `userSpaceOnUse` linear and radial gradients during `PreprocessSVG`, and normalized group `scale(s)` transforms into canonical `matrix(...)` syntax, fixing misaligned and zero-height clamped gradient fills across drawings authored with transformed groups ([#56](https://github.com/mrpoundsign/InkAnim/issues/56)).
 - **Gradient Stop Style Normalization (`stop-color` / `stop-opacity`)**: Extracted `stop-color` and `stop-opacity` properties from inline CSS `style="..."` attributes on `<stop>` elements and promoted them to explicit XML attributes in `PreprocessSVG`, preventing upstream `oksvg` from silently dropping stop colors and defaulting to solid black fills on Inkscape-authored gradients ([#55](https://github.com/mrpoundsign/InkAnim/issues/55)).
