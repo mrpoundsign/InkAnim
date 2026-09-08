@@ -82,6 +82,7 @@ Each fixture lives in `testdata/fixtures/` as `<operation_name>.svg` and `<opera
 | `text_tspan_basic` | Text with `<tspan>` baseline offset converting to vector glyph contours |
 | `text_full_alphabet` | Comprehensive character set (A-Z, a-z, 0-9, punctuation) verifying glyph geometry and holes |
 | `crop_boundary_clip` | Drawing with paths extending outside viewBox verifying clean boundary clipping |
+| `namedview_pagecolor` | Document background color (`sodipodi:namedview pagecolor` & `pageopacity`) synthesis |
 
 ---
 

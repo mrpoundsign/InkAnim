@@ -49,8 +49,9 @@ type SubPathSegment struct {
 //  5. Desugars paint-order: stroke fill (and stroke fill markers) into consecutive stroke-then-fill elements
 //     so renderers like oksvg (which lack native paint-order support) render strokes under fills correctly.
 func PreprocessSVG(data []byte) ([]byte, error) {
-	// First pass: extract LPE definitions from <defs>
-	effects := extractPathEffects(data)
+	// First pass: extract document metadata, namedview background, and LPE definitions
+	meta := extractDocumentMetadata(data)
+	effects := meta.Effects
 
 	// Second pass: stream transform XML tokens
 	decoder := xml.NewDecoder(bytes.NewReader(data))
@@ -58,6 +59,7 @@ func PreprocessSVG(data []byte) ([]byte, error) {
 	encoder := xml.NewEncoder(&buf)
 
 	transformStack := []Matrix2D{IdentityMatrix()}
+	var rootSVGSeen bool
 
 	for {
 		token, err := decoder.Token()
@@ -71,6 +73,53 @@ func PreprocessSVG(data []byte) ([]byte, error) {
 		switch elem := token.(type) {
 		case xml.StartElement:
 			name := elem.Name.Local
+
+			// Stage 0: Inject canvas background rect if sodipodi:namedview specifies pagecolor with opacity
+			if name == "svg" && !rootSVGSeen {
+				rootSVGSeen = true
+				if err := encoder.EncodeToken(elem); err != nil {
+					return nil, err
+				}
+				if meta.HasPageColor {
+					bgX := meta.VBX
+					bgY := meta.VBY
+					bgW := meta.VBW
+					bgH := meta.VBH
+					if bgW <= 0 && bgH <= 0 {
+						bgX = 0
+						bgY = 0
+						bgW = meta.Width
+						bgH = meta.Height
+					}
+					if bgW <= 0 {
+						bgW = 512
+					}
+					if bgH <= 0 {
+						bgH = 512
+					}
+
+					bgRect := xml.StartElement{
+						Name: xml.Name{Local: "rect"},
+						Attr: []xml.Attr{
+							{Name: xml.Name{Local: "id"}, Value: "inkanim_page_background"},
+							{Name: xml.Name{Local: "x"}, Value: fmt.Sprintf("%f", bgX)},
+							{Name: xml.Name{Local: "y"}, Value: fmt.Sprintf("%f", bgY)},
+							{Name: xml.Name{Local: "width"}, Value: fmt.Sprintf("%f", bgW)},
+							{Name: xml.Name{Local: "height"}, Value: fmt.Sprintf("%f", bgH)},
+							{Name: xml.Name{Local: "fill"}, Value: meta.PageColor},
+							{Name: xml.Name{Local: "fill-opacity"}, Value: fmt.Sprintf("%f", meta.PageOpacity)},
+							{Name: xml.Name{Local: "style"}, Value: "stroke:none;"},
+						},
+					}
+					if err := encoder.EncodeToken(bgRect); err != nil {
+						return nil, err
+					}
+					if err := encoder.EncodeToken(xml.EndElement{Name: bgRect.Name}); err != nil {
+						return nil, err
+					}
+				}
+				continue
+			}
 
 			// Stage 1: Convert SVG <text> elements into <path> vectors (Issue #21)
 			if name == "text" {
@@ -231,9 +280,23 @@ func PreprocessSVG(data []byte) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// extractPathEffects scans XML for <inkscape:path-effect> definitions.
-func extractPathEffects(data []byte) map[string]PathEffect {
-	effects := make(map[string]PathEffect)
+// DocumentMetadata collects document-level metadata during the first XML pass.
+type DocumentMetadata struct {
+	Effects      map[string]PathEffect
+	VBX, VBY     float64
+	VBW, VBH     float64
+	Width        float64
+	Height       float64
+	PageColor    string
+	PageOpacity  float64
+	HasPageColor bool
+}
+
+// extractDocumentMetadata scans XML for root dimensions, namedview pagecolor, and LPE definitions.
+func extractDocumentMetadata(data []byte) DocumentMetadata {
+	meta := DocumentMetadata{
+		Effects: make(map[string]PathEffect),
+	}
 	decoder := xml.NewDecoder(bytes.NewReader(data))
 
 	for {
@@ -243,7 +306,44 @@ func extractPathEffects(data []byte) map[string]PathEffect {
 		}
 
 		if elem, ok := token.(xml.StartElement); ok {
-			if elem.Name.Local == "path-effect" {
+			switch elem.Name.Local {
+			case "svg":
+				if meta.VBW == 0 && meta.Width == 0 {
+					for _, a := range elem.Attr {
+						switch a.Name.Local {
+						case "viewBox":
+							parts := strings.Fields(a.Value)
+							if len(parts) == 4 {
+								meta.VBX, _ = strconv.ParseFloat(parts[0], 64)
+								meta.VBY, _ = strconv.ParseFloat(parts[1], 64)
+								meta.VBW, _ = strconv.ParseFloat(parts[2], 64)
+								meta.VBH, _ = strconv.ParseFloat(parts[3], 64)
+							}
+						case "width":
+							meta.Width = parseDimension(a.Value)
+						case "height":
+							meta.Height = parseDimension(a.Value)
+						}
+					}
+				}
+			case "namedview":
+				var pageColor, pageOpacityStr string
+				for _, a := range elem.Attr {
+					if a.Name.Local == "pagecolor" {
+						pageColor = a.Value
+					}
+					if a.Name.Local == "pageopacity" {
+						pageOpacityStr = a.Value
+					}
+				}
+				if pageColor != "" && pageOpacityStr != "" {
+					if op, err := strconv.ParseFloat(pageOpacityStr, 64); err == nil && op > 0 {
+						meta.HasPageColor = true
+						meta.PageColor = pageColor
+						meta.PageOpacity = op
+					}
+				}
+			case "path-effect":
 				var eff PathEffect
 				for _, attr := range elem.Attr {
 					switch attr.Name.Local {
@@ -266,13 +366,18 @@ func extractPathEffects(data []byte) map[string]PathEffect {
 					}
 				}
 				if eff.ID != "" {
-					effects[eff.ID] = eff
+					meta.Effects[eff.ID] = eff
 				}
 			}
 		}
 	}
 
-	return effects
+	return meta
+}
+
+// extractPathEffects scans XML for <inkscape:path-effect> definitions.
+func extractPathEffects(data []byte) map[string]PathEffect {
+	return extractDocumentMetadata(data).Effects
 }
 
 // needsPaintOrderDesugar returns true if stroke is ordered before fill and both stroke and fill are present.
