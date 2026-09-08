@@ -5,6 +5,31 @@ import (
 	"testing"
 )
 
+func TestPreprocess_DisplayNonePruning(t *testing.T) {
+	rawSVG := `<svg width="100" height="100">
+  <rect id="visible" x="0" y="0" width="100" height="100" fill="blue" />
+  <circle id="hidden-attr" cx="50" cy="50" r="20" fill="red" display="none" />
+  <rect id="hidden-style" x="10" y="10" width="20" height="20" fill="green" style="display:none" />
+  <g id="hidden-group" style="display: none">
+    <path id="child-in-hidden-group" d="M 0 0 L 10 10" stroke="yellow" />
+  </g>
+</svg>`
+
+	preprocessed, err := PreprocessSVG([]byte(rawSVG))
+	if err != nil {
+		t.Fatalf("PreprocessSVG failed: %v", err)
+	}
+
+	res := string(preprocessed)
+	if !strings.Contains(res, `id="visible"`) {
+		t.Errorf("expected visible element to remain in SVG")
+	}
+	if strings.Contains(res, "hidden-attr") || strings.Contains(res, "hidden-style") ||
+		strings.Contains(res, "hidden-group") || strings.Contains(res, "child-in-hidden-group") {
+		t.Errorf("expected all display=none elements and children to be pruned, got:\n%s", res)
+	}
+}
+
 func TestExpandUseElements_BasicAndChained(t *testing.T) {
 	rawSVG := `<svg width="100" height="100">
   <defs>

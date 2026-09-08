@@ -120,6 +120,7 @@ Each fixture lives in `testdata/fixtures/` as `<operation_name>.svg` and `<opera
 | `style_inline_presentation` | Inline CSS presentation attributes (`style="fill:...;stroke:...;..."`) |
 | `style_css_class` | CSS `<style>` stylesheet blocks and class selectors (`.class`) |
 | `viewbox_negative_origin` | Negative `viewBox` origin offsets (e.g. `viewBox="-64 -64 128 128"`) |
+| `visibility_display_none` | Pruned elements and groups with `display="none"` or `style="display:none"` |
 
 ---
 
