@@ -20,7 +20,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25'
+          go-version: '1.27'
           cache: true
 
       - name: Install Linux GUI Dependencies for Tests
@@ -39,9 +39,13 @@ jobs:
           args: check
 
   build-gui:
-    name: Build Desktop GUI (Linux & Windows)
+    name: Build Desktop GUI (${{ matrix.target }})
     needs: test
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [windows, linux]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -49,7 +53,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25'
+          go-version: '1.27'
           cache: true
 
       - name: Cache fyne-cross binary
@@ -57,19 +61,42 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/go/bin/fyne-cross
-          key: ${{ runner.os }}-fyne-cross-bin
+          key: ${{ runner.os }}-fyne-cross-bin-v2
 
       - name: Install fyne-cross
         if: steps.cache-fyne-cross.outputs.cache-hit != 'true'
         run: go install github.com/fyne-io/fyne-cross@latest
 
-      - name: Cross-Compile Desktop GUI for Windows
-        run: |
-          ~/go/bin/fyne-cross windows -arch=amd64,arm64 -app-id=com.inkanim.studio ./cmd/inkanim
+      - name: Cache Docker image for fyne-cross ${{ matrix.target }}
+        id: cache-docker-image
+        uses: actions/cache@v4
+        with:
+          path: /tmp/docker-cache
+          key: docker-fyne-cross-${{ matrix.target }}-1.7
 
-      - name: Cross-Compile Desktop GUI for Linux
+      - name: Load cached Docker image
+        if: steps.cache-docker-image.outputs.cache-hit == 'true'
         run: |
-          ~/go/bin/fyne-cross linux -arch=amd64,arm64 -app-id=com.inkanim.studio ./cmd/inkanim
+          docker load -i /tmp/docker-cache/image.tar
+
+      - name: Pull Docker image if not cached
+        if: steps.cache-docker-image.outputs.cache-hit != 'true'
+        run: |
+          docker pull fyneio/fyne-cross:1.7-${{ matrix.target }}
+          mkdir -p /tmp/docker-cache
+          docker save fyneio/fyne-cross:1.7-${{ matrix.target }} -o /tmp/docker-cache/image.tar
+
+      - name: Cache fyne-cross build cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/fyne-cross
+          key: ${{ runner.os }}-fyne-cross-build-${{ matrix.target }}-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-fyne-cross-build-${{ matrix.target }}-
+
+      - name: Cross-Compile Desktop GUI for ${{ matrix.target }}
+        run: |
+          ~/go/bin/fyne-cross ${{ matrix.target }} -arch=amd64,arm64 -app-id=com.inkanim.studio ./cmd/inkanim
 
       - name: Prepare GUI Packages
         run: |
@@ -78,15 +105,18 @@ jobs:
           if [ -z "$TAG" ] || [[ ! "$TAG" =~ ^v ]]; then
             TAG="latest"
           fi
-          cp fyne-cross/dist/windows-amd64/InkAnim.exe.zip "gui-dist/InkAnim_${TAG}_windows_amd64.zip"
-          cp fyne-cross/dist/windows-arm64/InkAnim.exe.zip "gui-dist/InkAnim_${TAG}_windows_arm64.zip"
-          cp fyne-cross/dist/linux-amd64/InkAnim.tar.xz "gui-dist/InkAnim_${TAG}_linux_amd64.tar.xz"
-          cp fyne-cross/dist/linux-arm64/InkAnim.tar.xz "gui-dist/InkAnim_${TAG}_linux_arm64.tar.xz"
+          if [ "${{ matrix.target }}" = "windows" ]; then
+            cp fyne-cross/dist/windows-amd64/InkAnim.exe.zip "gui-dist/InkAnim_${TAG}_windows_amd64.zip"
+            cp fyne-cross/dist/windows-arm64/InkAnim.exe.zip "gui-dist/InkAnim_${TAG}_windows_arm64.zip"
+          elif [ "${{ matrix.target }}" = "linux" ]; then
+            cp fyne-cross/dist/linux-amd64/InkAnim.tar.xz "gui-dist/InkAnim_${TAG}_linux_amd64.tar.xz"
+            cp fyne-cross/dist/linux-arm64/InkAnim.tar.xz "gui-dist/InkAnim_${TAG}_linux_arm64.tar.xz"
+          fi
 
       - name: Upload GUI Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: gui-dist
+          name: gui-dist-${{ matrix.target }}
           path: gui-dist/
 
   release:
@@ -102,14 +132,15 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25'
+          go-version: '1.27'
           cache: true
 
       - name: Download GUI Artifacts
         uses: actions/download-artifact@v4
         with:
-          name: gui-dist
+          pattern: gui-dist-*
           path: gui-dist
+          merge-multiple: true
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
