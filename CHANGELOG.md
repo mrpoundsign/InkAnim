@@ -8,14 +8,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.6-pre5] - 2026-09-08
 
 ### Added
+- **"Ping-Pong" (Bounce / Reverse) Loop Playback & GIF Export**: Added support for Ping-Pong looping across both the live preview playback engine and the exported GIF encoding pipeline. When enabled on animations with 3 or more frames, playback cycles from the first to last frame and reverses back down without repeating turnaround frames ($2N-2$ total sequence), ensuring seamless bouncing loops in external players like Twitch, Discord, and browsers. Automatically disabled for documents with fewer than 3 frames ([#2](https://github.com/mrpoundsign/InkAnim/issues/2)).
+- **CLI Ping-Pong Flag**: Added `-pingpong` command-line flag to `inkanim-cli` for batch exporting bounced loop animations ([#2](https://github.com/mrpoundsign/InkAnim/issues/2)).
+- **WYSIWYG Palette Quantization & Dithering Preview**: Live animation preview canvas and Twitch scale thumbnails reflect the active color palette quantization (2–256 colors) and Floyd-Steinberg dithering in real time. Added a "WYSIWYG" toggle in playback controls to effortlessly compare color-quantized GIF frames against the unquantized 32-bit true-color rasterization ([#34](https://github.com/mrpoundsign/InkAnim/issues/34)).
+- **Reusable NumericCommitInput Component**: Created a numeric-only input component with bounds checking and commit via an "OK" button or Enter key ([#33](https://github.com/mrpoundsign/InkAnim/issues/33)).
+- **Custom Palette Color Limit**: Added a "Custom" option to the palette dropdown supporting any color count between 2 and 256.
 - **Bulk Differential Testing Scanner (`cmd/dev scan`)**: Added a dedicated `scan` subcommand to `cmd/dev` that recursively scans directories of SVGs, computes perceptual pixel differences against headless Inkscape ground truth, generates visual diff PNGs with neon magenta highlights on failures, and prints a comprehensive summary table with per-feature breakdown metrics ([#59](https://github.com/mrpoundsign/InkAnim/issues/59)).
 - **Automated Golden Test Suite & GitHub Actions CI Gate**: Added an integration test suite validating pixel-level rendering accuracy against headless Inkscape goldens, enforced automatically via GitHub Actions on all PRs and pushes ([#40](https://github.com/mrpoundsign/InkAnim/issues/40)).
 - **Developer Golden & Diff CLI (`cmd/dev`)**: Added developer CLI tool with subcommands `golden --generate` and `diff` for canonical headless Inkscape golden generation and visual diff inspection ([#51](https://github.com/mrpoundsign/InkAnim/issues/51)).
 
 ### Changed
+- **Streamlined Animation to Layers-Only**: Simplified frame extraction exclusively to Inkscape layers (`inkscape:groupmode="layer"`), eliminating confusing dual-rendering modes while retaining full support for multi-page SVGs (`<inkscape:page>`) as artboard and camera crop boundaries ([#39](https://github.com/mrpoundsign/InkAnim/issues/39)).
+- **Unified Right-Side Tabbed Sidebar**: Consolidated Left Frames panel and Right Export panel into a single tabbed sidebar ("Frames" and "Export" tabs) on the right side of the window, freeing up ~240px of horizontal space for a much larger, more immersive animation preview canvas ([#35](https://github.com/mrpoundsign/InkAnim/issues/35)).
+- **Collapsible Bottom Scale Inspector**: Added a "Scale Inspector" checkbox toggle in playback controls to hide/show the bottom Twitch chat-scale preview dock, allowing the main animation canvas to expand to full window height ([#35](https://github.com/mrpoundsign/InkAnim/issues/35)).
+- **Clean Export & Speed Preset Visibility**: Resolution, Dimensions, and Global Speed text inputs are hidden by default and only revealed when choosing "Custom", preventing UI clutter and partial-keystroke re-calculations ([#33](https://github.com/mrpoundsign/InkAnim/issues/33)).
+- **Updated Landing Page Copy & Simplified Downloads**: Clarified animation capabilities, added Discord emote support, and consolidated desktop downloads to direct GitHub Releases links.
 - **Web Studio & WebAssembly Edition**: Positioned the WebAssembly edition as a complete in-browser studio, adding a collapsible "Sample Animations" toolbar with one-click preview loading of bundled sample SVGs.
 
 ### Fixed
+- **WebAssembly Text Entry Deadlock**: Intercepted canvas blur event when Fyne focuses hidden `#dummyEntry` element, preventing upstream `glfw-js` focus lost callback from deadlocking the WebAssembly runtime ([#33](https://github.com/mrpoundsign/InkAnim/issues/33)).
 - **SVG Drop Shadow Filter Compositing (`<filter>` / `<feGaussianBlur>` / `<feOffset>` / `<feFlood>`)**: Added dynamic raster extraction, Gaussian blur, and Porter-Duff compositing for Inkscape and SVG drop shadow filter chains in `RenderSVGToRGBA`, resolving upstream `oksvg` filter omissions and rendering blurred drop shadows underneath shapes with 99.98% Inkscape pixel fidelity ([#60](https://github.com/mrpoundsign/InkAnim/issues/60)).
 - **SVG Standard `stroke-linejoin="miter"` Defaulting**: Injected default `stroke-linejoin="miter"` on stroked shapes and groups in `PreprocessSVG` per W3C SVG specification, overcoming upstream `oksvg` defaulting to `rasterx.Bevel` and restoring sharp 90° miter joins across drawings ([#64](https://github.com/mrpoundsign/InkAnim/issues/64)).
 - **SVG `<clipPath>` and `clip-path` Masking**: Implemented dynamic alpha-mask extraction and layered raster compositing for arbitrary clipping paths defined in `<defs>` and referenced via `clip-path="url(#...)"`, resolving upstream `rasterx`/`oksvg` lack of path clipping and correctly restricting shapes to clipping boundaries ([#63](https://github.com/mrpoundsign/InkAnim/issues/63)).
@@ -36,27 +47,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Inkscape Document Background Page Color & Opacity**: Extracted `sodipodi:namedview pagecolor` and `inkscape:pageopacity` during SVG pre-processing to accurately render document canvas background colors ([#43](https://github.com/mrpoundsign/InkAnim/issues/43)).
 - **LPE `fillet_chamfer` Vertex Wrapping & Closing Arc**: Fixed closed polygon handling in `internal/svg/lpe.go#filletSegments` to round all vertices including vertex 0 across `Z` subpaths and correctly calculate non-inverted closing tangent arcs ([#41](https://github.com/mrpoundsign/InkAnim/issues/41)).
 - **Cross-Platform Font Resolution for SVG Text Rendering**: Enhanced font manager with standard system font aliases (`DejaVu Sans`, `Liberation Sans`, `Segoe UI`, `Arial`) and embedded fallbacks for consistent text rendering across native desktop and WASM ([#42](https://github.com/mrpoundsign/InkAnim/issues/42)).
-
----
-
-## [0.1.6-pre3] - 2026-09-07
-
-### Added
-- **"Ping-Pong" (Bounce / Reverse) Loop Playback & GIF Export**: Added support for Ping-Pong looping across both the live preview playback engine and the exported GIF encoding pipeline. When enabled on animations with 3 or more frames, playback cycles from the first to last frame and reverses back down without repeating turnaround frames ($2N-2$ total sequence), ensuring seamless bouncing loops in external players like Twitch, Discord, and browsers. Automatically disabled for documents with fewer than 3 frames ([#2](https://github.com/mrpoundsign/InkAnim/issues/2)).
-- **CLI Ping-Pong Flag**: Added `-pingpong` command-line flag to `inkanim-cli` for batch exporting bounced loop animations ([#2](https://github.com/mrpoundsign/InkAnim/issues/2)).
-- **WYSIWYG Palette Quantization & Dithering Preview**: Live animation preview canvas and Twitch scale thumbnails reflect the active color palette quantization (2–256 colors) and Floyd-Steinberg dithering in real time. Added a "WYSIWYG" toggle in playback controls to effortlessly compare color-quantized GIF frames against the unquantized 32-bit true-color rasterization ([#34](https://github.com/mrpoundsign/InkAnim/issues/34)).
-- **Reusable NumericCommitInput Component**: Created a numeric-only input component with bounds checking and commit via an "OK" button or Enter key ([#33](https://github.com/mrpoundsign/InkAnim/issues/33)).
-- **Custom Palette Color Limit**: Added a "Custom" option to the palette dropdown supporting any color count between 2 and 256.
-
-### Changed
-- **Streamlined Animation to Layers-Only**: Simplified frame extraction exclusively to Inkscape layers (`inkscape:groupmode="layer"`), eliminating confusing dual-rendering modes while retaining full support for multi-page SVGs (`<inkscape:page>`) as artboard and camera crop boundaries ([#39](https://github.com/mrpoundsign/InkAnim/issues/39)).
-- **Unified Right-Side Tabbed Sidebar**: Consolidated Left Frames panel and Right Export panel into a single tabbed sidebar ("Frames" and "Export" tabs) on the right side of the window, freeing up ~240px of horizontal space for a much larger, more immersive animation preview canvas ([#35](https://github.com/mrpoundsign/InkAnim/issues/35)).
-- **Collapsible Bottom Scale Inspector**: Added a "Scale Inspector" checkbox toggle in playback controls to hide/show the bottom Twitch chat-scale preview dock, allowing the main animation canvas to expand to full window height ([#35](https://github.com/mrpoundsign/InkAnim/issues/35)).
-- **Clean Export & Speed Preset Visibility**: Resolution, Dimensions, and Global Speed text inputs are hidden by default and only revealed when choosing "Custom", preventing UI clutter and partial-keystroke re-calculations ([#33](https://github.com/mrpoundsign/InkAnim/issues/33)).
-- **Updated Landing Page Copy & Simplified Downloads**: Clarified animation capabilities, added Discord emote support, and consolidated desktop downloads to direct GitHub Releases links.
-
-### Fixed
-- **WebAssembly Text Entry Deadlock**: Intercepted canvas blur event when Fyne focuses hidden `#dummyEntry` element, preventing upstream `glfw-js` focus lost callback from deadlocking the WebAssembly runtime ([#33](https://github.com/mrpoundsign/InkAnim/issues/33)).
 
 ### Performance & Tooling
 - **Optimized GIF Color Quantization & Hot Path Lookups**: Overhauled color quantization and palette generation in `internal/gif/quantizer.go` with flat pre-unpacked palette entries, scaled integer squared Euclidean distance math, a 4096-entry direct-mapped L1 CPU color cache (32 KB), Go `slices.SortFunc` (pdqsort), and direct linear byte slice scanning (`Pix`). ([#26](https://github.com/mrpoundsign/InkAnim/issues/26))
