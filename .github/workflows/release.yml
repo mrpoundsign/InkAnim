@@ -67,25 +67,6 @@ jobs:
         if: steps.cache-fyne-cross.outputs.cache-hit != 'true'
         run: go install github.com/fyne-io/fyne-cross@latest
 
-      - name: Cache Docker image for fyne-cross ${{ matrix.target }}
-        id: cache-docker-image
-        uses: actions/cache@v4
-        with:
-          path: /tmp/docker-cache
-          key: docker-fyne-cross-${{ matrix.target }}-1.7
-
-      - name: Load cached Docker image
-        if: steps.cache-docker-image.outputs.cache-hit == 'true'
-        run: |
-          docker load -i /tmp/docker-cache/image.tar
-
-      - name: Pull Docker image if not cached
-        if: steps.cache-docker-image.outputs.cache-hit != 'true'
-        run: |
-          docker pull fyneio/fyne-cross:1.7-${{ matrix.target }}
-          mkdir -p /tmp/docker-cache
-          docker save fyneio/fyne-cross:1.7-${{ matrix.target }} -o /tmp/docker-cache/image.tar
-
       - name: Cache fyne-cross build cache
         uses: actions/cache@v4
         with:
