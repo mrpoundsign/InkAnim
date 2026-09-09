@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="gradRepeat" x1="0" y1="0" x2="0.25" y2="0" spreadMethod="repeat">
+      <stop offset="0%" stop-color="#3b82f6" />
+      <stop offset="100%" stop-color="#ec4899" />
+    </linearGradient>
+  </defs>
+  <rect x="16" y="16" width="96" height="96" rx="12" fill="url(#gradRepeat)" stroke="#1e293b" stroke-width="4" />
+</svg>

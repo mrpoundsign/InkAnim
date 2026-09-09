@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- 3-digit hex -->
+  <rect x="16" y="16" width="28" height="28" fill="#f00" />
+  <!-- 6-digit hex -->
+  <rect x="50" y="16" width="28" height="28" fill="#00ff00" />
+  <!-- rgb(r, g, b) -->
+  <rect x="84" y="16" width="28" height="28" fill="rgb(0, 0, 255)" />
+  <!-- rgb(r%, g%, b%) -->
+  <rect x="16" y="50" width="28" height="28" fill="rgb(100%, 50%, 0%)" />
+  <!-- Named color: crimson -->
+  <rect x="50" y="50" width="28" height="28" fill="crimson" />
+  <!-- Named color: navy -->
+  <rect x="84" y="50" width="28" height="28" fill="navy" />
+  <!-- Named color: gold -->
+  <rect x="16" y="84" width="28" height="28" fill="gold" />
+  <!-- Named color: darkviolet -->
+  <rect x="50" y="84" width="28" height="28" fill="darkviolet" />
+  <!-- Named color: steelblue -->
+  <rect x="84" y="84" width="28" height="28" fill="steelblue" />
+</svg>

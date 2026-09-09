@@ -5,6 +5,31 @@ import (
 	"testing"
 )
 
+func TestPreprocess_DisplayNonePruning(t *testing.T) {
+	rawSVG := `<svg width="100" height="100">
+  <rect id="visible" x="0" y="0" width="100" height="100" fill="blue" />
+  <circle id="hidden-attr" cx="50" cy="50" r="20" fill="red" display="none" />
+  <rect id="hidden-style" x="10" y="10" width="20" height="20" fill="green" style="display:none" />
+  <g id="hidden-group" style="display: none">
+    <path id="child-in-hidden-group" d="M 0 0 L 10 10" stroke="yellow" />
+  </g>
+</svg>`
+
+	preprocessed, err := PreprocessSVG([]byte(rawSVG))
+	if err != nil {
+		t.Fatalf("PreprocessSVG failed: %v", err)
+	}
+
+	res := string(preprocessed)
+	if !strings.Contains(res, `id="visible"`) {
+		t.Errorf("expected visible element to remain in SVG")
+	}
+	if strings.Contains(res, "hidden-attr") || strings.Contains(res, "hidden-style") ||
+		strings.Contains(res, "hidden-group") || strings.Contains(res, "child-in-hidden-group") {
+		t.Errorf("expected all display=none elements and children to be pruned, got:\n%s", res)
+	}
+}
+
 func TestExpandUseElements_BasicAndChained(t *testing.T) {
 	rawSVG := `<svg width="100" height="100">
   <defs>
@@ -150,5 +175,31 @@ func TestDesugarPathArcs(t *testing.T) {
 		})
 	}
 }
+
+func TestPreprocess_DefaultStrokeLinejoin(t *testing.T) {
+	rawSVG := `<svg width="100" height="100">
+  <path id="unspecified" d="M 10 10 L 50 10" stroke="red" stroke-width="2" />
+  <rect id="specified-attr" x="0" y="0" width="10" height="10" stroke="blue" stroke-linejoin="round" />
+  <path id="specified-style" d="M 0 0 L 10 10" style="stroke:green;stroke-linejoin:bevel" />
+  <circle id="no-stroke" cx="10" cy="10" r="5" fill="yellow" />
+</svg>`
+
+	preprocessed, err := PreprocessSVG([]byte(rawSVG))
+	if err != nil {
+		t.Fatalf("PreprocessSVG failed: %v", err)
+	}
+
+	res := string(preprocessed)
+	if !strings.Contains(res, `id="unspecified"`) || !strings.Contains(res, `stroke-linejoin="miter"`) {
+		t.Errorf("expected stroke-linejoin=\"miter\" on unspecified stroke shape, got:\n%s", res)
+	}
+	if !strings.Contains(res, `stroke-linejoin="round"`) {
+		t.Errorf("expected specified stroke-linejoin=\"round\" to be preserved")
+	}
+	if !strings.Contains(res, `stroke-linejoin:bevel`) {
+		t.Errorf("expected specified stroke-linejoin:bevel to be preserved")
+	}
+}
+
 
 

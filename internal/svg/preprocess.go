@@ -42,6 +42,7 @@ func PreprocessSVG(data []byte) ([]byte, error) {
 	encoder := xml.NewEncoder(&buf)
 
 	transformStack := []Matrix2D{IdentityMatrix()}
+	fillRuleStack := []string{"nonzero"}
 	var rootSVGSeen bool
 
 	for {
@@ -56,6 +57,14 @@ func PreprocessSVG(data []byte) ([]byte, error) {
 		switch elem := token.(type) {
 		case xml.StartElement:
 			name := elem.Name.Local
+
+			// Prune hidden elements, groups, and layers (Issue #61)
+			if isElementHidden(name, elem.Attr) {
+				if err := decoder.Skip(); err != nil {
+					return nil, fmt.Errorf("xml skip hidden element %s: %w", name, err)
+				}
+				continue
+			}
 
 			// Stage 0: Normalize root SVG dimensions/viewBox and inject canvas background rect
 			if name == "svg" && !rootSVGSeen {
@@ -223,9 +232,10 @@ func PreprocessSVG(data []byte) ([]byte, error) {
 				continue
 			}
 
-			// Track 2D affine transformation matrices on nested <g> elements
+			// Track 2D affine transformation matrices and fill-rules on nested <g> elements
 			if name == "g" {
 				curMatrix := transformStack[len(transformStack)-1]
+				curRule := fillRuleStack[len(fillRuleStack)-1]
 				for i, attr := range elem.Attr {
 					if attr.Name.Local == "transform" {
 						parsed := parseTransform(attr.Value)
@@ -233,8 +243,17 @@ func PreprocessSVG(data []byte) ([]byte, error) {
 						// Normalize transform to canonical matrix to avoid oksvg single-param scale(s, 0) bug
 						elem.Attr[i].Value = fmt.Sprintf("matrix(%f %f %f %f %f %f)", parsed.A, parsed.B, parsed.C, parsed.D, parsed.E, parsed.F)
 					}
+					if attr.Name.Local == "fill-rule" {
+						curRule = strings.ToLower(strings.TrimSpace(attr.Value))
+					}
+					if attr.Name.Local == "style" {
+						if fr := extractCSSProp(attr.Value, "fill-rule"); fr != "" {
+							curRule = strings.ToLower(strings.TrimSpace(fr))
+						}
+					}
 				}
 				transformStack = append(transformStack, curMatrix)
+				fillRuleStack = append(fillRuleStack, curRule)
 			}
 
 			// Evaluate fillet_chamfer Live Path Effects on <path> elements
@@ -262,6 +281,32 @@ func PreprocessSVG(data []byte) ([]byte, error) {
 				// Desugar implicit repeated arc commands in path d data (Issue #57)
 				if dAttrIdx >= 0 {
 					elem.Attr[dAttrIdx].Value = DesugarPathArcs(elem.Attr[dAttrIdx].Value)
+				}
+
+				// Normalize evenodd fill-rules to NonZero winding (Issue #62)
+				pathRule := fillRuleStack[len(fillRuleStack)-1]
+				var fillRuleAttrIdx = -1
+				var pathStyleAttrIdx = -1
+				for i, attr := range elem.Attr {
+					if attr.Name.Local == "fill-rule" {
+						fillRuleAttrIdx = i
+						pathRule = strings.ToLower(strings.TrimSpace(attr.Value))
+					}
+					if attr.Name.Local == "style" {
+						pathStyleAttrIdx = i
+						if fr := extractCSSProp(attr.Value, "fill-rule"); fr != "" {
+							pathRule = strings.ToLower(strings.TrimSpace(fr))
+						}
+					}
+				}
+				if pathRule == "evenodd" && dAttrIdx >= 0 {
+					elem.Attr[dAttrIdx].Value = NormalizeEvenOddPath(elem.Attr[dAttrIdx].Value)
+					if fillRuleAttrIdx >= 0 {
+						elem.Attr[fillRuleAttrIdx].Value = "nonzero"
+					}
+					if pathStyleAttrIdx >= 0 {
+						elem.Attr[pathStyleAttrIdx].Value = setStyleProp(elem.Attr[pathStyleAttrIdx].Value, "fill-rule", "nonzero")
+					}
 				}
 			}
 
@@ -335,6 +380,37 @@ func PreprocessSVG(data []byte) ([]byte, error) {
 							}
 						}
 					}
+				}
+			}
+
+			// Default stroke-linejoin="miter" on stroked shapes and groups (Issue #64).
+			// Upstream oksvg defaults omitted stroke-linejoin to rasterx.Bevel (4) instead of
+			// rasterx.Miter (2), causing 45° beveled corners instead of standard SVG 90° miter joins.
+			if isShapeElement(name) || name == "g" {
+				var hasStroke bool
+				var hasLineJoin bool
+				for _, attr := range elem.Attr {
+					if attr.Name.Local == "stroke" && attr.Value != "" && attr.Value != "none" {
+						hasStroke = true
+					}
+					if attr.Name.Local == "stroke-linejoin" && attr.Value != "" {
+						hasLineJoin = true
+					}
+					if attr.Name.Local == "style" {
+						sVal := extractCSSProp(attr.Value, "stroke")
+						if sVal != "" && sVal != "none" {
+							hasStroke = true
+						}
+						if extractCSSProp(attr.Value, "stroke-linejoin") != "" {
+							hasLineJoin = true
+						}
+					}
+				}
+				if hasStroke && !hasLineJoin {
+					elem.Attr = append(elem.Attr, xml.Attr{
+						Name:  xml.Name{Local: "stroke-linejoin"},
+						Value: "miter",
+					})
 				}
 			}
 
@@ -415,8 +491,13 @@ func PreprocessSVG(data []byte) ([]byte, error) {
 			}
 
 		case xml.EndElement:
-			if elem.Name.Local == "g" && len(transformStack) > 1 {
-				transformStack = transformStack[:len(transformStack)-1]
+			if elem.Name.Local == "g" {
+				if len(transformStack) > 1 {
+					transformStack = transformStack[:len(transformStack)-1]
+				}
+				if len(fillRuleStack) > 1 {
+					fillRuleStack = fillRuleStack[:len(fillRuleStack)-1]
+				}
 			}
 			if err := encoder.EncodeToken(elem); err != nil {
 				return nil, err
@@ -936,6 +1017,46 @@ func extractCSSProp(style, prop string) string {
 		}
 	}
 	return ""
+}
+
+// isElementHidden reports whether an SVG element or group is styled or configured
+// to be non-rendering via display="none", visibility="hidden", or corresponding inline styles (Issue #61).
+func isElementHidden(name string, attrs []xml.Attr) bool {
+	switch name {
+	case "svg", "defs", "linearGradient", "radialGradient", "pattern", "clipPath", "mask", "filter", "style":
+		return false
+	}
+	// Never prune Inkscape animation layers; InkAnim's frame builder dynamically
+	// manages layer visibility when synthesizing animation frames.
+	for _, a := range attrs {
+		if a.Name.Local == "groupmode" && a.Value == "layer" {
+			return false
+		}
+	}
+	for _, a := range attrs {
+		switch a.Name.Local {
+		case "display":
+			val := strings.ToLower(strings.TrimSpace(a.Value))
+			if strings.HasPrefix(val, "none") {
+				return true
+			}
+		case "visibility":
+			val := strings.ToLower(strings.TrimSpace(a.Value))
+			if strings.HasPrefix(val, "hidden") || strings.HasPrefix(val, "collapse") {
+				return true
+			}
+		case "style":
+			d := strings.ToLower(extractCSSProp(a.Value, "display"))
+			if strings.HasPrefix(d, "none") {
+				return true
+			}
+			v := strings.ToLower(extractCSSProp(a.Value, "visibility"))
+			if strings.HasPrefix(v, "hidden") || strings.HasPrefix(v, "collapse") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func isShapeElement(name string) bool {

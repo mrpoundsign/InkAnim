@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- Visible base shape -->
+  <rect x="16" y="16" width="96" height="96" rx="16" fill="#3b82f6" />
+  
+  <!-- Hidden leaf shape via display="none" attribute -->
+  <circle cx="64" cy="64" r="30" fill="#ef4444" display="none" />
+
+  <!-- Hidden leaf shape via inline style="display:none" -->
+  <rect x="32" y="32" width="30" height="30" fill="#f59e0b" style="display:none" />
+
+  <!-- Hidden group via display="none" attribute -->
+  <g display="none">
+    <circle cx="40" cy="40" r="15" fill="#10b981" />
+  </g>
+
+  <!-- Hidden group via inline style="display:none" -->
+  <g style="display:none">
+    <rect x="60" y="60" width="20" height="20" fill="#8b5cf6" />
+    <circle cx="70" cy="70" r="8" fill="#ec4899" />
+  </g>
+</svg>

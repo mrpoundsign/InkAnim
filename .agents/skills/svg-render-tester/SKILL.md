@@ -98,6 +98,32 @@ Each fixture lives in `testdata/fixtures/` as `<operation_name>.svg` and `<opera
 | `gradient_stop_style` | Gradient `<stop>` elements with inline CSS `style="stop-color:...;stop-opacity:..."` normalized to explicit XML attributes |
 | `preserve_aspect_ratio` | SVG standard `preserveAspectRatio` (default `xMidYMid meet`) with uniform scaling and letterbox/pillarbox alignment |
 | `transform_shape_stroke` | Direct shape-level `transform="matrix(...)"` or `scale(...)` verifying `stroke-width` scales proportionally |
+| `gradient_viewport_scale` | `userSpaceOnUse` linear and radial gradients scaled to non-native viewport resolutions verifying gradientTransform scales with document |
+| `shape_polyline_polygon` | `<polygon>` and `<polyline>` coordinate points list |
+| `shape_ellipse` | `<circle>` and `<ellipse>` radii and center coordinates |
+| `shape_line` | `<line x1 y1 x2 y2>` coordinate endpoints with stroke caps |
+| `path_bezier_curves` | Cubic (`C`, `S`) and quadratic (`Q`, `T`) Bézier curve segments |
+| `path_arc_elliptic` | Elliptical arc commands (`A` / `a`) with large-arc and sweep flags |
+| `path_compound_subpaths` | Compound paths with multiple subpaths (`M ... Z M ... Z`) and inner cutout holes |
+| `path_relative_commands` | Relative path commands (`m`, `l`, `h`, `v`, `z`) |
+| `stroke_join_cap` | Stroke line caps (`butt`, `round`, `square`) and line joins (`miter`, `round`, `bevel`) |
+| `stroke_dasharray` | Stroke dash patterns (`stroke-dasharray`) and phase offsets (`stroke-dashoffset`) |
+| `opacity_layers` | Group opacity (`<g opacity>`), `fill-opacity`, and `stroke-opacity` compositing |
+| `color_formats` | 3-hex, 6-hex, `rgb(...)` integer/percent, and SVG standard color keywords |
+| `gradient_radial` | Focused radial gradients (`<radialGradient cx cy r fx fy>`) with multi-color stops |
+| `gradient_spread_reflect` | Gradient spread method `reflect` |
+| `gradient_spread_repeat` | Gradient spread method `repeat` |
+| `gradient_object_bounding_box` | Normalized bounding-box gradients (`gradientUnits="objectBoundingBox"`) |
+| `gradient_stop_numeric` | Unitless numeric gradient stop offsets (`0`, `0.5`, `1`) |
+| `transform_rotate_skew` | 2D affine rotate (`rotate(...)`) and shear (`skewX(...)`) transforms |
+| `transform_matrix_2d` | Explicit 2D affine transformation matrices (`matrix(a, b, c, d, e, f)`) |
+| `style_inline_presentation` | Inline CSS presentation attributes (`style="fill:...;stroke:...;..."`) |
+| `style_css_class` | CSS `<style>` stylesheet blocks and class selectors (`.class`) |
+| `viewbox_negative_origin` | Negative `viewBox` origin offsets (e.g. `viewBox="-64 -64 128 128"`) |
+| `visibility_display_none` | Pruned elements and groups with `display="none"` or `style="display:none"` |
+| `path_fill_rule_evenodd` | Inverted inner cutout winding for paths specifying `fill-rule="evenodd"` |
+| `clip_path_mask` | Arbitrary clipping paths via `<clipPath>` definitions and `clip-path="url(#...)"` referencing |
+| `filter_drop_shadow` | Inkscape drop shadow filter chains (`<filter>`, `<feGaussianBlur>`, `<feOffset>`, `<feFlood>`) |
 
 ---
 

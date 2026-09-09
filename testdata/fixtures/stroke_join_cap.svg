@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- Line caps -->
+  <path d="M 20,20 L 60,20" stroke="#f59e0b" stroke-width="10" stroke-linecap="butt" />
+  <path d="M 20,40 L 60,40" stroke="#10b981" stroke-width="10" stroke-linecap="round" />
+  <path d="M 20,60 L 60,60" stroke="#3b82f6" stroke-width="10" stroke-linecap="square" />
+  <!-- Line joins -->
+  <path d="M 80,24 L 108,44 L 80,64" fill="none" stroke="#ef4444" stroke-width="8" stroke-linejoin="miter" stroke-miterlimit="4" />
+  <path d="M 20,84 L 48,104 L 20,124" fill="none" stroke="#8b5cf6" stroke-width="8" stroke-linejoin="round" />
+  <path d="M 80,84 L 108,104 L 80,124" fill="none" stroke="#06b6d4" stroke-width="8" stroke-linejoin="bevel" />
+</svg>
