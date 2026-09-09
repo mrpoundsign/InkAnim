@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"strconv"
+	"unicode"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -82,7 +83,6 @@ func NewLeftFramesPanel(sess *app.Session, onFramesChange func()) *LeftFramesPan
 	speedLabel := widget.NewLabelWithStyle("Global Speed:", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	p.globalMsInput = NewNumericCommitInput(sess.ExportOptions.DefaultDurationMs, 10, 10000, "ms:", func(val int) {
 		p.session.SetGlobalDuration(val)
-		p.Refresh()
 		if p.onFramesChange != nil {
 			p.onFramesChange()
 		}
@@ -236,7 +236,31 @@ func (p *LeftFramesPanel) Refresh() {
 		})
 		pinCheck.Checked = layer.IsPinned
 
-		durEntry := widget.NewEntry()
+		var durEntry *commitEntry
+		isUpdatingDur := false
+		commitDur := func() {
+			fyne.Do(func() {
+				val := durEntry.Text
+				ms, err := strconv.Atoi(val)
+				if err != nil || ms < 10 {
+					ms = 10
+				} else if ms > 10000 {
+					ms = 10000
+				}
+				strVal := strconv.Itoa(ms)
+				if durEntry.Text != strVal {
+					isUpdatingDur = true
+					durEntry.SetText(strVal)
+					isUpdatingDur = false
+				}
+				p.session.SetFrameOverride(idx, true, ms)
+				if p.onFramesChange != nil {
+					p.onFramesChange()
+				}
+			})
+		}
+
+		durEntry = newCommitEntry(commitDur)
 		durVal := p.session.ExportOptions.DefaultDurationMs
 		if layer.HasOverride && layer.OverrideMs > 0 {
 			durVal = layer.OverrideMs
@@ -247,11 +271,22 @@ func (p *LeftFramesPanel) Refresh() {
 		}
 
 		durEntry.OnChanged = func(val string) {
-			if ms, err := strconv.Atoi(val); err == nil && ms > 0 {
-				p.session.SetFrameOverride(idx, true, ms)
-				if p.onFramesChange != nil {
-					p.onFramesChange()
+			if isUpdatingDur {
+				return
+			}
+			var clean []rune
+			for _, r := range val {
+				if unicode.IsDigit(r) {
+					clean = append(clean, r)
 				}
+			}
+			filtered := string(clean)
+			if filtered != val {
+				fyne.Do(func() {
+					isUpdatingDur = true
+					durEntry.SetText(filtered)
+					isUpdatingDur = false
+				})
 			}
 		}
 
@@ -314,3 +349,29 @@ func (p *LeftFramesPanel) Refresh() {
 
 	p.listContainer.Refresh()
 }
+
+// commitEntry is an Entry that triggers onCommit both when Enter is pressed (OnSubmitted)
+// and when focus is lost (FocusLost).
+type commitEntry struct {
+	widget.Entry
+	onCommit func()
+}
+
+func newCommitEntry(onCommit func()) *commitEntry {
+	e := &commitEntry{onCommit: onCommit}
+	e.ExtendBaseWidget(e)
+	e.OnSubmitted = func(_ string) {
+		if e.onCommit != nil {
+			e.onCommit()
+		}
+	}
+	return e
+}
+
+func (e *commitEntry) FocusLost() {
+	e.Entry.FocusLost()
+	if e.onCommit != nil {
+		e.onCommit()
+	}
+}
+

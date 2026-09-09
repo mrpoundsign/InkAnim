@@ -60,6 +60,7 @@ build_wasm() {
     (
         cd "$WASM_TEMP"
         go run fyne.io/fyne/v2/cmd/fyne@v2.8.1 package -os web --release \
+            --tags migrated_fynedo \
             --sourceDir "$ROOT_DIR/cmd/inkanim" \
             --icon "$ROOT_DIR/assets/icon.png" \
             --name InkAnim

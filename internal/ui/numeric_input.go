@@ -50,28 +50,35 @@ func NewNumericCommitInput(initialVal, minVal, maxVal int, prefixLabel string, o
 		}
 		filtered := string(clean)
 		if filtered != s {
-			n.isUpdating = true
-			n.Entry.SetText(filtered)
-			n.isUpdating = false
+			fyne.Do(func() {
+				n.isUpdating = true
+				n.Entry.SetText(filtered)
+				n.isUpdating = false
+			})
 		}
 	}
 
 	// Commit action (button click or Enter key)
 	commit := func() {
-		v, err := strconv.Atoi(n.Entry.Text)
-		if err != nil || v < n.Min {
-			v = n.Min
-		} else if v > n.Max {
-			v = n.Max
-		}
-		n.Value = v
-		n.isUpdating = true
-		n.Entry.SetText(strconv.Itoa(v))
-		n.isUpdating = false
+		fyne.Do(func() {
+			v, err := strconv.Atoi(n.Entry.Text)
+			if err != nil || v < n.Min {
+				v = n.Min
+			} else if v > n.Max {
+				v = n.Max
+			}
+			n.Value = v
+			strVal := strconv.Itoa(v)
+			if n.Entry.Text != strVal {
+				n.isUpdating = true
+				n.Entry.SetText(strVal)
+				n.isUpdating = false
+			}
 
-		if n.OnApply != nil {
-			n.OnApply(v)
-		}
+			if n.OnApply != nil {
+				n.OnApply(v)
+			}
+		})
 	}
 
 	n.Button = widget.NewButton("OK", commit)
@@ -101,9 +108,12 @@ func (n *NumericCommitInput) SetValue(v int) {
 		v = n.Max
 	}
 	n.Value = v
-	n.isUpdating = true
-	n.Entry.SetText(strconv.Itoa(v))
-	n.isUpdating = false
+	strVal := strconv.Itoa(v)
+	if n.Entry.Text != strVal {
+		n.isUpdating = true
+		n.Entry.SetText(strVal)
+		n.isUpdating = false
+	}
 }
 
 // Show makes the input container visible.
