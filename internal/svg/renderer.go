@@ -46,10 +46,11 @@ func RenderSVGToRGBA(svgData []byte, targetW, targetH int) (*image.RGBA, error) 
 	// For any SVG with non-zero ViewBox.X or ViewBox.Y (e.g. Drawing boundary or multi-page offsets),
 	// this caused an unintended shift of ViewBox * (scale - 1), shoving the drawing down/right
 	// and clipping shapes against the bottom/right canvas edges.
+	scaleFactor := 1.0
 	if icon.ViewBox.W > 0 && icon.ViewBox.H > 0 {
 		par := parsePreserveAspectRatio(extractRootPreserveAspectRatio(svgData))
 
-		var scaleW, scaleH, offsetX, offsetY, scaleFactor float64
+		var scaleW, scaleH, offsetX, offsetY float64
 
 		if par.Align == "none" {
 			scaleW = w / icon.ViewBox.W
@@ -130,8 +131,10 @@ func RenderSVGToRGBA(svgData []byte, targetW, targetH int) (*image.RGBA, error) 
 	embeddedImages := extractEmbeddedImages(svgData)
 	clipPaths := extractClipPaths(svgData)
 	pathClipIDs := extractPathClipIDs(svgData)
+	dropShadows := extractFilterDefs(svgData)
+	pathFilterIDs := extractPathFilterIDs(svgData)
 
-	if len(embeddedImages) == 0 && len(clipPaths) == 0 {
+	if len(embeddedImages) == 0 && len(clipPaths) == 0 && len(dropShadows) == 0 {
 		icon.Draw(raster, 1.0)
 	} else {
 		clipMasks := make(map[string]*image.RGBA)
@@ -174,11 +177,21 @@ func RenderSVGToRGBA(svgData []byte, targetW, targetH int) (*image.RGBA, error) 
 				imgIdx++
 			}
 
+			targetImg := img
+			targetRaster := raster
 			if activeClipID != "" && layerRaster != nil {
-				icon.SVGPaths[pathIdx].DrawTransformed(layerRaster, 1.0, icon.Transform)
-			} else {
-				icon.SVGPaths[pathIdx].DrawTransformed(raster, 1.0, icon.Transform)
+				targetImg = layerImg
+				targetRaster = layerRaster
 			}
+
+			if pathIdx < len(pathFilterIDs) {
+				fID := pathFilterIDs[pathIdx]
+				if filter, ok := dropShadows[fID]; ok {
+					renderAndCompositeDropShadow(targetImg, icon.SVGPaths[pathIdx], icon.Transform, filter, widthInt, heightInt, scaleFactor)
+				}
+			}
+
+			icon.SVGPaths[pathIdx].DrawTransformed(targetRaster, 1.0, icon.Transform)
 		}
 
 		if activeClipID != "" && layerImg != nil {

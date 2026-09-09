@@ -123,6 +123,7 @@ Each fixture lives in `testdata/fixtures/` as `<operation_name>.svg` and `<opera
 | `visibility_display_none` | Pruned elements and groups with `display="none"` or `style="display:none"` |
 | `path_fill_rule_evenodd` | Inverted inner cutout winding for paths specifying `fill-rule="evenodd"` |
 | `clip_path_mask` | Arbitrary clipping paths via `<clipPath>` definitions and `clip-path="url(#...)"` referencing |
+| `filter_drop_shadow` | Inkscape drop shadow filter chains (`<filter>`, `<feGaussianBlur>`, `<feOffset>`, `<feFlood>`) |
 
 ---
 
