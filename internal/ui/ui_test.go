@@ -729,3 +729,51 @@ func TestWysiwygPreview(t *testing.T) {
 	}
 }
 
+func TestPreviewBackgroundSwitcher(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	mw := NewMainWindow(app)
+	if mw.centerPanel.bgSelect == nil {
+		t.Fatal("expected bgSelect to be non-nil")
+	}
+
+	// 1. Initial default state: Checkerboard
+	if mw.centerPanel.CurrentBackground() != BgCheckerboard {
+		t.Errorf("expected initial background %v, got %v", BgCheckerboard, mw.centerPanel.CurrentBackground())
+	}
+	if mw.centerPanel.bgSelect.Selected != string(BgCheckerboard) {
+		t.Errorf("expected bgSelect to display %s, got %s", BgCheckerboard, mw.centerPanel.bgSelect.Selected)
+	}
+	if len(mw.centerPanel.bgContainer.Objects) == 0 {
+		t.Fatal("expected bgContainer to have background objects")
+	}
+
+	// 2. Test cycling through each background option via dropdown
+	for _, bgStr := range PreviewBackgrounds {
+		bg := PreviewBackground(bgStr)
+		mw.centerPanel.bgSelect.SetSelected(bgStr)
+		if mw.centerPanel.CurrentBackground() != bg {
+			t.Errorf("expected current background %v after selecting %s, got %v", bg, bgStr, mw.centerPanel.CurrentBackground())
+		}
+		if len(mw.centerPanel.bgContainer.Objects) == 0 {
+			t.Errorf("expected bgContainer to not be empty for %s", bgStr)
+		}
+	}
+
+	// 3. Test programmatic SetBackground helper
+	mw.centerPanel.SetBackground(BgTwitchDark)
+	if mw.centerPanel.CurrentBackground() != BgTwitchDark {
+		t.Errorf("expected current background %v after SetBackground, got %v", BgTwitchDark, mw.centerPanel.CurrentBackground())
+	}
+	if mw.centerPanel.bgSelect.Selected != string(BgTwitchDark) {
+		t.Errorf("expected bgSelect to reflect %s after SetBackground, got %s", BgTwitchDark, mw.centerPanel.bgSelect.Selected)
+	}
+
+	// Set invalid background falls back to Checkerboard
+	mw.centerPanel.SetBackground("Unknown Option")
+	if mw.centerPanel.CurrentBackground() != BgCheckerboard {
+		t.Errorf("expected fallback to %v on invalid background, got %v", BgCheckerboard, mw.centerPanel.CurrentBackground())
+	}
+}
+

@@ -5,7 +5,7 @@ Website = "https://github.com/mrpoundsign/InkAnim"
   Name = "InkAnim"
   ID = "com.inkanim.studio"
   Version = "0.1.6"
-  Build = 6
+  Build = 7
 
 [Migrations]
   fyneDo = true

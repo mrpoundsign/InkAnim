@@ -27,14 +27,38 @@ type cachedPreviewFrame struct {
 	twitch28      *image.RGBA
 }
 
+// PreviewBackground defines the background style rendered under the main preview canvas.
+type PreviewBackground string
+
+const (
+	BgCheckerboard    PreviewBackground = "Checkerboard"
+	BgTwitchDark      PreviewBackground = "Twitch Dark"
+	BgTwitchLight     PreviewBackground = "Twitch Light"
+	BgDiscordDark     PreviewBackground = "Discord Dark"
+	BgVibrantGradient PreviewBackground = "Vibrant Gradient"
+)
+
+// PreviewBackgrounds lists the selectable preview backgrounds matching testdata/preview.html.
+var PreviewBackgrounds = []string{
+	string(BgCheckerboard),
+	string(BgTwitchDark),
+	string(BgTwitchLight),
+	string(BgDiscordDark),
+	string(BgVibrantGradient),
+}
+
 // CenterPreviewPanel manages the live animation player and Twitch chat-scale emulation preview.
 type CenterPreviewPanel struct {
 	session   *app.Session
 	container *fyne.Container
 
-	mainCanvasImage *canvas.Image
-	frameLabel      *widget.Label
-	playPauseBtn    *widget.Button
+	mainCanvasImage    *canvas.Image
+	bgContainer        *fyne.Container
+	stageStack         *fyne.Container
+	currentBg          PreviewBackground
+	bgSelect           *widget.Select
+	frameLabel         *widget.Label
+	playPauseBtn       *widget.Button
 	loopCheck          *widget.Check
 	pingPongCheck      *widget.Check
 	cropGuidesCheck    *widget.Check
@@ -67,6 +91,146 @@ type CenterPreviewPanel struct {
 	animGen int
 }
 
+func createCheckerboardImage(w, h int) image.Image {
+	if w <= 0 || h <= 0 {
+		return image.NewRGBA(image.Rect(0, 0, 1, 1))
+	}
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	c1 := [4]byte{31, 31, 35, 255} // #1f1f23
+	c2 := [4]byte{42, 42, 48, 255} // #2a2a30
+	const squareSize = 20
+
+	pix := img.Pix
+	stride := img.Stride
+	for y := 0; y < h; y++ {
+		rowEven := (y / squareSize) % 2 == 0
+		rowOffset := y * stride
+		for x := 0; x < w; x++ {
+			colEven := (x / squareSize) % 2 == 0
+			c := &c1
+			if rowEven != colEven {
+				c = &c2
+			}
+			offset := rowOffset + x*4
+			pix[offset] = c[0]
+			pix[offset+1] = c[1]
+			pix[offset+2] = c[2]
+			pix[offset+3] = c[3]
+		}
+	}
+	return img
+}
+
+func createVibrantGradientImage(w, h int) image.Image {
+	if w <= 0 || h <= 0 {
+		return image.NewRGBA(image.Rect(0, 0, 1, 1))
+	}
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	// Color stops matching testdata/preview.html:
+	// 0.0: #ff007f (255, 0, 127)
+	// 0.5: #7928ca (121, 40, 202)
+	// 1.0: #0070f3 (0, 112, 243)
+	c0 := [3]float64{255, 0, 127}
+	c1 := [3]float64{121, 40, 202}
+	c2 := [3]float64{0, 112, 243}
+
+	pix := img.Pix
+	stride := img.Stride
+	invW := 1.0 / float64(max(w-1, 1))
+	invH := 1.0 / float64(max(h-1, 1))
+
+	for y := 0; y < h; y++ {
+		normY := float64(y) * invH
+		rowOffset := y * stride
+		for x := 0; x < w; x++ {
+			normX := float64(x) * invW
+			t := (normX + normY) * 0.5
+			if t < 0 {
+				t = 0
+			} else if t > 1 {
+				t = 1
+			}
+
+			var r, g, b byte
+			if t <= 0.5 {
+				factor := t * 2.0
+				r = byte(c0[0] + (c1[0]-c0[0])*factor + 0.5)
+				g = byte(c0[1] + (c1[1]-c0[1])*factor + 0.5)
+				b = byte(c0[2] + (c1[2]-c0[2])*factor + 0.5)
+			} else {
+				factor := (t - 0.5) * 2.0
+				r = byte(c1[0] + (c2[0]-c1[0])*factor + 0.5)
+				g = byte(c1[1] + (c2[1]-c1[1])*factor + 0.5)
+				b = byte(c1[2] + (c2[2]-c1[2])*factor + 0.5)
+			}
+
+			offset := rowOffset + x*4
+			pix[offset] = r
+			pix[offset+1] = g
+			pix[offset+2] = b
+			pix[offset+3] = 255
+		}
+	}
+	return img
+}
+
+func (p *CenterPreviewPanel) makeBackgroundObject(bg PreviewBackground) fyne.CanvasObject {
+	switch bg {
+	case BgTwitchDark:
+		return canvas.NewRectangle(color.RGBA{R: 24, G: 24, B: 27, A: 255})
+	case BgTwitchLight:
+		return canvas.NewRectangle(color.RGBA{R: 255, G: 255, B: 255, A: 255})
+	case BgDiscordDark:
+		return canvas.NewRectangle(color.RGBA{R: 49, G: 51, B: 56, A: 255})
+	case BgVibrantGradient:
+		return canvas.NewRaster(createVibrantGradientImage)
+	case BgCheckerboard:
+		fallthrough
+	default:
+		return canvas.NewRaster(createCheckerboardImage)
+	}
+}
+
+func normalizeBackground(bg PreviewBackground) PreviewBackground {
+	switch bg {
+	case BgTwitchDark, BgTwitchLight, BgDiscordDark, BgVibrantGradient:
+		return bg
+	case BgCheckerboard:
+		return BgCheckerboard
+	default:
+		return BgCheckerboard
+	}
+}
+
+// SetBackground changes the main canvas background dynamically.
+func (p *CenterPreviewPanel) SetBackground(bg PreviewBackground) {
+	bg = normalizeBackground(bg)
+	fyne.Do(func() {
+		p.mu.Lock()
+		p.currentBg = bg
+		if p.bgContainer != nil {
+			obj := p.makeBackgroundObject(bg)
+			p.bgContainer.Objects = []fyne.CanvasObject{obj}
+		}
+		p.mu.Unlock()
+
+		if p.bgContainer != nil {
+			p.bgContainer.Refresh()
+		}
+
+		if p.bgSelect != nil && p.bgSelect.Selected != string(bg) {
+			p.bgSelect.SetSelected(string(bg))
+		}
+	})
+}
+
+// CurrentBackground returns the currently active preview background mode.
+func (p *CenterPreviewPanel) CurrentBackground() PreviewBackground {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.currentBg
+}
+
 // NewCenterPreviewPanel constructs the animation preview and Twitch inspector dock.
 func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 	p := &CenterPreviewPanel{
@@ -75,7 +239,10 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 		showCropGuides: true,
 		wysiwygColors:  true,
 		speedFactor:    1.0,
+		currentBg:      BgCheckerboard,
 	}
+
+	p.bgContainer = container.NewStack(p.makeBackgroundObject(BgCheckerboard))
 
 	// Main Canvas Image
 	blank := image.NewRGBA(image.Rect(0, 0, 300, 300))
@@ -83,6 +250,11 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 	p.mainCanvasImage.FillMode = canvas.ImageFillContain
 	p.mainCanvasImage.ScaleMode = canvas.ImageScaleFastest
 	p.mainCanvasImage.SetMinSize(fyne.NewSize(150, 150))
+
+	p.stageStack = container.NewStack(
+		p.bgContainer,
+		p.mainCanvasImage,
+	)
 
 	p.frameLabel = widget.NewLabelWithStyle("Frame: 0 / 0", fyne.TextAlignCenter, fyne.TextStyle{})
 	p.frameLabel.Truncation = fyne.TextTruncateEllipsis
@@ -144,6 +316,11 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 	})
 	speedSelect.SetSelected("1x")
 
+	p.bgSelect = widget.NewSelect(PreviewBackgrounds, func(s string) {
+		p.SetBackground(PreviewBackground(s))
+	})
+	p.bgSelect.SetSelected(string(BgCheckerboard))
+
 	p.inspectorCheck = widget.NewCheck("Scale Inspector", func(checked bool) {
 		if checked {
 			p.twitchEmulationBox.Show()
@@ -165,20 +342,26 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 	})
 	p.wysiwygCheck.Checked = true
 
-	playbackButtons := container.NewHBox(
+	playbackRow := container.NewHBox(
 		prevBtn,
 		p.playPauseBtn,
 		nextBtn,
 		speedSelect,
 		p.loopCheck,
 		p.pingPongCheck,
+	)
+
+	viewOptionsRow := container.NewHBox(
+		widget.NewLabel("BG:"),
+		p.bgSelect,
 		p.cropGuidesCheck,
 		p.wysiwygCheck,
 		p.inspectorCheck,
 	)
 
 	playbackControls := container.NewVBox(
-		container.NewCenter(playbackButtons),
+		container.NewCenter(playbackRow),
+		container.NewCenter(viewOptionsRow),
 		p.frameLabel,
 	)
 
@@ -220,7 +403,7 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 		playbackControls,
 		nil,
 		nil,
-		p.mainCanvasImage,
+		p.stageStack,
 	)
 
 	p.container = container.NewBorder(
