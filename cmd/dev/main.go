@@ -35,6 +35,8 @@ func main() {
 		runScan(subArgs)
 	case "inspect":
 		runInspect(subArgs)
+	case "lint":
+		runLint(subArgs)
 	case "help", "-h", "--help":
 		printUsage()
 	default:
@@ -54,8 +56,10 @@ Commands:
   golden   Compare SVG fixtures against golden PNGs or generate ground truth
   scan     Recursively scan a directory of SVGs and perform differential testing against Inkscape
   inspect  Inspect pixel bounds, centroids, and colors of an image
+  lint     Lint an SVG file to validate its InkAnim animation (IAMS) syntax
 
 Examples:
+  go run ./cmd/dev lint testdata/spline_test.svg
   go run ./cmd/dev golden use_element_clone
   go run ./cmd/dev golden --all
   go run ./cmd/dev golden --generate use_element_clone
@@ -63,6 +67,60 @@ Examples:
   go run ./cmd/dev scan testdata/ --max-mismatch 0.50
   go run ./cmd/dev inspect testdata/fixtures/use_element_clone.golden.png
   go run ./cmd/dev inspect testdata/fixtures/use_element_clone.golden.png --color "#facc15"`)
+}
+
+// runLint parses an SVG file and validates its animation syntax and configurations.
+func runLint(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintf(os.Stderr, "Usage: go run ./cmd/dev lint <image-path.svg>\n")
+		os.Exit(1)
+	}
+	svgPath := args[0]
+	data, err := os.ReadFile(svgPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to read SVG: %v\n", err)
+		os.Exit(1)
+	}
+
+	doc, err := inksvg.ParseSVG(data)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to parse SVG: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("File: %s\n", svgPath)
+	fmt.Printf("Mode: %s\n", doc.DefaultMode)
+
+	if doc.DefaultMode != inksvg.ModeTimeline {
+		fmt.Printf("⚠️ WARNING: Default mode is %s, not timeline. (No valid 'Movement' paths found or no frames defined).\n", doc.DefaultMode)
+	}
+
+	fmt.Printf("Found %d motion path(s).\n", len(doc.MotionPaths))
+	hasErrors := false
+
+	for i, mp := range doc.MotionPaths {
+		fmt.Printf("  [%d] GroupID: %s, PathID: %s\n", i+1, mp.GroupID, mp.ID)
+		fmt.Printf("      Config: f:%d-%d (Ease: %s)\n", mp.Config.StartFrame, mp.Config.EndFrame, mp.Config.Ease)
+		
+		if mp.Config.StartFrame == 0 && mp.Config.EndFrame == 0 {
+			fmt.Printf("      ❌ ERROR: Invalid or missing frame range.\n")
+			hasErrors = true
+		} else if mp.Config.StartFrame > mp.Config.EndFrame {
+			fmt.Printf("      ❌ ERROR: Start frame is greater than end frame.\n")
+			hasErrors = true
+		}
+
+		if mp.Config.Ease != "linear" && mp.Config.Ease != "in" && mp.Config.Ease != "out" && mp.Config.Ease != "in-out" {
+			fmt.Printf("      ⚠️ WARNING: Unrecognized ease type '%s'. Will default to linear.\n", mp.Config.Ease)
+		}
+	}
+
+	if hasErrors {
+		fmt.Println("\n❌ Linting failed with errors.")
+		os.Exit(1)
+	} else {
+		fmt.Println("\n✅ Linting passed! No errors found.")
+	}
 }
 
 // runGolden handles fixture comparison and ground-truth generation via headless Inkscape CLI.

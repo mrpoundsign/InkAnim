@@ -1,7 +1,7 @@
 package inksvg
 
 import (
-	"fmt"
+	"errors"
 	"strconv"
 	"strings"
 	"unicode"
@@ -21,18 +21,19 @@ func EvaluatePathAt(pathData string, t float64) (x, y float64, err error) {
 	var tokens []string
 	var currentToken strings.Builder
 	for _, r := range pathData {
-		if unicode.IsSpace(r) || r == ',' {
+		switch {
+		case unicode.IsSpace(r) || r == ',':
 			if currentToken.Len() > 0 {
 				tokens = append(tokens, currentToken.String())
 				currentToken.Reset()
 			}
-		} else if unicode.IsLetter(r) && r != 'e' && r != 'E' { // not exp notation
+		case unicode.IsLetter(r) && r != 'e' && r != 'E': // not exp notation
 			if currentToken.Len() > 0 {
 				tokens = append(tokens, currentToken.String())
 				currentToken.Reset()
 			}
 			tokens = append(tokens, string(r))
-		} else {
+		default:
 			currentToken.WriteRune(r)
 		}
 	}
@@ -41,7 +42,7 @@ func EvaluatePathAt(pathData string, t float64) (x, y float64, err error) {
 	}
 
 	if len(tokens) == 0 {
-		return 0, 0, fmt.Errorf("empty path data")
+		return 0, 0, errors.New("empty path data")
 	}
 
 	var startX, startY float64
@@ -68,7 +69,6 @@ func EvaluatePathAt(pathData string, t float64) (x, y float64, err error) {
 				y2, _ := strconv.ParseFloat(tokens[i+3], 64)
 				x3, _ := strconv.ParseFloat(tokens[i+4], 64)
 				y3, _ := strconv.ParseFloat(tokens[i+5], 64)
-				i += 6
 
 				// Evaluate bezier at t
 				invT := 1.0 - t
@@ -80,7 +80,7 @@ func EvaluatePathAt(pathData string, t float64) (x, y float64, err error) {
 			}
 		}
 	}
-	return 0, 0, fmt.Errorf("unsupported path format for interpolation")
+	return 0, 0, errors.New("unsupported path format for interpolation")
 }
 
 // Ease functions modify linear t (0 to 1)
