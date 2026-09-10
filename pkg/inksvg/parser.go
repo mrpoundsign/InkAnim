@@ -31,6 +31,7 @@ func ParseSVG(data []byte) (*SVGDocument, error) {
 	decoder := xml.NewDecoder(bytes.NewReader(processedData))
 	var inSVGTag bool
 	var layerIdx, pageIdx int
+	var activeGroups []string
 
 	for {
 		token, err := decoder.Token()
@@ -87,6 +88,31 @@ func ParseSVG(data []byte) (*SVGDocument, error) {
 					doc.Layers = append(doc.Layers, layer)
 					layerIdx++
 				}
+				activeGroups = append(activeGroups, id)
+			}
+
+			// Check for IAMS Motion Path: <path inkscape:label="Movement {...}" d="...">
+			if name == "path" {
+				var id, label, d string
+				for _, attr := range elem.Attr {
+					if attr.Name.Local == "id" {
+						id = attr.Value
+					}
+					if attr.Name.Local == "label" {
+						label = attr.Value
+					}
+					if attr.Name.Local == "d" {
+						d = attr.Value
+					}
+				}
+				if cfg, ok := parseMotionConfig(label); ok && len(activeGroups) > 0 {
+					doc.MotionPaths = append(doc.MotionPaths, MotionPath{
+						ID:       id,
+						GroupID:  activeGroups[len(activeGroups)-1],
+						PathData: d,
+						Config:   cfg,
+					})
+				}
 			}
 
 			// Check for Inkscape 1.2+ page: <inkscape:page ...>
@@ -128,6 +154,12 @@ func ParseSVG(data []byte) (*SVGDocument, error) {
 					doc.Pages = append(doc.Pages, page)
 					pageIdx++
 				}
+			}
+		}
+
+		if endElem, ok := token.(xml.EndElement); ok {
+			if endElem.Name.Local == "g" && len(activeGroups) > 0 {
+				activeGroups = activeGroups[:len(activeGroups)-1]
 			}
 		}
 	}
@@ -370,4 +402,47 @@ func parseDimension(s string) float64 {
 	}
 	v, _ := strconv.ParseFloat(strings.TrimSpace(s), 64)
 	return v * scale
+}
+
+func parseMotionConfig(label string) (MotionConfig, bool) {
+	idx := strings.Index(label, "Movement {")
+	if idx == -1 {
+		return MotionConfig{}, false
+	}
+	endIdx := strings.Index(label[idx:], "}")
+	if endIdx == -1 {
+		return MotionConfig{}, false
+	}
+	configStr := label[idx+10 : idx+endIdx]
+	parts := strings.Split(configStr, ";")
+
+	config := MotionConfig{
+		Ease: "linear",
+	}
+
+	for _, part := range parts {
+		kv := strings.SplitN(part, ":", 2)
+		if len(kv) != 2 {
+			continue
+		}
+		k := strings.TrimSpace(kv[0])
+		v := strings.TrimSpace(kv[1])
+		switch k {
+		case "ease":
+			config.Ease = v
+		case "f":
+			if v == "all" {
+				config.IsAll = true
+			} else {
+				rangeParts := strings.Split(v, "-")
+				if len(rangeParts) == 2 {
+					start, _ := strconv.Atoi(rangeParts[0])
+					end, _ := strconv.Atoi(rangeParts[1])
+					config.StartFrame = start
+					config.EndFrame = end
+				}
+			}
+		}
+	}
+	return config, true
 }

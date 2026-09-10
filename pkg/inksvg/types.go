@@ -86,6 +86,22 @@ func (p Page) EffectiveDuration(globalDefault int) int {
 	return 100
 }
 
+// MotionConfig holds the parsed animation parameters from IAMS syntax.
+type MotionConfig struct {
+	StartFrame int
+	EndFrame   int
+	IsAll      bool
+	Ease       string
+}
+
+// MotionPath represents a movement spline and its config found inside a group.
+type MotionPath struct {
+	ID       string
+	GroupID  string
+	PathData string
+	Config   MotionConfig
+}
+
 // SVGDocument holds parsed SVG metadata and elements.
 type SVGDocument struct {
 	RawContent  []byte
@@ -98,6 +114,7 @@ type SVGDocument struct {
 	DrawingRect Rect
 	Layers      []Layer
 	Pages       []Page
+	MotionPaths []MotionPath
 	DefaultMode FrameMode
 }
 
