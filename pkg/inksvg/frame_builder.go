@@ -422,23 +422,4 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 	return buf.Bytes(), nil
 }
 
-func ensureStyleProp(elem *xml.StartElement, prop, value string) {
-	var foundStyle bool
-	for i, attr := range elem.Attr {
-		if attr.Name.Local == "style" {
-			foundStyle = true
-			cleaned := removeStyleProp(attr.Value, prop)
-			if cleaned != "" {
-				elem.Attr[i].Value = cleaned + ";" + prop + ":" + value
-			} else {
-				elem.Attr[i].Value = prop + ":" + value
-			}
-		}
-	}
-	if !foundStyle {
-		elem.Attr = append(elem.Attr, xml.Attr{
-			Name:  xml.Name{Local: "style"},
-			Value: prop + ":" + value,
-		})
-	}
-}
+
