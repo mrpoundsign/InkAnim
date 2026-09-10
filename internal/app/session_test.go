@@ -418,4 +418,71 @@ func TestSessionLoadSVGWithoutLayers(t *testing.T) {
 	}
 }
 
+func TestMultiPageCropResolutionAndPrerender(t *testing.T) {
+	fixturePath, err := filepath.Abs("../../testdata/fixtures/multipage_sizes.svg")
+	if err != nil {
+		t.Fatalf("failed to resolve fixture path: %v", err)
+	}
+
+	sess := NewSession()
+	if err := sess.LoadSVG(fixturePath); err != nil {
+		t.Fatalf("failed to load multipage_sizes.svg: %v", err)
+	}
+
+	if len(sess.Pages) != 2 {
+		t.Fatalf("expected 2 pages, got %d", len(sess.Pages))
+	}
+
+	// 1. Initial load starts in BoundaryDrawing mode
+	if sess.CropBoundaryMode != inksvg.BoundaryDrawing {
+		t.Errorf("expected initial mode BoundaryDrawing, got %v", sess.CropBoundaryMode)
+	}
+
+	// Synchronously finish pre-rendering all pages
+	sess.PrerenderPagesSync()
+
+	// Verify both pages and drawing are cached
+	if !sess.IsPageCached(inksvg.BoundaryDrawing, 0) {
+		t.Errorf("expected drawing to be cached")
+	}
+	if !sess.IsPageCached(inksvg.BoundaryPage, 1) {
+		t.Errorf("expected page 1 to be cached")
+	}
+	if !sess.IsPageCached(inksvg.BoundaryPage, 2) {
+		t.Errorf("expected page 2 to be cached")
+	}
+
+	// 2. Switch to Page 1 (512x512 artboard in SVG)
+	if err := sess.SetCropBoundary(inksvg.BoundaryPage, 1); err != nil {
+		t.Fatalf("SetCropBoundary(Page, 1) failed: %v", err)
+	}
+	if len(sess.RenderedFrames) == 0 {
+		t.Fatalf("expected rendered frames for Page 1")
+	}
+	p1Bounds := sess.RenderedFrames[0].Image.Bounds()
+	if p1Bounds.Dx() != 512 || p1Bounds.Dy() != 512 {
+		t.Errorf("expected Page 1 preview dimensions 512x512, got %dx%d", p1Bounds.Dx(), p1Bounds.Dy())
+	}
+
+	// 3. Switch to Page 2 (128x128 artboard in SVG)
+	if err := sess.SetCropBoundary(inksvg.BoundaryPage, 2); err != nil {
+		t.Fatalf("SetCropBoundary(Page, 2) failed: %v", err)
+	}
+	if len(sess.RenderedFrames) == 0 {
+		t.Fatalf("expected rendered frames for Page 2")
+	}
+	p2Bounds := sess.RenderedFrames[0].Image.Bounds()
+	// Crucial check: Page 2 must be scaled up to 512x512 preview resolution to maximize detail, NOT starved at ~100px
+	if p2Bounds.Dx() != 512 || p2Bounds.Dy() != 512 {
+		t.Errorf("expected Page 2 preview dimensions scaled to 512x512 for max resolution, got %dx%d", p2Bounds.Dx(), p2Bounds.Dy())
+	}
+
+	// 4. Verify cache invalidation on layer mutation
+	sess.InvalidateCache()
+	if sess.IsPageCached(inksvg.BoundaryPage, 1) {
+		t.Errorf("expected page 1 cache to be cleared after InvalidateCache")
+	}
+}
+
+
 

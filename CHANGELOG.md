@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **Multi-Page Crop Resolution & Page Pre-Rendering**: Re-renders preview animation frames directly to the selected page/crop region rather than the uncropped document drawing bounds, ensuring small artboards scale to the full 512px preview texture with pristine vector sharpness. Added thread-safe page frame caching and background pre-rendering for instantaneous, zero-latency switching between pages in multi-page documents ([#74](https://github.com/mrpoundsign/InkAnim/issues/74)).
+
 ## [0.1.6-pre5] - 2026-09-08
 
 ### Added

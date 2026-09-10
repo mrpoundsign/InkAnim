@@ -8,6 +8,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"sync"
 
 	"inkanim/internal/gif"
 	"inkanim/internal/parallel"
@@ -26,6 +27,10 @@ type Session struct {
 	ExportOptions    gif.ExportOptions
 	RenderedFrames   []inksvg.RenderedFrame
 	PinnedLayers     map[string]bool
+
+	frameCache map[string][]inksvg.RenderedFrame
+	cacheMu    sync.RWMutex
+	renderGen  int
 }
 
 // NewSession creates an empty session with default options.
@@ -36,9 +41,41 @@ func NewSession() *Session {
 		CropPageIndex:    0,
 		ExportOptions:    gif.DefaultOptions(),
 		PinnedLayers:     make(map[string]bool),
+		frameCache:       make(map[string][]inksvg.RenderedFrame),
 	}
 }
 
+func (s *Session) activeCacheKey() string {
+	return s.boundaryCacheKey(s.CropBoundaryMode, s.CropPageIndex)
+}
+
+func (s *Session) boundaryCacheKey(mode inksvg.BoundaryMode, pIdx int) string {
+	if mode == inksvg.BoundaryDrawing {
+		return "drawing"
+	}
+	return fmt.Sprintf("page:%d", pIdx)
+}
+
+// InvalidateCache clears all cached frames and advances the render generation.
+func (s *Session) InvalidateCache() {
+	s.cacheMu.Lock()
+	s.renderGen++
+	s.frameCache = make(map[string][]inksvg.RenderedFrame)
+	s.cacheMu.Unlock()
+}
+
+func (s *Session) invalidateCache() {
+	s.InvalidateCache()
+}
+
+// IsPageCached reports whether the specified boundary has already been pre-rendered into the frame cache.
+func (s *Session) IsPageCached(mode inksvg.BoundaryMode, pageIndex int) bool {
+	s.cacheMu.RLock()
+	defer s.cacheMu.RUnlock()
+	key := s.boundaryCacheKey(mode, pageIndex)
+	_, ok := s.frameCache[key]
+	return ok
+}
 
 // LoadSVG loads and parses an SVG file from disk.
 func (s *Session) LoadSVG(filePath string) error {
@@ -69,7 +106,14 @@ func (s *Session) LoadSVGData(data []byte, filename string) error {
 	s.CropPageIndex = 0
 	s.PinnedLayers = make(map[string]bool)
 
-	return s.RerenderAllFrames()
+	s.invalidateCache()
+
+	if err := s.RerenderAllFrames(); err != nil {
+		return err
+	}
+
+	s.PrerenderPages()
+	return nil
 }
 
 // SetMode sets the animation mode (always inksvg.ModeLayers; pages serve as artboard crop boundaries).
@@ -139,13 +183,13 @@ func (s *Session) GetActiveBoundaryRect(frameIndex int) inksvg.Rect {
 }
 
 // GetPreviewBoundaryRect returns the base canvas boundary for interactive preview rendering.
-// It always returns the full unclipped Drawing bounding box so animators can see all objects
-// entering and exiting the frame, with the active crop boundary overlaid.
+// It returns the active crop boundary rectangle, ensuring the selected scene or artboard is
+// rendered at maximum resolution.
 func (s *Session) GetPreviewBoundaryRect() inksvg.Rect {
 	if s.Document == nil {
 		return inksvg.Rect{X: 0, Y: 0, Width: 512, Height: 512}
 	}
-	return s.Document.GetDrawingRect()
+	return s.GetActiveBoundaryRect(0)
 }
 
 
@@ -155,7 +199,12 @@ func (s *Session) ToggleLayerActive(index int) error {
 		return fmt.Errorf("invalid layer index %d", index)
 	}
 	s.Layers[index].IsActive = !s.Layers[index].IsActive
-	return s.RerenderAllFrames()
+	s.invalidateCache()
+	if err := s.RerenderAllFrames(); err != nil {
+		return err
+	}
+	s.PrerenderPages()
+	return nil
 }
 
 // ToggleLayerPinned toggles whether a layer is pinned as a background across all frames.
@@ -169,7 +218,12 @@ func (s *Session) ToggleLayerPinned(index int) error {
 	} else {
 		delete(s.PinnedLayers, s.Layers[index].ID)
 	}
-	return s.RerenderAllFrames()
+	s.invalidateCache()
+	if err := s.RerenderAllFrames(); err != nil {
+		return err
+	}
+	s.PrerenderPages()
+	return nil
 }
 
 // MoveLayer moves a layer up or down in the animation order.
@@ -178,7 +232,12 @@ func (s *Session) MoveLayer(fromIndex, toIndex int) error {
 		return fmt.Errorf("invalid move indices: %d -> %d", fromIndex, toIndex)
 	}
 	s.Layers[fromIndex], s.Layers[toIndex] = s.Layers[toIndex], s.Layers[fromIndex]
-	return s.RerenderAllFrames()
+	s.invalidateCache()
+	if err := s.RerenderAllFrames(); err != nil {
+		return err
+	}
+	s.PrerenderPages()
+	return nil
 }
 
 // SetGlobalDuration updates the fallback/global frame duration and updates all non-overridden frames.
@@ -207,34 +266,39 @@ func (s *Session) SetFrameDuration(index int, ms int) {
 	s.SetFrameOverride(index, true, ms)
 }
 
-// UpdateFrameDurations synchronizes the effective duration on all RenderedFrames without re-rasterizing.
+// UpdateFrameDurations synchronizes the effective duration on all RenderedFrames and cached frames without re-rasterizing.
 func (s *Session) UpdateFrameDurations() {
-	frameIdx := 0
-	for _, layer := range s.Layers {
-		if !layer.IsActive || layer.IsPinned {
-			continue
+	s.cacheMu.Lock()
+	defer s.cacheMu.Unlock()
+
+	updateList := func(frames []inksvg.RenderedFrame) {
+		frameIdx := 0
+		for _, layer := range s.Layers {
+			if !layer.IsActive || layer.IsPinned {
+				continue
+			}
+			if frameIdx < len(frames) {
+				eff := layer.EffectiveDuration(s.ExportOptions.DefaultDurationMs)
+				frames[frameIdx].DurationMs = eff
+				frameIdx++
+			}
 		}
-		if frameIdx < len(s.RenderedFrames) {
-			eff := layer.EffectiveDuration(s.ExportOptions.DefaultDurationMs)
-			s.RenderedFrames[frameIdx].DurationMs = eff
-			frameIdx++
-		}
+	}
+
+	updateList(s.RenderedFrames)
+	for _, cached := range s.frameCache {
+		updateList(cached)
 	}
 }
 
-// RerenderAllFrames rasterizes all active frames for the current mode into preview buffers.
-// For small source SVGs (<512px), preview rasterization scales up to 512px so that live playback is sharp.
-func (s *Session) RerenderAllFrames() error {
+// renderFramesForBoundary rasterizes the active layers into preview frames at the specified boundary rectangle.
+func (s *Session) renderFramesForBoundary(boundaryRect inksvg.Rect) ([]inksvg.RenderedFrame, error) {
 	if s.Document == nil {
-		s.RenderedFrames = nil
-		return nil
+		return nil, nil
 	}
 
-	var frames []inksvg.RenderedFrame
-
-	previewRect := s.GetPreviewBoundaryRect()
-	boundW := previewRect.Width
-	boundH := previewRect.Height
+	boundW := boundaryRect.Width
+	boundH := boundaryRect.Height
 	if boundW <= 0 {
 		boundW = 512
 	}
@@ -245,8 +309,6 @@ func (s *Session) RerenderAllFrames() error {
 	if boundH > maxDim {
 		maxDim = boundH
 	}
-	// Display preview only needs to be large enough to render crisply on screen (512px max dimension).
-	// Full resolution (up to 4096px) is rasterized separately on export via RenderExportFrames().
 	const maxPreviewDim = 512.0
 	previewScale := maxPreviewDim / maxDim
 	renderW := int(math.Round(boundW * previewScale))
@@ -269,10 +331,10 @@ func (s *Session) RerenderAllFrames() error {
 		})
 	}
 
-	frames = make([]inksvg.RenderedFrame, len(jobs))
+	frames := make([]inksvg.RenderedFrame, len(jobs))
 	err := parallel.Run(len(jobs), func(idx int) error {
 		j := jobs[idx]
-		frameSVG, err := inksvg.BuildLayerFrameSVG(s.Document, j.layer.ID, s.PinnedLayers, previewRect)
+		frameSVG, err := inksvg.BuildLayerFrameSVG(s.Document, j.layer.ID, s.PinnedLayers, boundaryRect)
 		if err != nil {
 			return fmt.Errorf("failed to build frame for layer %s: %w", j.layer.Label, err)
 		}
@@ -292,11 +354,107 @@ func (s *Session) RerenderAllFrames() error {
 		return nil
 	})
 	if err != nil {
+		return nil, err
+	}
+	return frames, nil
+}
+
+// RerenderAllFrames rasterizes all active frames for the current mode into preview buffers.
+// For small source SVGs (<512px), preview rasterization scales up to 512px so that live playback is sharp.
+func (s *Session) RerenderAllFrames() error {
+	if s.Document == nil {
+		s.RenderedFrames = nil
+		return nil
+	}
+
+	key := s.activeCacheKey()
+	s.cacheMu.RLock()
+	if cached, ok := s.frameCache[key]; ok && len(cached) > 0 {
+		frames := make([]inksvg.RenderedFrame, len(cached))
+		copy(frames, cached)
+		s.cacheMu.RUnlock()
+		s.RenderedFrames = frames
+		s.UpdateFrameDurations()
+		return nil
+	}
+	s.cacheMu.RUnlock()
+
+	boundaryRect := s.GetActiveBoundaryRect(0)
+	frames, err := s.renderFramesForBoundary(boundaryRect)
+	if err != nil {
 		return err
 	}
 
+	s.cacheMu.Lock()
+	if s.frameCache == nil {
+		s.frameCache = make(map[string][]inksvg.RenderedFrame)
+	}
+	s.frameCache[key] = frames
+	s.cacheMu.Unlock()
+
 	s.RenderedFrames = frames
 	return nil
+}
+
+// PrerenderPagesSync rasterizes and caches frames for drawing and all pages synchronously.
+func (s *Session) PrerenderPagesSync() {
+	if s.Document == nil {
+		return
+	}
+
+	s.cacheMu.RLock()
+	currentGen := s.renderGen
+	_, hasDrawing := s.frameCache["drawing"]
+	s.cacheMu.RUnlock()
+
+	if !hasDrawing {
+		drawingRect := s.Document.GetDrawingRect()
+		frames, err := s.renderFramesForBoundary(drawingRect)
+		if err == nil {
+			s.cacheMu.Lock()
+			if s.renderGen == currentGen {
+				if s.frameCache == nil {
+					s.frameCache = make(map[string][]inksvg.RenderedFrame)
+				}
+				s.frameCache["drawing"] = frames
+			}
+			s.cacheMu.Unlock()
+		}
+	}
+
+	for pIdx := 0; pIdx <= len(s.Pages); pIdx++ {
+		s.cacheMu.RLock()
+		if s.renderGen != currentGen {
+			s.cacheMu.RUnlock()
+			return
+		}
+		key := fmt.Sprintf("page:%d", pIdx)
+		_, cached := s.frameCache[key]
+		s.cacheMu.RUnlock()
+		if cached {
+			continue
+		}
+
+		pageRect := s.resolvePageCropRect(pIdx)
+		frames, err := s.renderFramesForBoundary(pageRect)
+		if err != nil {
+			continue
+		}
+
+		s.cacheMu.Lock()
+		if s.renderGen == currentGen {
+			if s.frameCache == nil {
+				s.frameCache = make(map[string][]inksvg.RenderedFrame)
+			}
+			s.frameCache[key] = frames
+		}
+		s.cacheMu.Unlock()
+	}
+}
+
+// PrerenderPages rasterizes and caches frames for all pages in the background.
+func (s *Session) PrerenderPages() {
+	go s.PrerenderPagesSync()
 }
 
 // RenderExportFrames rasterizes the active animation frames directly from vector SVG data
