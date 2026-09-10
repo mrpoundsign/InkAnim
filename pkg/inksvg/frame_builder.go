@@ -340,8 +340,7 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 					}
 				}
 				if isMotionPath {
-					ensureStyleProp(&elem, "display", "none")
-					if err := encoder.EncodeToken(elem); err != nil {
+					if err := decoder.Skip(); err != nil {
 						return nil, err
 					}
 					continue
@@ -369,7 +368,10 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 					// Hide if outside range
 					frame1Idx := frameIndex + 1 // 1-based index for logic
 					if frame1Idx < startF || frame1Idx > endF {
-						ensureStyleProp(&elem, "display", "none")
+						if err := decoder.Skip(); err != nil {
+							return nil, err
+						}
+						continue
 					} else {
 						// Calculate t
 						duration := endF - startF
