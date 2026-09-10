@@ -11,7 +11,7 @@ import (
 	"inkanim/internal/app"
 	"inkanim/internal/gif"
 	"inkanim/internal/prof"
-	"inkanim/internal/svg"
+	"inkanim/pkg/inksvg"
 )
 
 var (
@@ -81,7 +81,7 @@ func run() error {
 	if strings.ToLower(*modeStr) == "pages" {
 		fmt.Println("Warning: -mode pages is deprecated; animation frames are extracted from layers. Pages serve as artboard crop boundaries.")
 	}
-	if err := sess.SetMode(svg.ModeLayers); err != nil {
+	if err := sess.SetMode(inksvg.ModeLayers); err != nil {
 		return fmt.Errorf("setting layers mode: %w", err)
 	}
 

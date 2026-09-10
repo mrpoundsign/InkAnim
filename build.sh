@@ -99,9 +99,9 @@ run_tests() {
     local UPDATE_GOLDEN="${1:-false}"
     echo "==> Running unit tests..."
     if [ "$UPDATE_GOLDEN" = "true" ]; then
-        go test -v ./internal/... -update-golden
+        go test -v ./internal/... ./pkg/... -update-golden
     else
-        go test -v ./internal/...
+        go test -v ./internal/... ./pkg/...
     fi
     echo "✓ All tests passed!"
 }

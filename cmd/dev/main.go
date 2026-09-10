@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"inkanim/internal/svg"
+	"inkanim/pkg/inksvg"
 )
 
 func main() {
@@ -144,7 +144,7 @@ func runGolden(args []string) {
 			continue
 		}
 
-		preprocessed, err := svg.PreprocessSVG(data)
+		preprocessed, err := inksvg.PreprocessSVG(data)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "[%s] PreprocessSVG failed: %v\n", name, err)
 			hasFailure = true
@@ -155,7 +155,7 @@ func runGolden(args []string) {
 			fmt.Printf("--- [%s] Preprocessed SVG ---\n%s\n----------------------------\n", name, string(preprocessed))
 		}
 
-		actualImg, err := svg.RenderSVGToRGBA(preprocessed, w, h)
+		actualImg, err := inksvg.RenderSVGToRGBA(preprocessed, w, h)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "[%s] RenderSVGToRGBA failed: %v\n", name, err)
 			hasFailure = true
@@ -223,7 +223,7 @@ func resolveFixtureDimensions(svgPath, goldenPath string) (int, int) {
 		}
 	}
 	if data, err := os.ReadFile(svgPath); err == nil {
-		if doc, err := svg.ParseSVG(data); err == nil && doc.Width > 0 && doc.Height > 0 {
+		if doc, err := inksvg.ParseSVG(data); err == nil && doc.Width > 0 && doc.Height > 0 {
 			return int(doc.Width), int(doc.Height)
 		}
 	}
@@ -737,7 +737,7 @@ func runScan(args []string) {
 			_ = gf.Close()
 		}
 
-		preprocessed, prepErr := svg.PreprocessSVG(data)
+		preprocessed, prepErr := inksvg.PreprocessSVG(data)
 		if prepErr != nil {
 			fmt.Printf("❌ FAIL  %-45s PreprocessSVG failed: %v\n", truncateMiddle(relPath, 45), prepErr)
 			results = append(results, scanResult{path: svgPath, relPath: relPath, err: prepErr, features: features})
@@ -750,7 +750,7 @@ func runScan(args []string) {
 			continue
 		}
 
-		actualImg, rendErr := svg.RenderSVGToRGBA(preprocessed, w, h)
+		actualImg, rendErr := inksvg.RenderSVGToRGBA(preprocessed, w, h)
 		if rendErr != nil {
 			fmt.Printf("❌ FAIL  %-45s RenderSVGToRGBA failed: %v\n", truncateMiddle(relPath, 45), rendErr)
 			results = append(results, scanResult{path: svgPath, relPath: relPath, err: rendErr, features: features})
@@ -903,7 +903,7 @@ func resolveScanDimensions(data []byte, maxDim int) (int, int) {
 	if maxDim <= 0 {
 		maxDim = 256
 	}
-	doc, err := svg.ParseSVG(data)
+	doc, err := inksvg.ParseSVG(data)
 	if err == nil && doc.Width > 0 && doc.Height > 0 {
 		scale := float64(maxDim) / math.Max(doc.Width, doc.Height)
 		w := int(math.Round(doc.Width * scale))

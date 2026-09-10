@@ -165,7 +165,7 @@ GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o inkanim-win.exe ./cmd/inkani
 
 Run all unit tests:
 ```bash
-go test ./internal/svg ./internal/gif -v
+go test ./pkg/inksvg ./internal/... -v
 ```
 
 ---

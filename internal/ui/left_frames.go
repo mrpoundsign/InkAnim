@@ -10,7 +10,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"inkanim/internal/app"
-	"inkanim/internal/svg"
+	"inkanim/pkg/inksvg"
 )
 
 // LeftFramesPanel builds the frame management sidebar.
@@ -39,9 +39,9 @@ func NewLeftFramesPanel(sess *app.Session, onFramesChange func()) *LeftFramesPan
 			return
 		}
 		if selected == "Page" {
-			_ = p.session.SetCropBoundary(svg.BoundaryPage, p.session.CropPageIndex)
+			_ = p.session.SetCropBoundary(inksvg.BoundaryPage, p.session.CropPageIndex)
 		} else {
-			_ = p.session.SetCropBoundary(svg.BoundaryDrawing, p.session.CropPageIndex)
+			_ = p.session.SetCropBoundary(inksvg.BoundaryDrawing, p.session.CropPageIndex)
 		}
 		p.Refresh()
 		if p.onFramesChange != nil {
@@ -180,7 +180,7 @@ func (p *LeftFramesPanel) Refresh() {
 	}
 
 	// Update Crop Boundary Controls
-	if p.session.CropBoundaryMode == svg.BoundaryPage {
+	if p.session.CropBoundaryMode == inksvg.BoundaryPage {
 		if p.cropBoundaryRadio.Selected != "Page" {
 			p.cropBoundaryRadio.SetSelected("Page")
 		}
@@ -203,7 +203,7 @@ func (p *LeftFramesPanel) Refresh() {
 	}
 	p.cropPageSelect.SetSelected(pageOptions[selectedIdx])
 
-	if p.session.CropBoundaryMode == svg.BoundaryPage {
+	if p.session.CropBoundaryMode == inksvg.BoundaryPage {
 		p.cropPageSelect.Enable()
 	} else {
 		p.cropPageSelect.Disable()

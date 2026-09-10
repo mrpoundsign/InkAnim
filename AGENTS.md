@@ -32,14 +32,17 @@ InkAnim/
 ├── cmd/
 │   ├── inkanim/          # Primary GUI desktop & WASM entry point (main.go)
 │   └── inkanim-cli/      # Headless CLI for batch processing & automated export
+├── pkg/
+│   └── inksvg/           # Decoupled, pure-Go Inkscape SVG preprocessor, parser & rasterizer
+│       ├── preprocess.go # XML stream preprocessor (paint-order, text-to-path, LPE, rect rx/ry)
+│       ├── parser.go     # SVG XML parser (inkscape:groupmode="layer", sodipodi, pages)
+│       ├── renderer.go   # Rasterization of SVG layers into RGBA frame images
+│       ├── text.go       # Embedded DejaVu Sans & TrueType glyph outline converter
+│       └── types.go      # Layer, Page, and Document models
 ├── internal/
 │   ├── app/              # Core application session, layer state, mode, orchestration
 │   │   ├── session.go    # Session state: Document, Layers, Mode, Duration, ExportOptions
 │   │   └── session_test.go
-│   ├── svg/              # Inkscape SVG parsing & layer extraction
-│   │   ├── parser.go     # SVG XML parser (inkscape:groupmode="layer", sodipodi, pages)
-│   │   ├── renderer.go   # Rasterization of SVG layers into RGBA frame images
-│   │   └── types.go      # Layer, Page, and Document models
 │   ├── gif/              # GIF compilation, palette generation, twitch validation
 │   │   ├── encoder.go    # Animated GIF encoding (WriteGIFToFile, WriteGIFToWriter)
 │   │   ├── palette.go    # Color quantization, Floyd-Steinberg dithering
@@ -129,7 +132,7 @@ Active issues and feature requests are tracked exclusively via **[GitHub Issues]
 5. **No Inkscape LPE Support**: Paths referencing unbaked Live Path Effects (e.g. `fillet_chamfer` for smooth rounded polygon corners) render as raw sharp vertices.
 
 ### The Architectural Pattern
-**Never modify or destructively flatten SVG files on disk.** Instead, [`PreprocessSVG`](internal/svg/preprocess.go) intercepts the XML token stream in memory before passing it to `oksvg`:
+**Never modify or destructively flatten SVG files on disk.** Instead, [`PreprocessSVG`](pkg/inksvg/preprocess.go) intercepts the XML token stream in memory before passing it to `oksvg`:
 - **Stage 1: Font & Element Conversion (Issue #21)**: Convert `<text>` and `<tspan>` elements into `<path>` vector glyph contours early in the pipeline.
 - **Stage 2: LPE Evaluation**: Evaluate `fillet_chamfer` LPEs on `<path>` elements referencing `<inkscape:path-effect>`.
 - **Stage 3: Rect `rx`/`ry` Normalization**: Mirror `rx` and `ry` when either is omitted.
@@ -140,8 +143,8 @@ Active issues and feature requests are tracked exclusively via **[GitHub Issues]
 1. **Pipeline Ordering**: Converting `<text>` to `<path>` early in `PreprocessSVG` allows generated text paths to automatically benefit from ancestor transform stroke scaling and `paint-order: stroke fill` desugaring. (In `testdata/Alert Icon.svg`, `text1` uses `paint-order: stroke fill markers` with a 13.4px stroke!).
 2. **Y-Axis Inversion in Glyph Contours**: Font formats (`sfnt`, TrueType/OpenType) place the origin at the baseline with positive Y pointing UP towards the ascender, whereas SVG Y points DOWN. Coordinates must be inverted: `svgY = baselineY - (glyphY * fontSize / unitsPerEm)`.
 3. **Inkscape Flowed Text (`shape-inside`)**: Inkscape 1.0+ flowed text objects (`shape-inside:url(...)`) typically embed explicit baseline anchors on `<tspan x="..." y="...">`. Using `<tspan>` coordinates avoids the need for a complex text-wrapping engine for simple labels.
-4. **WASM / Cross-Platform Font Fallbacks**: System font paths (`C:\Windows\Fonts`, `/usr/share/fonts`) are inaccessible in WebAssembly. The converter must bundle or fall back to standard Go / Fyne embedded TTF glyphs when system fonts cannot be resolved.
+4. **WASM / Cross-Platform Font Fallbacks**: System font paths (`C:\Windows\Fonts`, `/usr/share/fonts`) are inaccessible in WebAssembly. The converter embeds official DejaVu Sans TTFs (`pkg/inksvg/fonts/`) to ensure deterministic, zero-dependency cross-platform rendering.
 
 ### Future Modularization Roadmap (Issue #50)
-The in-memory SVG preprocessor (`internal/svg/preprocess.go`, `internal/svg/text.go`, `internal/svg/lpe.go`) maintains a clean, self-contained middleware contract (`PreprocessSVG(data []byte) ([]byte, error)`). Once core SVG compatibility features are completed and battle-tested in InkAnim, it is planned to be extracted into a standalone public open-source Go module (e.g. `mrpoundsign/inksvg` or `svgprep`) to benefit the wider Go/Fyne/WASM ecosystem.
+The in-memory SVG preprocessor and rasterizer has been extracted from `internal/svg` into a decoupled, pure-Go public package (`pkg/inksvg`) with zero GUI/Fyne or internal dependencies (Phase 1, Issue #50). Once a companion project (e.g. the 60-frame flat motion tool) or external consumers spin up, it can be seamlessly extracted into a standalone GitHub repository (`github.com/mrpoundsign/inksvg`) without modifying package internals.
 
