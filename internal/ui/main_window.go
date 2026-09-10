@@ -26,6 +26,9 @@ type MainWindow struct {
 	sidebarTabs *container.AppTabs
 	fileLabel   *widget.Label
 	statusLabel *widget.Label
+	reloadBtn   *widget.Button
+	currentPath string
+	fileWatcher *fileWatcher
 }
 
 // NewMainWindow creates and initializes the studio interface.
@@ -39,8 +42,15 @@ func NewMainWindow(appInstance fyne.App) *MainWindow {
 		session: sess,
 	}
 
+	mw.fileWatcher = newFileWatcher(mw)
+
 	mw.fileLabel = widget.NewLabel("No file loaded")
 	mw.statusLabel = widget.NewLabel("Ready. Open an Inkscape SVG to begin.")
+
+	mw.reloadBtn = widget.NewButtonWithIcon("Reload", theme.ViewRefreshIcon(), func() {
+		mw.Reload()
+	})
+	mw.reloadBtn.Hide() // Hidden until a file is opened
 
 	// Construct panels with coordinated refresh hooks
 	mw.leftPanel = NewLeftFramesPanel(sess, func() {
@@ -80,6 +90,7 @@ func NewMainWindow(appInstance fyne.App) *MainWindow {
 		nil, nil,
 		container.NewHBox(
 			openBtn,
+			mw.reloadBtn,
 			widget.NewSeparator(),
 			mw.fileLabel,
 		),
@@ -153,6 +164,13 @@ func (mw *MainWindow) OpenFile(path string) {
 	mw.loadFilePath(path)
 }
 
+// Reload reloads the currently opened SVG file from disk.
+func (mw *MainWindow) Reload() {
+	if mw.currentPath != "" {
+		mw.loadFilePath(mw.currentPath)
+	}
+}
+
 func (mw *MainWindow) loadFilePath(path string) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -160,6 +178,9 @@ func (mw *MainWindow) loadFilePath(path string) {
 		mw.statusLabel.SetText("Failed to read SVG file.")
 		return
 	}
+	mw.currentPath = path
+	mw.fileWatcher.watchFile(path)
+	mw.showReloadButton(mw.reloadBtn)
 	mw.loadData(data, filepath.Base(path))
 }
 
