@@ -1,6 +1,7 @@
 package inksvg
 
 import (
+	"fmt"
 	"image"
 	_ "image/png"
 	"os"
@@ -20,7 +21,7 @@ func TestAtomicFixtures(t *testing.T) {
 	}
 
 	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".svg") {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".svg") || strings.HasPrefix(entry.Name(), "multipage_") {
 			continue
 		}
 
@@ -89,6 +90,57 @@ func TestAtomicFixtures(t *testing.T) {
 				MaxMismatchPercent: maxMismatch,
 			}
 
+			AssertImageMatchesGolden(t, actualImg, goldenPath, opts)
+		})
+	}
+}
+
+// TestMultiPageFixtures verifies that individual pages from a multi-page Inkscape SVG
+// render with high fidelity to their respective golden ground-truth reference images.
+func TestMultiPageFixtures(t *testing.T) {
+	t.Parallel()
+
+	fixturesDir := filepath.Join("..", "..", "testdata", "fixtures")
+	svgPath := filepath.Join(fixturesDir, "multipage_sizes.svg")
+
+	data, err := os.ReadFile(svgPath)
+	if err != nil {
+		t.Fatalf("failed to read fixture %s: %v", svgPath, err)
+	}
+
+	doc, err := ParseSVG(data)
+	if err != nil {
+		t.Fatalf("ParseSVG failed: %v", err)
+	}
+
+	if len(doc.Pages) < 2 {
+		t.Fatalf("expected at least 2 pages, got %d", len(doc.Pages))
+	}
+
+	for i, page := range doc.Pages {
+		pageIdx := i + 1
+		t.Run(fmt.Sprintf("page_%d", pageIdx), func(t *testing.T) {
+			goldenPath := filepath.Join(fixturesDir, fmt.Sprintf("multipage_sizes_page%d.golden.png", pageIdx))
+			if _, err := os.Stat(goldenPath); os.IsNotExist(err) {
+				t.Fatalf("missing golden reference %s", goldenPath)
+			}
+
+			pageRect := Rect{X: page.X, Y: page.Y, Width: page.Width, Height: page.Height}
+			pageSVG, err := BuildPageFrameSVG(doc, page, pageRect)
+			if err != nil {
+				t.Fatalf("BuildPageFrameSVG failed for page %d: %v", pageIdx, err)
+			}
+
+			renderW, renderH := 512, 512
+			actualImg, err := RenderSVGToRGBA(pageSVG, renderW, renderH)
+			if err != nil {
+				t.Fatalf("RenderSVGToRGBA failed for page %d: %v", pageIdx, err)
+			}
+
+			opts := GoldenCompareOptions{
+				PerPixelTolerance:  35,
+				MaxMismatchPercent: 0.5,
+			}
 			AssertImageMatchesGolden(t, actualImg, goldenPath, opts)
 		})
 	}
