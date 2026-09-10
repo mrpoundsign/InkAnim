@@ -320,21 +320,43 @@ func (s *Session) renderFramesForBoundary(boundaryRect inksvg.Rect) ([]inksvg.Re
 		layer    inksvg.Layer
 	}
 	var jobs []layerJob
-	for i, layer := range s.Layers {
-		if !layer.IsActive || layer.IsPinned {
-			continue
+
+	if s.Document.DefaultMode == inksvg.ModeTimeline {
+		for i, layer := range s.Layers {
+			if !layer.IsActive {
+				continue
+			}
+			jobs = append(jobs, layerJob{
+				frameIdx: len(jobs),
+				layerIdx: i,
+				layer:    layer,
+			})
 		}
-		jobs = append(jobs, layerJob{
-			frameIdx: len(jobs),
-			layerIdx: i,
-			layer:    layer,
-		})
+	} else {
+		for i, layer := range s.Layers {
+			if !layer.IsActive || layer.IsPinned {
+				continue
+			}
+			jobs = append(jobs, layerJob{
+				frameIdx: len(jobs),
+				layerIdx: i,
+				layer:    layer,
+			})
+		}
 	}
 
 	frames := make([]inksvg.RenderedFrame, len(jobs))
 	err := parallel.Run(len(jobs), func(idx int) error {
 		j := jobs[idx]
-		frameSVG, err := inksvg.BuildLayerFrameSVG(s.Document, j.layer.ID, s.PinnedLayers, boundaryRect)
+		
+		var frameSVG []byte
+		var err error
+		if s.Document.DefaultMode == inksvg.ModeTimeline {
+			frameSVG, err = inksvg.BuildTimelineFrameSVG(s.Document, j.layerIdx, boundaryRect)
+		} else {
+			frameSVG, err = inksvg.BuildLayerFrameSVG(s.Document, j.layer.ID, s.PinnedLayers, boundaryRect)
+		}
+		
 		if err != nil {
 			return fmt.Errorf("failed to build frame for layer %s: %w", j.layer.Label, err)
 		}
@@ -550,21 +572,43 @@ func (s *Session) RenderExportFrames() ([]gif.FrameInput, error) {
 		layer    inksvg.Layer
 	}
 	var jobs []layerExportJob
-	for i, layer := range s.Layers {
-		if !layer.IsActive || layer.IsPinned {
-			continue
+
+	if s.Document.DefaultMode == inksvg.ModeTimeline {
+		for i, layer := range s.Layers {
+			if !layer.IsActive {
+				continue
+			}
+			jobs = append(jobs, layerExportJob{
+				frameIdx: len(jobs),
+				layerIdx: i,
+				layer:    layer,
+			})
 		}
-		jobs = append(jobs, layerExportJob{
-			frameIdx: len(jobs),
-			layerIdx: i,
-			layer:    layer,
-		})
+	} else {
+		for i, layer := range s.Layers {
+			if !layer.IsActive || layer.IsPinned {
+				continue
+			}
+			jobs = append(jobs, layerExportJob{
+				frameIdx: len(jobs),
+				layerIdx: i,
+				layer:    layer,
+			})
+		}
 	}
 
 	frameInputs := make([]gif.FrameInput, len(jobs))
 	err := parallel.Run(len(jobs), func(idx int) error {
 		j := jobs[idx]
-		frameSVG, err := inksvg.BuildLayerFrameSVG(s.Document, j.layer.ID, s.PinnedLayers, boundaryRect)
+		
+		var frameSVG []byte
+		var err error
+		if s.Document.DefaultMode == inksvg.ModeTimeline {
+			frameSVG, err = inksvg.BuildTimelineFrameSVG(s.Document, j.layerIdx, boundaryRect)
+		} else {
+			frameSVG, err = inksvg.BuildLayerFrameSVG(s.Document, j.layer.ID, s.PinnedLayers, boundaryRect)
+		}
+		
 		if err != nil {
 			return fmt.Errorf("failed to build frame for layer %s: %w", j.layer.Label, err)
 		}
