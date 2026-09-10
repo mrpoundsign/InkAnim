@@ -1,4 +1,4 @@
-package svg
+package inksvg
 
 import (
 	"bytes"
@@ -15,7 +15,6 @@ import (
 	"sync"
 	"unicode"
 
-	"fyne.io/fyne/v2/theme"
 	"golang.org/x/image/font/sfnt"
 	"golang.org/x/image/math/fixed"
 )
@@ -164,32 +163,11 @@ func (fm *FontManager) ResolveFont(family string, bold, italic bool) *sfnt.Font 
 		// Fallback to embedded DejaVu Sans
 		f = loadEmbeddedDejaVu(bold)
 	}
-	if f == nil {
-		// Ultimate fallback to embedded Fyne cross-platform fonts
-		f = fm.loadEmbeddedFont(bold)
-	}
 
 	if f != nil {
 		fm.cache[key] = f
 	}
 	return f
-}
-
-func (fm *FontManager) loadEmbeddedFont(bold bool) *sfnt.Font {
-	var data []byte
-	if bold {
-		data = theme.DefaultTextBoldFont().Content()
-	} else {
-		data = theme.DefaultTextFont().Content()
-	}
-	if len(data) == 0 {
-		return nil
-	}
-	font, err := sfnt.Parse(data)
-	if err != nil {
-		return nil
-	}
-	return font
 }
 
 func (fm *FontManager) findSystemFont(family string, bold, italic bool) *sfnt.Font {

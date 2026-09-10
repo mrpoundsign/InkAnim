@@ -11,28 +11,28 @@ import (
 
 	"inkanim/internal/gif"
 	"inkanim/internal/parallel"
-	"inkanim/internal/svg"
+	"inkanim/pkg/inksvg"
 )
 
 // Session manages the loaded SVG, frame pipeline, preview buffers, and export settings.
 type Session struct {
 	FilePath         string
-	Document         *svg.SVGDocument
-	CurrentMode      svg.FrameMode
-	CropBoundaryMode svg.BoundaryMode
+	Document         *inksvg.SVGDocument
+	CurrentMode      inksvg.FrameMode
+	CropBoundaryMode inksvg.BoundaryMode
 	CropPageIndex    int
-	Layers           []svg.Layer
-	Pages            []svg.Page
+	Layers           []inksvg.Layer
+	Pages            []inksvg.Page
 	ExportOptions    gif.ExportOptions
-	RenderedFrames   []svg.RenderedFrame
+	RenderedFrames   []inksvg.RenderedFrame
 	PinnedLayers     map[string]bool
 }
 
 // NewSession creates an empty session with default options.
 func NewSession() *Session {
 	return &Session{
-		CurrentMode:      svg.ModeLayers,
-		CropBoundaryMode: svg.BoundaryDrawing,
+		CurrentMode:      inksvg.ModeLayers,
+		CropBoundaryMode: inksvg.BoundaryDrawing,
 		CropPageIndex:    0,
 		ExportOptions:    gif.DefaultOptions(),
 		PinnedLayers:     make(map[string]bool),
@@ -51,36 +51,36 @@ func (s *Session) LoadSVG(filePath string) error {
 
 // LoadSVGData parses an SVG from in-memory byte slice with a filename.
 func (s *Session) LoadSVGData(data []byte, filename string) error {
-	doc, err := svg.ParseSVG(data)
+	doc, err := inksvg.ParseSVG(data)
 	if err != nil {
 		return fmt.Errorf("failed to parse SVG: %w", err)
 	}
 
 	s.FilePath = filename
 	s.Document = doc
-	s.Layers = make([]svg.Layer, len(doc.Layers))
+	s.Layers = make([]inksvg.Layer, len(doc.Layers))
 	copy(s.Layers, doc.Layers)
 
-	s.Pages = make([]svg.Page, len(doc.Pages))
+	s.Pages = make([]inksvg.Page, len(doc.Pages))
 	copy(s.Pages, doc.Pages)
 
-	s.CurrentMode = svg.ModeLayers
-	s.CropBoundaryMode = svg.BoundaryDrawing
+	s.CurrentMode = inksvg.ModeLayers
+	s.CropBoundaryMode = inksvg.BoundaryDrawing
 	s.CropPageIndex = 0
 	s.PinnedLayers = make(map[string]bool)
 
 	return s.RerenderAllFrames()
 }
 
-// SetMode sets the animation mode (always svg.ModeLayers; pages serve as artboard crop boundaries).
-func (s *Session) SetMode(mode svg.FrameMode) error {
-	s.CurrentMode = svg.ModeLayers
+// SetMode sets the animation mode (always inksvg.ModeLayers; pages serve as artboard crop boundaries).
+func (s *Session) SetMode(mode inksvg.FrameMode) error {
+	s.CurrentMode = inksvg.ModeLayers
 	return s.RerenderAllFrames()
 }
 
 // SetCropBoundary sets the boundary mode ("drawing" or "page") and target page index, then rerenders.
 // pageIndex 0 represents "Document" (root viewBox), and pageIndex 1..N represent Pages[0..N-1].
-func (s *Session) SetCropBoundary(mode svg.BoundaryMode, pageIndex int) error {
+func (s *Session) SetCropBoundary(mode inksvg.BoundaryMode, pageIndex int) error {
 	s.CropBoundaryMode = mode
 	if pageIndex < 0 {
 		pageIndex = 0
@@ -92,9 +92,9 @@ func (s *Session) SetCropBoundary(mode svg.BoundaryMode, pageIndex int) error {
 	return s.RerenderAllFrames()
 }
 
-func (s *Session) resolvePageCropRect(pIdx int) svg.Rect {
+func (s *Session) resolvePageCropRect(pIdx int) inksvg.Rect {
 	if s.Document == nil {
-		return svg.Rect{X: 0, Y: 0, Width: 512, Height: 512}
+		return inksvg.Rect{X: 0, Y: 0, Width: 512, Height: 512}
 	}
 	// pIdx == 0 corresponds to "Document" (root viewBox)
 	if pIdx <= 0 || len(s.Pages) == 0 {
@@ -116,7 +116,7 @@ func (s *Session) GetActiveBoundaryDimensions() (float64, float64) {
 		return 512, 512
 	}
 
-	if s.CropBoundaryMode == svg.BoundaryDrawing {
+	if s.CropBoundaryMode == inksvg.BoundaryDrawing {
 		rect := s.Document.GetDrawingRect()
 		return rect.Width, rect.Height
 	}
@@ -126,12 +126,12 @@ func (s *Session) GetActiveBoundaryDimensions() (float64, float64) {
 }
 
 // GetActiveBoundaryRect returns the bounding rectangle for the active crop boundary.
-func (s *Session) GetActiveBoundaryRect(frameIndex int) svg.Rect {
+func (s *Session) GetActiveBoundaryRect(frameIndex int) inksvg.Rect {
 	if s.Document == nil {
-		return svg.Rect{X: 0, Y: 0, Width: 512, Height: 512}
+		return inksvg.Rect{X: 0, Y: 0, Width: 512, Height: 512}
 	}
 
-	if s.CropBoundaryMode == svg.BoundaryDrawing {
+	if s.CropBoundaryMode == inksvg.BoundaryDrawing {
 		return s.Document.GetDrawingRect()
 	}
 
@@ -141,9 +141,9 @@ func (s *Session) GetActiveBoundaryRect(frameIndex int) svg.Rect {
 // GetPreviewBoundaryRect returns the base canvas boundary for interactive preview rendering.
 // It always returns the full unclipped Drawing bounding box so animators can see all objects
 // entering and exiting the frame, with the active crop boundary overlaid.
-func (s *Session) GetPreviewBoundaryRect() svg.Rect {
+func (s *Session) GetPreviewBoundaryRect() inksvg.Rect {
 	if s.Document == nil {
-		return svg.Rect{X: 0, Y: 0, Width: 512, Height: 512}
+		return inksvg.Rect{X: 0, Y: 0, Width: 512, Height: 512}
 	}
 	return s.Document.GetDrawingRect()
 }
@@ -230,7 +230,7 @@ func (s *Session) RerenderAllFrames() error {
 		return nil
 	}
 
-	var frames []svg.RenderedFrame
+	var frames []inksvg.RenderedFrame
 
 	previewRect := s.GetPreviewBoundaryRect()
 	boundW := previewRect.Width
@@ -255,7 +255,7 @@ func (s *Session) RerenderAllFrames() error {
 	type layerJob struct {
 		frameIdx int
 		layerIdx int
-		layer    svg.Layer
+		layer    inksvg.Layer
 	}
 	var jobs []layerJob
 	for i, layer := range s.Layers {
@@ -269,21 +269,21 @@ func (s *Session) RerenderAllFrames() error {
 		})
 	}
 
-	frames = make([]svg.RenderedFrame, len(jobs))
+	frames = make([]inksvg.RenderedFrame, len(jobs))
 	err := parallel.Run(len(jobs), func(idx int) error {
 		j := jobs[idx]
-		frameSVG, err := svg.BuildLayerFrameSVG(s.Document, j.layer.ID, s.PinnedLayers, previewRect)
+		frameSVG, err := inksvg.BuildLayerFrameSVG(s.Document, j.layer.ID, s.PinnedLayers, previewRect)
 		if err != nil {
 			return fmt.Errorf("failed to build frame for layer %s: %w", j.layer.Label, err)
 		}
 
-		img, err := svg.RenderSVGToRGBA(frameSVG, renderW, renderH)
+		img, err := inksvg.RenderSVGToRGBA(frameSVG, renderW, renderH)
 		if err != nil {
 			return fmt.Errorf("failed to render layer %s: %w", j.layer.Label, err)
 		}
 
 		dur := j.layer.EffectiveDuration(s.ExportOptions.DefaultDurationMs)
-		frames[j.frameIdx] = svg.RenderedFrame{
+		frames[j.frameIdx] = inksvg.RenderedFrame{
 			Index:      j.layerIdx,
 			Label:      j.layer.Label,
 			Image:      img,
@@ -389,7 +389,7 @@ func (s *Session) RenderExportFrames() ([]gif.FrameInput, error) {
 	type layerExportJob struct {
 		frameIdx int
 		layerIdx int
-		layer    svg.Layer
+		layer    inksvg.Layer
 	}
 	var jobs []layerExportJob
 	for i, layer := range s.Layers {
@@ -406,12 +406,12 @@ func (s *Session) RenderExportFrames() ([]gif.FrameInput, error) {
 	frameInputs := make([]gif.FrameInput, len(jobs))
 	err := parallel.Run(len(jobs), func(idx int) error {
 		j := jobs[idx]
-		frameSVG, err := svg.BuildLayerFrameSVG(s.Document, j.layer.ID, s.PinnedLayers, boundaryRect)
+		frameSVG, err := inksvg.BuildLayerFrameSVG(s.Document, j.layer.ID, s.PinnedLayers, boundaryRect)
 		if err != nil {
 			return fmt.Errorf("failed to build frame for layer %s: %w", j.layer.Label, err)
 		}
 
-		rawImg, err := svg.RenderSVGToRGBA(frameSVG, fitW, fitH)
+		rawImg, err := inksvg.RenderSVGToRGBA(frameSVG, fitW, fitH)
 		if err != nil {
 			return fmt.Errorf("failed to rasterize layer %s at %dx%d: %w", j.layer.Label, fitW, fitH, err)
 		}

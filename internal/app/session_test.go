@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"inkanim/internal/svg"
+	"inkanim/pkg/inksvg"
 )
 
 func TestSessionGlobalAndOverrideDurations(t *testing.T) {
@@ -239,15 +239,15 @@ func TestSessionCropBoundaryModes(t *testing.T) {
 
 	// multipage_walk.svg has 2 pages (each 256x256), doc is 560x256
 	// Default mode is always ModeLayers, CropBoundaryMode is BoundaryDrawing
-	if sess.CurrentMode != svg.ModeLayers {
+	if sess.CurrentMode != inksvg.ModeLayers {
 		t.Errorf("expected default mode layers, got %s", sess.CurrentMode)
 	}
-	if sess.CropBoundaryMode != svg.BoundaryDrawing {
+	if sess.CropBoundaryMode != inksvg.BoundaryDrawing {
 		t.Errorf("expected default boundary mode drawing, got %s", sess.CropBoundaryMode)
 	}
 
 	// Switch to Page boundary mode for Page 1 (pageIndex 1 = Page 1)
-	if err := sess.SetCropBoundary(svg.BoundaryPage, 1); err != nil {
+	if err := sess.SetCropBoundary(inksvg.BoundaryPage, 1); err != nil {
 		t.Fatalf("SetCropBoundary page 1 failed: %v", err)
 	}
 	// Active boundary dimensions should be 256x256
@@ -257,7 +257,7 @@ func TestSessionCropBoundaryModes(t *testing.T) {
 	}
 
 	// Switch to Document boundary in Page mode (pageIndex 0 = Document)
-	if err := sess.SetCropBoundary(svg.BoundaryPage, 0); err != nil {
+	if err := sess.SetCropBoundary(inksvg.BoundaryPage, 0); err != nil {
 		t.Fatalf("SetCropBoundary page/document failed: %v", err)
 	}
 	docW, docH := sess.GetActiveBoundaryDimensions()
@@ -266,7 +266,7 @@ func TestSessionCropBoundaryModes(t *testing.T) {
 	}
 
 	// Switch to Drawing boundary mode
-	if err := sess.SetCropBoundary(svg.BoundaryDrawing, 0); err != nil {
+	if err := sess.SetCropBoundary(inksvg.BoundaryDrawing, 0); err != nil {
 		t.Fatalf("SetCropBoundary drawing failed: %v", err)
 	}
 	drawW, drawH := sess.GetActiveBoundaryDimensions()
@@ -283,10 +283,10 @@ func TestSessionCropBoundaryModes(t *testing.T) {
 	if err := sessLayers.LoadSVG(charSVGPath); err != nil {
 		t.Fatalf("LoadSVG character_walk failed: %v", err)
 	}
-	if sessLayers.CurrentMode != svg.ModeLayers {
+	if sessLayers.CurrentMode != inksvg.ModeLayers {
 		t.Errorf("expected layers mode, got %s", sessLayers.CurrentMode)
 	}
-	if sessLayers.CropBoundaryMode != svg.BoundaryDrawing {
+	if sessLayers.CropBoundaryMode != inksvg.BoundaryDrawing {
 		t.Errorf("expected drawing boundary for layers, got %s", sessLayers.CropBoundaryMode)
 	}
 
@@ -306,7 +306,7 @@ func TestSessionCropBoundaryModes(t *testing.T) {
 	}
 
 	// Select Page mode with Document (index 0)
-	if err := sessBounce.SetCropBoundary(svg.BoundaryPage, 0); err != nil {
+	if err := sessBounce.SetCropBoundary(inksvg.BoundaryPage, 0); err != nil {
 		t.Fatalf("SetCropBoundary Page Document failed: %v", err)
 	}
 	bDocW, bDocH := sessBounce.GetActiveBoundaryDimensions()
@@ -315,7 +315,7 @@ func TestSessionCropBoundaryModes(t *testing.T) {
 	}
 
 	// Select Page mode with Page 2 (index 2: Focus 160x160)
-	if err := sessBounce.SetCropBoundary(svg.BoundaryPage, 2); err != nil {
+	if err := sessBounce.SetCropBoundary(inksvg.BoundaryPage, 2); err != nil {
 		t.Fatalf("SetCropBoundary Page 2 failed: %v", err)
 	}
 	bP2W, bP2H := sessBounce.GetActiveBoundaryDimensions()
@@ -336,7 +336,7 @@ func TestHydrateSessionLoadAndPreviewBounds(t *testing.T) {
 	}
 
 	// 1. Initial load for layered SVG is in Drawing mode
-	if sess.CropBoundaryMode != svg.BoundaryDrawing {
+	if sess.CropBoundaryMode != inksvg.BoundaryDrawing {
 		t.Errorf("expected BoundaryDrawing on load, got %s", sess.CropBoundaryMode)
 	}
 
@@ -348,7 +348,7 @@ func TestHydrateSessionLoadAndPreviewBounds(t *testing.T) {
 	}
 
 	// 3. In Page mode with Document (index 0), active boundary is Document (210x297)
-	if err := sess.SetCropBoundary(svg.BoundaryPage, 0); err != nil {
+	if err := sess.SetCropBoundary(inksvg.BoundaryPage, 0); err != nil {
 		t.Fatalf("SetCropBoundary Page Document failed: %v", err)
 	}
 	activeRect := sess.GetActiveBoundaryRect(0)
