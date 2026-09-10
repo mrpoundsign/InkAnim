@@ -70,10 +70,10 @@ func PreprocessSVG(data []byte) ([]byte, error) {
 		case xml.StartElement:
 			name := elem.Name.Local
 
-			// Prune hidden elements, groups, and layers (Issue #61)
-			if isElementHidden(name, elem.Attr) {
+			// Prune hidden elements, groups, layers, and markers (oksvg crashes on some marker paths, and doesn't render them anyway)
+			if name == "marker" || isElementHidden(name, elem.Attr) {
 				if err := decoder.Skip(); err != nil {
-					return nil, fmt.Errorf("xml skip hidden element %s: %w", name, err)
+					return nil, fmt.Errorf("xml skip element %s: %w", name, err)
 				}
 				continue
 			}
@@ -439,6 +439,16 @@ func PreprocessSVG(data []byte) ([]byte, error) {
 						elem.Attr[ryIdx].Value = rxVal
 					} else {
 						elem.Attr = append(elem.Attr, xml.Attr{Name: xml.Name{Local: "ry"}, Value: rxVal})
+					}
+				}
+			}
+
+			// Normalize transform attributes on non-group elements (oksvg bug workaround for 3-param rotate and commas)
+			if name != "g" {
+				for i, a := range elem.Attr {
+					if a.Name.Local == "transform" {
+						parsed := parseTransform(a.Value)
+						elem.Attr[i].Value = fmt.Sprintf("matrix(%f %f %f %f %f %f)", parsed.A, parsed.B, parsed.C, parsed.D, parsed.E, parsed.F)
 					}
 				}
 			}
