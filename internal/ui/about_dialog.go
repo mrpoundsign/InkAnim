@@ -49,6 +49,13 @@ InkAnim incorporates the following open-source libraries and components:
 
 ---
 
+### DejaVu Fonts (Embedded Vector Typography)
+- **License**: DejaVu Fonts License (Bitstream Vera & Arev Fonts Copyright)
+- **URL**: https://dejavu-fonts.github.io
+- **Copyright**: (c) 2003 by Bitstream, Inc. & (c) 2006 by Tavmjong Bah. All rights reserved.
+
+---
+
 ### Go Standard Library
 - **License**: BSD 3-Clause License
 - **URL**: https://golang.org

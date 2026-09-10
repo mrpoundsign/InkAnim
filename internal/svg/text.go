@@ -2,6 +2,7 @@ package svg
 
 import (
 	"bytes"
+	_ "embed"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -18,6 +19,49 @@ import (
 	"golang.org/x/image/font/sfnt"
 	"golang.org/x/image/math/fixed"
 )
+
+var (
+	//go:embed fonts/DejaVuSans.ttf
+	dejavuSansTTF []byte
+
+	//go:embed fonts/DejaVuSans-Bold.ttf
+	dejavuSansBoldTTF []byte
+
+	embeddedDejaVuRegular *sfnt.Font
+	embeddedDejaVuBold    *sfnt.Font
+	embeddedDejaVuOnce    sync.Once
+)
+
+func initEmbeddedDejaVu() {
+	embeddedDejaVuOnce.Do(func() {
+		if len(dejavuSansTTF) > 0 {
+			f, err := sfnt.Parse(dejavuSansTTF)
+			if err == nil {
+				embeddedDejaVuRegular = f
+			}
+		}
+		if len(dejavuSansBoldTTF) > 0 {
+			f, err := sfnt.Parse(dejavuSansBoldTTF)
+			if err == nil {
+				embeddedDejaVuBold = f
+			}
+		}
+	})
+}
+
+func loadEmbeddedDejaVu(bold bool) *sfnt.Font {
+	initEmbeddedDejaVu()
+	if bold {
+		if embeddedDejaVuBold != nil {
+			return embeddedDejaVuBold
+		}
+		return embeddedDejaVuRegular
+	}
+	if embeddedDejaVuRegular != nil {
+		return embeddedDejaVuRegular
+	}
+	return embeddedDejaVuBold
+}
 
 // FontManager caches parsed SFNT fonts to avoid disk and parse overhead.
 type FontManager struct {
@@ -117,6 +161,10 @@ func (fm *FontManager) ResolveFont(family string, bold, italic bool) *sfnt.Font 
 		f = fm.findSystemFont("sans-serif", bold, italic)
 	}
 	if f == nil {
+		// Fallback to embedded DejaVu Sans
+		f = loadEmbeddedDejaVu(bold)
+	}
+	if f == nil {
 		// Ultimate fallback to embedded Fyne cross-platform fonts
 		f = fm.loadEmbeddedFont(bold)
 	}
@@ -204,6 +252,11 @@ func (fm *FontManager) findSystemFont(family string, bold, italic bool) *sfnt.Fo
 	candidates = append(candidates, normFam)
 
 	for _, cand := range candidates {
+		if strings.HasPrefix(cand, "dejavusans") && !strings.Contains(cand, "mono") && !strings.Contains(cand, "serif") {
+			if font := loadEmbeddedDejaVu(bold); font != nil {
+				return font
+			}
+		}
 		if path, ok := fm.fileMap[cand]; ok {
 			if font := fm.loadFontFromFile(path); font != nil {
 				return font
