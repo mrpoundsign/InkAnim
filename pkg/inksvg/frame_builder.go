@@ -291,3 +291,152 @@ func removeStyleProp(style, prop string) string {
 	}
 	return strings.Join(kept, ";")
 }
+
+// BuildTimelineFrameSVG generates an SVG frame for a timeline animation.
+// It hides any path with a "Movement" label and injects translate transforms into animated groups.
+func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]byte, error) {
+	if boundary.Width <= 0 || boundary.Height <= 0 {
+		boundary = doc.GetDocumentRect()
+	}
+
+	decoder := xml.NewDecoder(bytes.NewReader(doc.RawContent))
+	var buf bytes.Buffer
+	encoder := xml.NewEncoder(&buf)
+	var processedRoot bool
+
+	// Map GroupID to MotionPath for quick lookup
+	motionMap := make(map[string]MotionPath)
+	for _, mp := range doc.MotionPaths {
+		motionMap[mp.GroupID] = mp
+	}
+
+	for {
+		token, err := decoder.Token()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return nil, fmt.Errorf("xml transform error: %w", err)
+		}
+
+		switch elem := token.(type) {
+		case xml.StartElement:
+			if elem.Name.Local == "svg" && !processedRoot {
+				processedRoot = true
+				applyBoundaryToSVG(&elem, boundary)
+				if err := encoder.EncodeToken(elem); err != nil {
+					return nil, err
+				}
+				continue
+			}
+
+			// Hide the motion paths themselves
+			if elem.Name.Local == "path" {
+				var isMotionPath bool
+				for _, attr := range elem.Attr {
+					if attr.Name.Local == "label" && strings.HasPrefix(attr.Value, "Movement {") {
+						isMotionPath = true
+						break
+					}
+				}
+				if isMotionPath {
+					ensureStyleProp(&elem, "display", "none")
+					if err := encoder.EncodeToken(elem); err != nil {
+						return nil, err
+					}
+					continue
+				}
+			}
+
+			// Apply translation and visibility to animated groups
+			if elem.Name.Local == "g" {
+				var id string
+				for _, attr := range elem.Attr {
+					if attr.Name.Local == "id" {
+						id = attr.Value
+						break
+					}
+				}
+				if mp, ok := motionMap[id]; ok {
+					startF := mp.Config.StartFrame
+					endF := mp.Config.EndFrame
+					maxF := len(doc.Layers)
+					if mp.Config.IsAll {
+						startF = 1
+						endF = maxF
+					}
+
+					// Hide if outside range
+					frame1Idx := frameIndex + 1 // 1-based index for logic
+					if frame1Idx < startF || frame1Idx > endF {
+						ensureStyleProp(&elem, "display", "none")
+					} else {
+						// Calculate t
+						duration := endF - startF
+						t := 0.0
+						if duration > 0 {
+							t = float64(frame1Idx-startF) / float64(duration)
+						}
+						t = ApplyEasing(t, mp.Config.Ease)
+
+						dx, dy, err := EvaluatePathAt(mp.PathData, t)
+						if err == nil && (dx != 0 || dy != 0) {
+							// Inject transform
+							transformFound := false
+							newTransform := fmt.Sprintf("translate(%f, %f)", dx, dy)
+							for i, attr := range elem.Attr {
+								if attr.Name.Local == "transform" {
+									elem.Attr[i].Value = newTransform + " " + attr.Value
+									transformFound = true
+									break
+								}
+							}
+							if !transformFound {
+								elem.Attr = append(elem.Attr, xml.Attr{
+									Name:  xml.Name{Local: "transform"},
+									Value: newTransform,
+								})
+							}
+						}
+					}
+				}
+			}
+
+			if err := encoder.EncodeToken(elem); err != nil {
+				return nil, err
+			}
+
+		default:
+			if err := encoder.EncodeToken(token); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	if err := encoder.Flush(); err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
+}
+
+func ensureStyleProp(elem *xml.StartElement, prop, value string) {
+	var foundStyle bool
+	for i, attr := range elem.Attr {
+		if attr.Name.Local == "style" {
+			foundStyle = true
+			cleaned := removeStyleProp(attr.Value, prop)
+			if cleaned != "" {
+				elem.Attr[i].Value = cleaned + ";" + prop + ":" + value
+			} else {
+				elem.Attr[i].Value = prop + ":" + value
+			}
+		}
+	}
+	if !foundStyle {
+		elem.Attr = append(elem.Attr, xml.Attr{
+			Name:  xml.Name{Local: "style"},
+			Value: prop + ":" + value,
+		})
+	}
+}

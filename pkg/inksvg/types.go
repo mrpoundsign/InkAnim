@@ -8,8 +8,9 @@ import (
 type FrameMode string
 
 const (
-	ModeLayers FrameMode = "layers"
-	ModePages  FrameMode = "pages"
+	ModeLayers   FrameMode = "layers"
+	ModePages    FrameMode = "pages"
+	ModeTimeline FrameMode = "timeline"
 )
 
 // BoundaryMode specifies the crop boundary used for framing animation.

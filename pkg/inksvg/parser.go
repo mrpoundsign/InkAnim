@@ -164,11 +164,32 @@ func ParseSVG(data []byte) (*SVGDocument, error) {
 		}
 	}
 
-	// Default mode is always ModeLayers (pages serve as artboard crop boundaries)
+	// Default mode is ModeLayers (pages serve as artboard crop boundaries)
 	doc.DefaultMode = ModeLayers
 
-	// Fallback: if no explicit layers were found, treat the document as a single layer
-	if len(doc.Layers) == 0 {
+	// Check if this is a timeline animation
+	maxFrame := 0
+	for _, mp := range doc.MotionPaths {
+		if mp.Config.EndFrame > maxFrame {
+			maxFrame = mp.Config.EndFrame
+		}
+	}
+
+	if maxFrame > 0 {
+		doc.DefaultMode = ModeTimeline
+		doc.Layers = make([]Layer, maxFrame)
+		for i := 0; i < maxFrame; i++ {
+			doc.Layers[i] = Layer{
+				ID:         fmt.Sprintf("timeline_frame_%d", i+1),
+				Label:      fmt.Sprintf("Frame %d", i+1),
+				Index:      i,
+				Visible:    true,
+				IsActive:   true,
+				DurationMs: 100,
+			}
+		}
+	} else if len(doc.Layers) == 0 {
+		// Fallback: if no explicit layers were found, treat the document as a single layer
 		doc.Layers = []Layer{
 			{
 				ID:         "layer_default",
