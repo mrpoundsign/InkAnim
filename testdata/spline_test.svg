@@ -15,6 +15,26 @@
      id="defs1">
     <marker
        style="overflow:visible"
+       id="marker4"
+       refX="0"
+       refY="0"
+       orient="auto-start-reverse"
+       inkscape:stockid="Wide arrow"
+       markerWidth="1"
+       markerHeight="1"
+       viewBox="0 0 1 1"
+       inkscape:isstock="true"
+       inkscape:collect="always"
+       preserveAspectRatio="xMidYMid">
+      <path
+         style="fill:none;stroke:context-stroke;stroke-width:1;stroke-linecap:butt"
+         d="M 3,-3 0,0 3,3"
+         transform="rotate(180,0.125,0)"
+         sodipodi:nodetypes="ccc"
+         id="path4" />
+    </marker>
+    <marker
+       style="overflow:visible"
        id="ArrowWide"
        refX="0"
        refY="0"
@@ -47,14 +67,14 @@
      inkscape:showpageshadow="2"
      inkscape:deskcolor="#d1d1d1"
      inkscape:zoom="1.0898438"
-     inkscape:cx="255.54122"
-     inkscape:cy="256"
+     inkscape:cx="255.54121"
+     inkscape:cy="256.91755"
      inkscape:window-width="1332"
      inkscape:window-height="803"
      inkscape:window-x="0"
      inkscape:window-y="0"
      inkscape:window-maximized="1"
-     inkscape:current-layer="g_rocket" />
+     inkscape:current-layer="layer2" />
   <g
      inkscape:groupmode="layer"
      id="layer1"
@@ -75,7 +95,35 @@
          style="fill:none;stroke:#0000ff;stroke-width:3px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1;marker-end:url(#ArrowWide)"
          d="M 75,75 C 250,-50 400,200 450,450"
          id="path_motion"
-         inkscape:label="Movement {f: 1-60; ease: in-out}" />
+         inkscape:label="Movement {f: 1-20; ease: in-out}" />
+    </g>
+  </g>
+  <g
+     inkscape:groupmode="layer"
+     id="layer2"
+     inkscape:label="Layer 2"
+     style="fill:#0000ff">
+    <g
+       id="g4">
+      <circle
+         style="fill:#000080;stroke:#00ffff"
+         id="path2"
+         cx="403.26883"
+         cy="128.91756"
+         r="33.491039" />
+      <path
+         sodipodi:type="spiral"
+         style="fill:none;fill-rule:evenodd;stroke:#000000;marker-end:url(#marker4)"
+         id="path3"
+         sodipodi:cx="250.49461"
+         sodipodi:cy="210.12186"
+         sodipodi:expansion="1"
+         sodipodi:revolution="3"
+         sodipodi:radius="150.89653"
+         sodipodi:argument="-17.947803"
+         sodipodi:t0="0"
+         d="m 250.49461,210.12186 c 4.69253,5.93465 -5.68467,9.25338 -9.86379,7.79929 -11.32516,-3.94051 -11.45357,-19.05157 -5.73479,-27.52688 10.22956,-15.16034 32.11702,-14.51818 45.18996,-3.67029 19.18507,15.91972 17.69718,45.36822 1.60579,62.85305 -21.44728,23.30451 -58.68648,20.92632 -80.51613,-0.45871 -27.47038,-26.91088 -24.18169,-72.03697 2.52321,-98.17922 32.34321,-31.66176 85.40567,-27.4523 115.8423,4.58771 35.86851,37.75805 30.73249,98.78573 -6.65221,133.50538 -43.16212,40.08522 -112.17337,34.01907 -151.16847,-8.7167 -44.3087,-48.55911 -37.31011,-125.56634 10.78121,-168.83156 53.9512,-48.537029 138.96318,-40.60439 186.49464,12.84571 52.76892,59.33975 43.9011,152.36295 -14.91021,204.15772"
+         inkscape:label="Movement {f: 1-10}" />
     </g>
   </g>
 </svg>
