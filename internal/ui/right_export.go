@@ -317,54 +317,11 @@ func (p *RightExportPanel) validateTwitch() {
 		}
 	}
 
-	var activePixels float64
-	if p.session.ExportOptions.ExportSquare {
-		// MakeSquare preserves aspect ratio and adds transparent padding
-		scaleX := float64(w) / boundW
-		scaleY := float64(h) / boundH
-		scale := scaleX
-		if scaleY < scaleX {
-			scale = scaleY
-		}
-		activePixels = (boundW * scale) * (boundH * scale)
-	} else {
-		// Custom resize just stretches
-		activePixels = float64(w * h)
-	}
-	
-	totalPixels := float64(w * h)
-	if activePixels > totalPixels {
-		activePixels = totalPixels
-	}
-	paddingPixels := totalPixels - activePixels
-
-	// SVG vector shapes compress extremely well with LZW since they are mostly solid colors (~0.015 bytes/px).
-	// However, Floyd-Steinberg dithering introduces high-frequency noise which defeats LZW compression (~0.08 bytes/px).
-	activePixelMultiplier := 0.015
-	if p.session.ExportOptions.Dither {
-		activePixelMultiplier = 0.08
-	}
-	paddingPixelMultiplier := 0.001
-
-	perFrameBytes := 600.0 + (activePixels * activePixelMultiplier) + (paddingPixels * paddingPixelMultiplier)
-	estBytes := int64(float64(frames) * perFrameBytes)
-
-	// Adjust estimate based on palette size (e.g. 32 colors is ~50% size of 256 colors)
-	numColors := p.session.ExportOptions.NumColors
-	if numColors > 0 && numColors < 256 {
-		colorRatio := float64(numColors) / 256.0
-		scaleFactor := 0.4 + 0.6*colorRatio
-		estBytes = int64(float64(estBytes) * scaleFactor)
-	}
-	if estBytes < 1024 {
-		estBytes = 1024
-	}
-
 	if p.exportBtn != nil {
-		p.exportBtn.SetText(fmt.Sprintf("Export Animated GIF (%s)...", formatEstimatedSize(estBytes)))
+		p.exportBtn.SetText("Export Animated GIF...")
 	}
 
-	res := gif.ValidateTwitchEmote(frames, totalDurMs, w, h, estBytes)
+	res := gif.ValidateTwitchEmote(frames, totalDurMs, w, h)
 	if res.IsValid && len(res.Warnings) == 0 {
 		p.twitchStatusLabel.SetText(fmt.Sprintf("Twitch: %dx%d - %d frames - %0.1fs", w, h, frames, float64(totalDurMs)/1000.0))
 	} else {
