@@ -334,7 +334,7 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 			if elem.Name.Local == "path" {
 				var isMotionPath bool
 				for _, attr := range elem.Attr {
-					if attr.Name.Local == "label" && strings.HasPrefix(attr.Value, "Movement {") {
+					if attr.Name.Local == "label" && strings.HasPrefix(attr.Value, "Motion {") {
 						isMotionPath = true
 						break
 					}
@@ -382,6 +382,10 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 						t = ApplyEasing(t, mp.Config.Ease)
 
 						dx, dy, err := EvaluatePathAt(mp.PathData, t)
+						if mp.Config.Type == "none" {
+							dx, dy = 0, 0
+							err = nil
+						}
 						if err == nil && (dx != 0 || dy != 0) {
 							// Inject transform
 							transformFound := false
