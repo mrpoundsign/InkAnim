@@ -194,21 +194,15 @@ func TestWriteGIFToWriter(t *testing.T) {
 
 func TestValidateTwitchEmote(t *testing.T) {
 	// Valid square emote
-	res := ValidateTwitchEmote(10, 1000, 112, 112, 200000)
+	res := ValidateTwitchEmote(10, 1000, 112, 112)
 	if !res.IsValid || len(res.Errors) > 0 {
 		t.Errorf("expected valid emote, got: %+v", res)
 	}
 
 	// Non-square emote
-	resNonSquare := ValidateTwitchEmote(10, 1000, 120, 112, 200000)
+	resNonSquare := ValidateTwitchEmote(10, 1000, 120, 112)
 	if resNonSquare.IsValid {
 		t.Errorf("expected invalid for non-square")
-	}
-
-	// Over 1MB
-	resOversized := ValidateTwitchEmote(10, 1000, 512, 512, 1200000)
-	if resOversized.IsValid {
-		t.Errorf("expected invalid for oversized file")
 	}
 }
 

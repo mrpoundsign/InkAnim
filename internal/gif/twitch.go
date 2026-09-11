@@ -12,7 +12,7 @@ type TwitchValidationResult struct {
 }
 
 // ValidateTwitchEmote validates frames and options against Twitch animated emote requirements.
-func ValidateTwitchEmote(frameCount int, totalDurationMs int, width, height int, estimatedSizeBytes int64) TwitchValidationResult {
+func ValidateTwitchEmote(frameCount int, totalDurationMs int, width, height int) TwitchValidationResult {
 	res := TwitchValidationResult{
 		IsValid: true,
 	}
@@ -31,14 +31,6 @@ func ValidateTwitchEmote(frameCount int, totalDurationMs int, width, height int,
 	if width > 4096 || height > 4096 {
 		res.Errors = append(res.Errors, fmt.Sprintf("Resolution %dx%d exceeds Twitch maximum of 4096x4096", width, height))
 		res.IsValid = false
-	}
-
-	// 3. File size limit (< 1MB = 1048576 bytes)
-	if estimatedSizeBytes > 1048576 {
-		res.Errors = append(res.Errors, fmt.Sprintf("File size %0.2f MB exceeds Twitch 1.0 MB limit", float64(estimatedSizeBytes)/(1024*1024)))
-		res.IsValid = false
-	} else if estimatedSizeBytes > 850000 {
-		res.Warnings = append(res.Warnings, fmt.Sprintf("File size %0.2f MB is close to the 1.0 MB limit", float64(estimatedSizeBytes)/(1024*1024)))
 	}
 
 	// 4. Frame count (max 60 frames)
