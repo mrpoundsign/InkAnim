@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
@@ -263,12 +264,42 @@ func (p *RightExportPanel) validateTwitch() {
 	boundW, boundH := p.session.GetActiveBoundaryDimensions()
 	w := int(boundW)
 	h := int(boundH)
+	
 	if p.session.ExportOptions.ExportSquare {
-		maxSide := max(h, w)
-		if p.session.ExportOptions.SquareSize > 0 {
-			maxSide = p.session.ExportOptions.SquareSize
+		targetSquare := p.session.ExportOptions.SquareSize
+		if targetSquare <= 0 {
+			maxSide := boundW
+			if boundH > maxSide { maxSide = boundH }
+			switch {
+			case maxSide < 512: targetSquare = 512
+			case maxSide > 4096: targetSquare = 4096
+			default: targetSquare = int(math.Round(maxSide))
+			}
 		}
-		w, h = maxSide, maxSide
+		if targetSquare > 4096 {
+			targetSquare = 4096
+		}
+		w, h = targetSquare, targetSquare
+	} else {
+		if p.session.ExportOptions.TargetWidth > 0 && p.session.ExportOptions.TargetHeight > 0 {
+			w = p.session.ExportOptions.TargetWidth
+			h = p.session.ExportOptions.TargetHeight
+			if w > 4096 { w = 4096 }
+			if h > 4096 { h = 4096 }
+		} else {
+			maxSide := boundW
+			if boundH > maxSide { maxSide = boundH }
+			switch {
+			case maxSide < 512:
+				scale := 512.0 / maxSide
+				w = int(math.Round(boundW * scale))
+				h = int(math.Round(boundH * scale))
+			case maxSide > 4096:
+				scale := 4096.0 / maxSide
+				w = int(math.Round(boundW * scale))
+				h = int(math.Round(boundH * scale))
+			}
+		}
 	}
 
 	totalDurMs := 0
@@ -286,16 +317,36 @@ func (p *RightExportPanel) validateTwitch() {
 		}
 	}
 
-	// Realistic GIF compression estimation:
-	// Active artwork pixels compress to ~0.08 bytes/px with LZW; transparent padding compresses to ~0.005 bytes/px.
-	activePixels := boundW * boundH
+	var activePixels float64
+	if p.session.ExportOptions.ExportSquare {
+		// MakeSquare preserves aspect ratio and adds transparent padding
+		scaleX := float64(w) / boundW
+		scaleY := float64(h) / boundH
+		scale := scaleX
+		if scaleY < scaleX {
+			scale = scaleY
+		}
+		activePixels = (boundW * scale) * (boundH * scale)
+	} else {
+		// Custom resize just stretches
+		activePixels = float64(w * h)
+	}
+	
 	totalPixels := float64(w * h)
 	if activePixels > totalPixels {
 		activePixels = totalPixels
 	}
 	paddingPixels := totalPixels - activePixels
 
-	perFrameBytes := 600.0 + (activePixels * 0.08) + (paddingPixels * 0.005)
+	// SVG vector shapes compress extremely well with LZW since they are mostly solid colors (~0.015 bytes/px).
+	// However, Floyd-Steinberg dithering introduces high-frequency noise which defeats LZW compression (~0.08 bytes/px).
+	activePixelMultiplier := 0.015
+	if p.session.ExportOptions.Dither {
+		activePixelMultiplier = 0.08
+	}
+	paddingPixelMultiplier := 0.001
+
+	perFrameBytes := 600.0 + (activePixels * activePixelMultiplier) + (paddingPixels * paddingPixelMultiplier)
 	estBytes := int64(float64(frames) * perFrameBytes)
 
 	// Adjust estimate based on palette size (e.g. 32 colors is ~50% size of 256 colors)
