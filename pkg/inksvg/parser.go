@@ -426,7 +426,7 @@ func parseDimension(s string) float64 {
 }
 
 func parseMotionConfig(label string) (MotionConfig, bool) {
-	idx := strings.Index(label, "Movement {")
+	idx := strings.Index(label, "Motion {")
 	if idx == -1 {
 		return MotionConfig{}, false
 	}
@@ -434,7 +434,7 @@ func parseMotionConfig(label string) (MotionConfig, bool) {
 	if endIdx == -1 {
 		return MotionConfig{}, false
 	}
-	configStr := label[idx+10 : idx+endIdx]
+	configStr := label[idx+8 : idx+endIdx]
 	parts := strings.Split(configStr, ";")
 
 	config := MotionConfig{
@@ -451,6 +451,8 @@ func parseMotionConfig(label string) (MotionConfig, bool) {
 		switch k {
 		case "ease":
 			config.Ease = v
+		case "t":
+			config.Type = v
 		case "f":
 			if v == "all" {
 				config.IsAll = true

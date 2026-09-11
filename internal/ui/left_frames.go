@@ -227,14 +227,6 @@ func (p *LeftFramesPanel) Refresh() {
 		})
 		activeCheck.Checked = layer.IsActive
 
-		pinCheck := widget.NewCheck("Pin BG", func(checked bool) {
-			_ = p.session.ToggleLayerPinned(idx)
-			p.Refresh()
-			if p.onFramesChange != nil {
-				p.onFramesChange()
-			}
-		})
-		pinCheck.Checked = layer.IsPinned
 
 		var durEntry *commitEntry
 		isUpdatingDur := false
@@ -330,7 +322,6 @@ func (p *LeftFramesPanel) Refresh() {
 
 		topRow := container.NewHBox(
 			activeCheck,
-			pinCheck,
 		)
 		bottomRow := container.NewHBox(
 			container.NewGridWrap(fyne.NewSize(28, 28), upBtn),

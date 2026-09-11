@@ -795,7 +795,17 @@ func (p *CenterPreviewPanel) renderCurrentFrameLocked() {
 	}
 
 	curr := frames[p.currentIdx]
-	p.frameLabel.SetText(fmt.Sprintf("Frame %d of %d - %s - %dms", p.currentIdx+1, len(frames), curr.Label, curr.DurationMs))
+
+	displayIdx := p.currentIdx
+	displayTotal := len(frames)
+	if p.pingPong && len(frames) >= 3 {
+		displayTotal = len(frames)*2 - 2
+		if p.pingPongDir < 0 {
+			displayIdx = displayTotal - p.currentIdx
+		}
+	}
+
+	p.frameLabel.SetText(fmt.Sprintf("Frame %d of %d - %s - %dms", displayIdx+1, displayTotal, curr.Label, curr.DurationMs))
 
 	cached := p.cachedFrames[p.currentIdx]
 

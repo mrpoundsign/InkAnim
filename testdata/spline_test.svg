@@ -6,7 +6,7 @@
    version="1.1"
    id="svg5"
    sodipodi:docname="spline_test.svg"
-   inkscape:version="1.4 (e7c3feb100, 2024-10-09)"
+   inkscape:version="1.4.4 (dcaf3e7, 2026-05-05)"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns="http://www.w3.org/2000/svg"
@@ -67,14 +67,14 @@
      inkscape:showpageshadow="2"
      inkscape:deskcolor="#d1d1d1"
      inkscape:zoom="1.0898438"
-     inkscape:cx="255.54121"
+     inkscape:cx="255.99999"
      inkscape:cy="256.91755"
-     inkscape:window-width="1332"
-     inkscape:window-height="803"
-     inkscape:window-x="0"
-     inkscape:window-y="0"
-     inkscape:window-maximized="1"
-     inkscape:current-layer="g_rocket" />
+     inkscape:window-width="1261"
+     inkscape:window-height="1186"
+     inkscape:window-x="3788"
+     inkscape:window-y="257"
+     inkscape:window-maximized="0"
+     inkscape:current-layer="layer2" />
   <g
      inkscape:groupmode="layer"
      id="layer1"
@@ -93,7 +93,7 @@
       <!-- The movement path (a curved spline) with the magic label -->
       <path
          sodipodi:type="star"
-         style="fill:#000000"
+         style="fill:#800080"
          id="path5"
          inkscape:flatsided="false"
          sodipodi:sides="5"
@@ -110,10 +110,11 @@
          inkscape:transform-center-y="-0.85062739"
          transform="translate(19.268816,38.537633)" />
       <path
-         style="fill:none;stroke:#0000ff;stroke-width:3px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1;marker-end:url(#ArrowWide)"
-         d="M 75,75 C 250,-50 400,200 450,450"
+         style="display:inline;fill:none;fill-opacity:1;stroke:#0000ff;stroke-width:3px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1;marker-end:url(#ArrowWide)"
+         d="M 75,75 C 66.487464,684.05015 439.4552,-176.2007 465.59857,461.92831"
          id="path_motion"
-         inkscape:label="Movement {f: 1-20; ease: in-out}" />
+         inkscape:label="Movement {f: 1-20; ease: in-out}"
+         sodipodi:nodetypes="cc" />
     </g>
   </g>
   <g
@@ -124,7 +125,7 @@
     <g
        id="g4">
       <circle
-         style="fill:#000080;stroke:#00ffff"
+         style="fill:#ff8080;stroke:#00ffff"
          id="path2"
          cx="248.20073"
          cy="211.4982"

@@ -93,6 +93,7 @@ type MotionConfig struct {
 	EndFrame   int
 	IsAll      bool
 	Ease       string
+	Type       string
 }
 
 // MotionPath represents a movement spline and its config found inside a group.
