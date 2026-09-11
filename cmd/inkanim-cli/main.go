@@ -136,7 +136,7 @@ func run() error {
 			exportW, exportH = *width, *height
 		}
 
-		res := gif.ValidateTwitchEmote(effectiveFrames, totalDurationMs, exportW, exportH, sizeBytes)
+		res := gif.ValidateTwitchEmote(effectiveFrames, totalDurationMs, exportW, exportH)
 		fmt.Println("\n--- Twitch Emote Compatibility Check ---")
 		if res.IsValid && len(res.Warnings) == 0 {
 			fmt.Println("[OK] Fully compatible with Twitch Animated Emote requirements!")
