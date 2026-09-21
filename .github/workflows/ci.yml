@@ -11,6 +11,8 @@ on:
       - 'testdata/**'
       - '.golangci.yml'
       - '.github/workflows/ci.yml'
+      - '.github/workflows/release.yml'
+      - '.goreleaser.yaml'
   pull_request:
     branches:
       - main
@@ -21,6 +23,8 @@ on:
       - 'testdata/**'
       - '.golangci.yml'
       - '.github/workflows/ci.yml'
+      - '.github/workflows/release.yml'
+      - '.goreleaser.yaml'
   workflow_dispatch:
 
 permissions:
