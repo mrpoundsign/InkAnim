@@ -101,7 +101,9 @@ function Cross-Compile-CLI {
         @{ OS = "windows"; Arch = "amd64"; Out = (Join-Path $distDir "inkanim-cli-windows-amd64.exe") },
         @{ OS = "windows"; Arch = "arm64"; Out = (Join-Path $distDir "inkanim-cli-windows-arm64.exe") },
         @{ OS = "linux";   Arch = "amd64"; Out = (Join-Path $distDir "inkanim-cli-linux-amd64") },
-        @{ OS = "linux";   Arch = "arm64"; Out = (Join-Path $distDir "inkanim-cli-linux-arm64") }
+        @{ OS = "linux";   Arch = "arm64"; Out = (Join-Path $distDir "inkanim-cli-linux-arm64") },
+        @{ OS = "darwin";  Arch = "amd64"; Out = (Join-Path $distDir "inkanim-cli-darwin-amd64") },
+        @{ OS = "darwin";  Arch = "arm64"; Out = (Join-Path $distDir "inkanim-cli-darwin-arm64") }
     )
 
     $env:CGO_ENABLED = "0"

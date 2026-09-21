@@ -114,6 +114,8 @@ cross_compile_cli() {
         "windows/arm64/$BUILD_DIR/dist/inkanim-cli-windows-arm64.exe"
         "linux/amd64/$BUILD_DIR/dist/inkanim-cli-linux-amd64"
         "linux/arm64/$BUILD_DIR/dist/inkanim-cli-linux-arm64"
+        "darwin/amd64/$BUILD_DIR/dist/inkanim-cli-darwin-amd64"
+        "darwin/arm64/$BUILD_DIR/dist/inkanim-cli-darwin-arm64"
     )
 
     for item in "${targets[@]}"; do
