@@ -604,10 +604,10 @@ func PreprocessSVG(data []byte) ([]byte, error) {
 					if len(rewrites) > 0 {
 						for i, a := range elem.Attr {
 							elem.Attr[i].Value = reURLGrad.ReplaceAllStringFunc(a.Value, func(m string) string {
-								sub := reURLGrad.FindStringSubmatch(m)
-								if len(sub) == 2 {
-									if newID, ok := rewrites[sub[1]]; ok {
-										return fmt.Sprintf("url(#%s)", newID)
+								if len(m) > 6 {
+									id := m[5 : len(m)-1]
+									if newID, ok := rewrites[id]; ok {
+										return "url(#" + newID + ")"
 									}
 								}
 								return m
@@ -1718,4 +1718,3 @@ func DesugarPathArcs(d string) string {
 	}
 	return sb.String()
 }
-
