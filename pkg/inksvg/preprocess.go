@@ -22,6 +22,17 @@ import (
 //  7. Scales shape stroke-width by cumulative group transform scaling.
 //  8. Desugars paint-order: stroke fill (and stroke fill markers) into consecutive stroke-then-fill elements
 //     so renderers like oksvg (which lack native paint-order support) render strokes under fills correctly.
+type inheritedGroupStyle struct {
+	paintOrder     string
+	fill           string
+	stroke         string
+	strokeWidth    string
+	strokeLineCap  string
+	strokeLineJoin string
+	strokeOpacity  string
+	fillOpacity    string
+}
+
 func PreprocessSVG(data []byte) ([]byte, error) {
 	// First pass: extract document metadata, namedview background, and LPE definitions
 	meta := extractDocumentMetadata(data)
@@ -43,6 +54,7 @@ func PreprocessSVG(data []byte) ([]byte, error) {
 
 	transformStack := []Matrix2D{IdentityMatrix()}
 	fillRuleStack := []string{"nonzero"}
+	styleStack := []inheritedGroupStyle{{}}
 	var rootSVGSeen bool
 
 	for {
@@ -232,19 +244,82 @@ func PreprocessSVG(data []byte) ([]byte, error) {
 				continue
 			}
 
-			// Track 2D affine transformation matrices and fill-rules on nested <g> elements
+			// Track 2D affine transformation matrices, fill-rules, and cascading styles on nested <g> elements
 			if name == "g" {
 				curMatrix := transformStack[len(transformStack)-1]
 				curRule := fillRuleStack[len(fillRuleStack)-1]
+				curStyle := styleStack[len(styleStack)-1]
+
+				for _, attr := range elem.Attr {
+					if attr.Name.Local == "style" {
+						if po := extractCSSProp(attr.Value, "paint-order"); po != "" {
+							curStyle.paintOrder = po
+						}
+						if f := extractCSSProp(attr.Value, "fill"); f != "" {
+							curStyle.fill = f
+						}
+						if s := extractCSSProp(attr.Value, "stroke"); s != "" {
+							curStyle.stroke = s
+						}
+						if sw := extractCSSProp(attr.Value, "stroke-width"); sw != "" {
+							curStyle.strokeWidth = sw
+						}
+						if lc := extractCSSProp(attr.Value, "stroke-linecap"); lc != "" {
+							curStyle.strokeLineCap = lc
+						}
+						if lj := extractCSSProp(attr.Value, "stroke-linejoin"); lj != "" {
+							curStyle.strokeLineJoin = lj
+						}
+						if so := extractCSSProp(attr.Value, "stroke-opacity"); so != "" {
+							curStyle.strokeOpacity = so
+						}
+						if fo := extractCSSProp(attr.Value, "fill-opacity"); fo != "" {
+							curStyle.fillOpacity = fo
+						}
+					}
+				}
+
 				for i, attr := range elem.Attr {
-					if attr.Name.Local == "transform" {
+					switch attr.Name.Local {
+					case "transform":
 						parsed := parseTransform(attr.Value)
 						curMatrix = curMatrix.Multiply(parsed)
 						// Normalize transform to canonical matrix to avoid oksvg single-param scale(s, 0) bug
 						elem.Attr[i].Value = fmt.Sprintf("matrix(%f %f %f %f %f %f)", parsed.A, parsed.B, parsed.C, parsed.D, parsed.E, parsed.F)
-					}
-					if attr.Name.Local == "fill-rule" {
+					case "fill-rule":
 						curRule = strings.ToLower(strings.TrimSpace(attr.Value))
+					case "paint-order":
+						if attr.Value != "" {
+							curStyle.paintOrder = attr.Value
+						}
+					case "fill":
+						if attr.Value != "" {
+							curStyle.fill = attr.Value
+						}
+					case "stroke":
+						if attr.Value != "" {
+							curStyle.stroke = attr.Value
+						}
+					case "stroke-width":
+						if attr.Value != "" {
+							curStyle.strokeWidth = attr.Value
+						}
+					case "stroke-linecap":
+						if attr.Value != "" {
+							curStyle.strokeLineCap = attr.Value
+						}
+					case "stroke-linejoin":
+						if attr.Value != "" {
+							curStyle.strokeLineJoin = attr.Value
+						}
+					case "stroke-opacity":
+						if attr.Value != "" {
+							curStyle.strokeOpacity = attr.Value
+						}
+					case "fill-opacity":
+						if attr.Value != "" {
+							curStyle.fillOpacity = attr.Value
+						}
 					}
 					if attr.Name.Local == "style" {
 						if fr := extractCSSProp(attr.Value, "fill-rule"); fr != "" {
@@ -252,8 +327,31 @@ func PreprocessSVG(data []byte) ([]byte, error) {
 						}
 					}
 				}
+
+				if curStyle.stroke != "" && curStyle.stroke != "none" {
+					if curStyle.strokeLineJoin == "" {
+						curStyle.strokeLineJoin = "miter"
+					}
+					var gHasJoin bool
+					for _, a := range elem.Attr {
+						if a.Name.Local == "stroke-linejoin" {
+							gHasJoin = true
+						}
+						if a.Name.Local == "style" && extractCSSProp(a.Value, "stroke-linejoin") != "" {
+							gHasJoin = true
+						}
+					}
+					if !gHasJoin {
+						elem.Attr = append(elem.Attr, xml.Attr{
+							Name:  xml.Name{Local: "stroke-linejoin"},
+							Value: curStyle.strokeLineJoin,
+						})
+					}
+				}
+
 				transformStack = append(transformStack, curMatrix)
 				fillRuleStack = append(fillRuleStack, curRule)
+				styleStack = append(styleStack, curStyle)
 			}
 
 			// Evaluate fillet_chamfer Live Path Effects on <path> elements
@@ -349,130 +447,178 @@ func PreprocessSVG(data []byte) ([]byte, error) {
 			// applies the CTM to path coordinates but ignores the transform when rasterizing stroke-width.
 			// Scale stroke-width by the combined ancestor and element scale factor so strokes render at true visual thickness.
 			if isShapeElement(name) {
-				scale := transformStack[len(transformStack)-1].ScaleFactor()
-				for _, attr := range elem.Attr {
-					if attr.Name.Local == "transform" {
-						scale *= parseTransform(attr.Value).ScaleFactor()
-						break
-					}
-				}
-				if scale > 0 && math.Abs(scale-1.0) > 0.001 {
-					var styleAttrIdx = -1
-					for i, attr := range elem.Attr {
-						if attr.Name.Local == "style" {
-							styleAttrIdx = i
-							break
-						}
-					}
-					if styleAttrIdx >= 0 {
-						swVal := extractCSSProp(elem.Attr[styleAttrIdx].Value, "stroke-width")
-						if swVal != "" {
-							if swNum, unit := parseStrokeWidth(swVal); swNum > 0 {
-								newSW := fmt.Sprintf("%.4f%s", swNum*scale, unit)
-								elem.Attr[styleAttrIdx].Value = setStyleProp(elem.Attr[styleAttrIdx].Value, "stroke-width", newSW)
-							}
-						}
-					}
-					for i := range elem.Attr {
-						if elem.Attr[i].Name.Local == "stroke-width" {
-							if swNum, unit := parseStrokeWidth(elem.Attr[i].Value); swNum > 0 {
-								elem.Attr[i].Value = fmt.Sprintf("%.4f%s", swNum*scale, unit)
-							}
-						}
-					}
-				}
-			}
-
-			// Default stroke-linejoin="miter" on stroked shapes and groups (Issue #64).
-			// Upstream oksvg defaults omitted stroke-linejoin to rasterx.Bevel (4) instead of
-			// rasterx.Miter (2), causing 45° beveled corners instead of standard SVG 90° miter joins.
-			if isShapeElement(name) || name == "g" {
-				var hasStroke bool
-				var hasLineJoin bool
-				for _, attr := range elem.Attr {
-					if attr.Name.Local == "stroke" && attr.Value != "" && attr.Value != "none" {
-						hasStroke = true
-					}
-					if attr.Name.Local == "stroke-linejoin" && attr.Value != "" {
-						hasLineJoin = true
-					}
-					if attr.Name.Local == "style" {
-						sVal := extractCSSProp(attr.Value, "stroke")
-						if sVal != "" && sVal != "none" {
-							hasStroke = true
-						}
-						if extractCSSProp(attr.Value, "stroke-linejoin") != "" {
-							hasLineJoin = true
-						}
-					}
-				}
-				if hasStroke && !hasLineJoin {
-					elem.Attr = append(elem.Attr, xml.Attr{
-						Name:  xml.Name{Local: "stroke-linejoin"},
-						Value: "miter",
-					})
-				}
-			}
-
-			// Rewrite userSpaceOnUse gradient references for group transforms (Issue #56)
-			elemMatrix := transformStack[len(transformStack)-1]
-			for _, a := range elem.Attr {
-				if a.Name.Local == "transform" {
-					elemMatrix = elemMatrix.Multiply(parseTransform(a.Value))
-				}
-			}
-			if elemMatrix != IdentityMatrix() {
-				rewrites := make(map[string]string)
-				for _, a := range elem.Attr {
-					for _, match := range reURLGrad.FindAllStringSubmatch(a.Value, -1) {
-						gradID := match[1]
-						if g, ok := meta.Gradients[gradID]; ok && g.IsUserSpaceOnUse(meta.Gradients) {
-							eff := elemMatrix.Multiply(g.GetGradientTransform(meta.Gradients))
-							key := fmt.Sprintf("%.4f_%.4f_%.4f_%.4f_%.4f_%.4f", eff.A, eff.B, eff.C, eff.D, eff.E, eff.F)
-							if newID, exists := meta.SpecializedLookup[gradID][key]; exists {
-								rewrites[gradID] = newID
-							}
-						}
-					}
-				}
-				if len(rewrites) > 0 {
-					for i, a := range elem.Attr {
-						elem.Attr[i].Value = reURLGrad.ReplaceAllStringFunc(a.Value, func(m string) string {
-							sub := reURLGrad.FindStringSubmatch(m)
-							if len(sub) == 2 {
-								if newID, ok := rewrites[sub[1]]; ok {
-									return fmt.Sprintf("url(#%s)", newID)
-								}
-							}
-							return m
-						})
-					}
-				}
-			}
-
-			// Desugar paint-order: stroke fill on all shape elements (path, rect, circle, polygon, etc.)
-			if isShapeElement(name) {
 				var styleAttrIdx = -1
-				var paintOrderVal string
-
 				for i, attr := range elem.Attr {
 					if attr.Name.Local == "style" {
 						styleAttrIdx = i
-					}
-					if attr.Name.Local == "paint-order" {
-						paintOrderVal = attr.Value
+						break
 					}
 				}
+
+				inh := styleStack[len(styleStack)-1]
+				effPaintOrder := inh.paintOrder
+				effFill := inh.fill
+				effStroke := inh.stroke
+				effStrokeWidth := inh.strokeWidth
+				effLineCap := inh.strokeLineCap
+				effLineJoin := inh.strokeLineJoin
+				effStrokeOpacity := inh.strokeOpacity
+				effFillOpacity := inh.fillOpacity
 
 				if styleAttrIdx >= 0 {
-					po := extractCSSProp(elem.Attr[styleAttrIdx].Value, "paint-order")
-					if po != "" {
-						paintOrderVal = po
+					s := elem.Attr[styleAttrIdx].Value
+					if po := extractCSSProp(s, "paint-order"); po != "" {
+						effPaintOrder = po
+					}
+					if f := extractCSSProp(s, "fill"); f != "" {
+						effFill = f
+					}
+					if st := extractCSSProp(s, "stroke"); st != "" {
+						effStroke = st
+					}
+					if sw := extractCSSProp(s, "stroke-width"); sw != "" {
+						effStrokeWidth = sw
+					}
+					if lc := extractCSSProp(s, "stroke-linecap"); lc != "" {
+						effLineCap = lc
+					}
+					if lj := extractCSSProp(s, "stroke-linejoin"); lj != "" {
+						effLineJoin = lj
+					}
+					if so := extractCSSProp(s, "stroke-opacity"); so != "" {
+						effStrokeOpacity = so
+					}
+					if fo := extractCSSProp(s, "fill-opacity"); fo != "" {
+						effFillOpacity = fo
 					}
 				}
 
-				if needsPaintOrderDesugar(paintOrderVal, elem.Attr, styleAttrIdx) {
-					strokeElem, fillElem := desugarPaintOrder(&elem, styleAttrIdx)
+				for _, attr := range elem.Attr {
+					switch attr.Name.Local {
+					case "paint-order":
+						if attr.Value != "" {
+							effPaintOrder = attr.Value
+						}
+					case "fill":
+						if attr.Value != "" {
+							effFill = attr.Value
+						}
+					case "stroke":
+						if attr.Value != "" {
+							effStroke = attr.Value
+						}
+					case "stroke-width":
+						if attr.Value != "" {
+							effStrokeWidth = attr.Value
+						}
+					case "stroke-linecap":
+						if attr.Value != "" {
+							effLineCap = attr.Value
+						}
+					case "stroke-linejoin":
+						if attr.Value != "" {
+							effLineJoin = attr.Value
+						}
+					case "stroke-opacity":
+						if attr.Value != "" {
+							effStrokeOpacity = attr.Value
+						}
+					case "fill-opacity":
+						if attr.Value != "" {
+							effFillOpacity = attr.Value
+						}
+					}
+				}
+
+				if effStroke != "" && effStroke != "none" && effLineJoin == "" {
+					effLineJoin = "miter"
+				}
+
+				// For shapes inside transformed groups or with direct element transforms, oksvg
+				// applies the CTM to path coordinates but ignores the transform when rasterizing stroke-width.
+				// Scale stroke-width by the combined ancestor and element scale factor for isotropic transforms.
+				// For anisotropic transforms (sx != sy or skew), stroke-width is left unscaled in local space
+				// so drawPathTransformed can apply the directional matrix directly to the stroke outline.
+				elemTransform := transformStack[len(transformStack)-1]
+				for _, attr := range elem.Attr {
+					if attr.Name.Local == "transform" {
+						elemTransform = elemTransform.Multiply(parseTransform(attr.Value))
+						break
+					}
+				}
+				sx := math.Hypot(elemTransform.A, elemTransform.B)
+				sy := math.Hypot(elemTransform.C, elemTransform.D)
+				isAnisotropic := (math.Abs(sx-sy) > 0.001 || math.Abs(elemTransform.A*elemTransform.C+elemTransform.B*elemTransform.D) > 0.001)
+
+				if !isAnisotropic {
+					scale := (sx + sy) / 2.0
+					if scale > 0 && math.Abs(scale-1.0) > 0.001 && effStrokeWidth != "" {
+						if swNum, unit := parseStrokeWidth(effStrokeWidth); swNum > 0 {
+							effStrokeWidth = fmt.Sprintf("%.4f%s", swNum*scale, unit)
+							if styleAttrIdx >= 0 {
+								elem.Attr[styleAttrIdx].Value = setStyleProp(elem.Attr[styleAttrIdx].Value, "stroke-width", effStrokeWidth)
+							} else {
+								setOrAppendAttr(&elem, "stroke-width", effStrokeWidth)
+							}
+						}
+					}
+				}
+
+				// Default stroke-linejoin="miter" on stroked shapes (Issue #64).
+				// Upstream oksvg defaults omitted stroke-linejoin to rasterx.Bevel (4) instead of
+				// rasterx.Miter (2), causing 45° beveled corners instead of standard SVG 90° miter joins.
+				if effStroke != "" && effStroke != "none" && effLineJoin != "" {
+					if styleAttrIdx >= 0 {
+						if extractCSSProp(elem.Attr[styleAttrIdx].Value, "stroke-linejoin") == "" && !hasAttr(elem.Attr, "stroke-linejoin") {
+							elem.Attr[styleAttrIdx].Value = setStyleProp(elem.Attr[styleAttrIdx].Value, "stroke-linejoin", effLineJoin)
+						}
+					} else if !hasAttr(elem.Attr, "stroke-linejoin") {
+						elem.Attr = append(elem.Attr, xml.Attr{
+							Name:  xml.Name{Local: "stroke-linejoin"},
+							Value: effLineJoin,
+						})
+					}
+				}
+
+				// Rewrite userSpaceOnUse gradient references for group transforms (Issue #56)
+				elemMatrix := transformStack[len(transformStack)-1]
+				for _, a := range elem.Attr {
+					if a.Name.Local == "transform" {
+						elemMatrix = elemMatrix.Multiply(parseTransform(a.Value))
+					}
+				}
+				if elemMatrix != IdentityMatrix() {
+					rewrites := make(map[string]string)
+					for _, a := range elem.Attr {
+						for _, match := range reURLGrad.FindAllStringSubmatch(a.Value, -1) {
+							gradID := match[1]
+							if g, ok := meta.Gradients[gradID]; ok && g.IsUserSpaceOnUse(meta.Gradients) {
+								eff := elemMatrix.Multiply(g.GetGradientTransform(meta.Gradients))
+								key := fmt.Sprintf("%.4f_%.4f_%.4f_%.4f_%.4f_%.4f", eff.A, eff.B, eff.C, eff.D, eff.E, eff.F)
+								if newID, exists := meta.SpecializedLookup[gradID][key]; exists {
+									rewrites[gradID] = newID
+								}
+							}
+						}
+					}
+					if len(rewrites) > 0 {
+						for i, a := range elem.Attr {
+							elem.Attr[i].Value = reURLGrad.ReplaceAllStringFunc(a.Value, func(m string) string {
+								sub := reURLGrad.FindStringSubmatch(m)
+								if len(sub) == 2 {
+									if newID, ok := rewrites[sub[1]]; ok {
+										return fmt.Sprintf("url(#%s)", newID)
+									}
+								}
+								return m
+							})
+						}
+					}
+				}
+
+				// Desugar paint-order: stroke fill on all shape elements (path, rect, circle, polygon, etc.)
+				if needsPaintOrderDesugarEffective(effPaintOrder, effFill, effStroke, effStrokeWidth) {
+					strokeElem, fillElem := desugarPaintOrderEffective(&elem, styleAttrIdx, effStroke, effStrokeWidth, effFill, effLineCap, effLineJoin, effStrokeOpacity, effFillOpacity)
 					if err := encoder.EncodeToken(strokeElem); err != nil {
 						return nil, err
 					}
@@ -497,6 +643,9 @@ func PreprocessSVG(data []byte) ([]byte, error) {
 				}
 				if len(fillRuleStack) > 1 {
 					fillRuleStack = fillRuleStack[:len(fillRuleStack)-1]
+				}
+				if len(styleStack) > 1 {
+					styleStack = styleStack[:len(styleStack)-1]
 				}
 			}
 			if err := encoder.EncodeToken(elem); err != nil {
@@ -908,27 +1057,6 @@ func expandUseElementsOnce(data []byte, elementsByID map[string][]xml.Token) ([]
 
 // needsPaintOrderDesugar returns true if stroke is ordered before fill and both stroke and fill are present.
 func needsPaintOrderDesugar(paintOrder string, attrs []xml.Attr, styleAttrIdx int) bool {
-	if paintOrder == "" {
-		return false
-	}
-
-	tokens := strings.Fields(strings.ToLower(paintOrder))
-	strokeIdx := -1
-	fillIdx := -1
-	for i, t := range tokens {
-		t = strings.Trim(t, ",;")
-		if t == "stroke" && strokeIdx == -1 {
-			strokeIdx = i
-		}
-		if t == "fill" && fillIdx == -1 {
-			fillIdx = i
-		}
-	}
-
-	if strokeIdx == -1 || fillIdx == -1 || strokeIdx > fillIdx {
-		return false
-	}
-
 	var fillVal, strokeVal, strokeWidthVal string
 	if styleAttrIdx >= 0 {
 		style := attrs[styleAttrIdx].Value
@@ -952,39 +1080,115 @@ func needsPaintOrderDesugar(paintOrder string, attrs []xml.Attr, styleAttrIdx in
 			}
 		}
 	}
+	return needsPaintOrderDesugarEffective(paintOrder, fillVal, strokeVal, strokeWidthVal)
+}
 
-	if fillVal == "none" || strokeVal == "" || strokeVal == "none" {
+func needsPaintOrderDesugarEffective(paintOrder, fill, stroke, strokeWidth string) bool {
+	if !isPaintOrderStrokeBeforeFill(paintOrder) {
 		return false
 	}
-	if strokeWidthVal != "" {
-		sw, _ := strconv.ParseFloat(strings.TrimSuffix(strings.TrimSuffix(strokeWidthVal, "px"), "mm"), 64)
+	if stroke == "" || stroke == "none" {
+		return false
+	}
+	if fill == "none" {
+		return false
+	}
+	if strokeWidth != "" {
+		sw, _ := parseStrokeWidth(strokeWidth)
 		if sw <= 0 {
 			return false
 		}
 	}
-
 	return true
+}
+
+func isPaintOrderStrokeBeforeFill(paintOrder string) bool {
+	if paintOrder == "" {
+		return false
+	}
+	tokens := strings.Fields(strings.ToLower(paintOrder))
+	strokeIdx := -1
+	fillIdx := -1
+	for i, t := range tokens {
+		t = strings.Trim(t, ",;")
+		if t == "stroke" && strokeIdx == -1 {
+			strokeIdx = i
+		}
+		if t == "fill" && fillIdx == -1 {
+			fillIdx = i
+		}
+	}
+	return strokeIdx != -1 && fillIdx != -1 && strokeIdx < fillIdx
 }
 
 // desugarPaintOrder creates two element clones: one stroke-only, one fill-only.
 func desugarPaintOrder(elem *xml.StartElement, styleAttrIdx int) (xml.StartElement, xml.StartElement) {
+	return desugarPaintOrderEffective(elem, styleAttrIdx, "", "", "", "", "", "", "")
+}
+
+func desugarPaintOrderEffective(elem *xml.StartElement, styleAttrIdx int, effStroke, effStrokeWidth, effFill, effLineCap, effLineJoin, effStrokeOpacity, effFillOpacity string) (xml.StartElement, xml.StartElement) {
 	strokeElem := elem.Copy()
 	fillElem := elem.Copy()
 
 	if styleAttrIdx >= 0 {
 		sStyle := removeStyleProp(strokeElem.Attr[styleAttrIdx].Value, "paint-order")
 		sStyle = removeStyleProp(sStyle, "fill")
-		sStyle += ";fill:none"
+		sStyle = setStyleProp(sStyle, "fill", "none")
+		if effStroke != "" {
+			sStyle = setStyleProp(sStyle, "stroke", effStroke)
+		}
+		if effStrokeWidth != "" {
+			sStyle = setStyleProp(sStyle, "stroke-width", effStrokeWidth)
+		}
+		if effLineCap != "" {
+			sStyle = setStyleProp(sStyle, "stroke-linecap", effLineCap)
+		}
+		if effLineJoin != "" {
+			sStyle = setStyleProp(sStyle, "stroke-linejoin", effLineJoin)
+		}
+		if effStrokeOpacity != "" {
+			sStyle = setStyleProp(sStyle, "stroke-opacity", effStrokeOpacity)
+		}
 		strokeElem.Attr[styleAttrIdx].Value = sStyle
 
 		fStyle := removeStyleProp(fillElem.Attr[styleAttrIdx].Value, "paint-order")
 		fStyle = removeStyleProp(fStyle, "stroke")
 		fStyle = removeStyleProp(fStyle, "stroke-width")
-		fStyle += ";stroke:none"
+		fStyle = setStyleProp(fStyle, "stroke", "none")
+		fStyle = setStyleProp(fStyle, "stroke-width", "0")
+		if effFill != "" {
+			fStyle = setStyleProp(fStyle, "fill", effFill)
+		}
+		if effFillOpacity != "" {
+			fStyle = setStyleProp(fStyle, "fill-opacity", effFillOpacity)
+		}
 		fillElem.Attr[styleAttrIdx].Value = fStyle
 	} else {
 		setOrAppendAttr(&strokeElem, "fill", "none")
+		if effStroke != "" {
+			setOrAppendAttr(&strokeElem, "stroke", effStroke)
+		}
+		if effStrokeWidth != "" {
+			setOrAppendAttr(&strokeElem, "stroke-width", effStrokeWidth)
+		}
+		if effLineCap != "" {
+			setOrAppendAttr(&strokeElem, "stroke-linecap", effLineCap)
+		}
+		if effLineJoin != "" {
+			setOrAppendAttr(&strokeElem, "stroke-linejoin", effLineJoin)
+		}
+		if effStrokeOpacity != "" {
+			setOrAppendAttr(&strokeElem, "stroke-opacity", effStrokeOpacity)
+		}
+
 		setOrAppendAttr(&fillElem, "stroke", "none")
+		setOrAppendAttr(&fillElem, "stroke-width", "0")
+		if effFill != "" {
+			setOrAppendAttr(&fillElem, "fill", effFill)
+		}
+		if effFillOpacity != "" {
+			setOrAppendAttr(&fillElem, "fill-opacity", effFillOpacity)
+		}
 	}
 
 	for i := range strokeElem.Attr {
@@ -994,6 +1198,15 @@ func desugarPaintOrder(elem *xml.StartElement, styleAttrIdx int) (xml.StartEleme
 	}
 
 	return strokeElem, fillElem
+}
+
+func hasAttr(attrs []xml.Attr, name string) bool {
+	for _, a := range attrs {
+		if a.Name.Local == name {
+			return true
+		}
+	}
+	return false
 }
 
 func setOrAppendAttr(elem *xml.StartElement, name, val string) {

@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -35,6 +36,12 @@ func main() {
 		runScan(subArgs)
 	case "inspect":
 		runInspect(subArgs)
+	case "export-plain":
+		if len(subArgs) < 2 {
+			fmt.Println("Usage: go run ./cmd/dev export-plain <input.svg> <output.svg>")
+			os.Exit(1)
+		}
+		runExportPlain(subArgs[0], subArgs[1])
 	case "help", "-h", "--help":
 		printUsage()
 	default:
@@ -42,6 +49,25 @@ func main() {
 		printUsage()
 		os.Exit(1)
 	}
+}
+
+func runExportPlain(inputPath, outputPath string) {
+	bin, err := findInkscapeBinary()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "findInkscapeBinary failed: %v\n", err)
+		os.Exit(1)
+	}
+	absIn, _ := filepath.Abs(inputPath)
+	absOut, _ := filepath.Abs(outputPath)
+	cmd := exec.Command(bin, absIn, "--export-type=svg", "--export-plain-svg", "--export-filename="+absOut)
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &out
+	if err := cmd.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Inkscape export failed: %v\nOutput: %s\n", err, out.String())
+		os.Exit(1)
+	}
+	fmt.Printf("Exported plain SVG to %s\nOutput: %s\n", absOut, out.String())
 }
 
 func printUsage() {
@@ -230,8 +256,24 @@ func resolveFixtureDimensions(svgPath, goldenPath string) (int, int) {
 	return 128, 128
 }
 
+func findInkscapeBinary() (string, error) {
+	if runtime.GOOS == "windows" {
+		if p, err := exec.LookPath("inkscape.exe"); err == nil {
+			return p, nil
+		}
+	}
+	bin, err := exec.LookPath("inkscape")
+	if err == nil && runtime.GOOS == "windows" && strings.HasSuffix(strings.ToLower(bin), ".com") {
+		exe := strings.TrimSuffix(bin, filepath.Ext(bin)) + ".exe"
+		if _, statErr := os.Stat(exe); statErr == nil {
+			return exe, nil
+		}
+	}
+	return bin, err
+}
+
 func generateGoldenWithInkscape(svgPath, goldenPath string, w, h int) error {
-	inkscapeBin, err := exec.LookPath("inkscape")
+	inkscapeBin, err := findInkscapeBinary()
 	if err != nil {
 		return fmt.Errorf("inkscape CLI not found in PATH: %w", err)
 	}
@@ -621,7 +663,7 @@ func runScan(args []string) {
 		os.Exit(1)
 	}
 
-	if _, lookErr := exec.LookPath("inkscape"); lookErr != nil {
+	if _, lookErr := findInkscapeBinary(); lookErr != nil {
 		fmt.Fprintf(os.Stderr, "Error: headless Inkscape CLI not found in PATH.\nInkscape is required for ground-truth differential scanning.\n")
 		os.Exit(1)
 	}
