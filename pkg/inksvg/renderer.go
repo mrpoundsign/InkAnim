@@ -5,12 +5,16 @@ import (
 	"encoding/xml"
 	"fmt"
 	"image"
+	"image/color"
 	"io"
 	"math"
+	"reflect"
 	"strings"
+	"unsafe"
 
 	"github.com/srwiley/oksvg"
 	"github.com/srwiley/rasterx"
+	"golang.org/x/image/math/fixed"
 )
 
 // RenderSVGToRGBA renders an SVG byte buffer to an in-memory RGBA image at the requested width and height.
@@ -135,7 +139,9 @@ func RenderSVGToRGBA(svgData []byte, targetW, targetH int) (*image.RGBA, error) 
 	pathFilterIDs := extractPathFilterIDs(svgData)
 
 	if len(embeddedImages) == 0 && len(clipPaths) == 0 && len(dropShadows) == 0 {
-		icon.Draw(raster, 1.0)
+		for _, p := range icon.SVGPaths {
+			drawPathTransformed(raster, p, icon.Transform, 1.0, scaleFactor)
+		}
 	} else {
 		clipMasks := make(map[string]*image.RGBA)
 		for id, content := range clipPaths {
@@ -191,7 +197,7 @@ func RenderSVGToRGBA(svgData []byte, targetW, targetH int) (*image.RGBA, error) 
 				}
 			}
 
-			icon.SVGPaths[pathIdx].DrawTransformed(targetRaster, 1.0, icon.Transform)
+			drawPathTransformed(targetRaster, icon.SVGPaths[pathIdx], icon.Transform, 1.0, scaleFactor)
 		}
 
 		if activeClipID != "" && layerImg != nil {
@@ -336,6 +342,128 @@ func applyViewportTransformToUserGradients(svgData []byte, tm rasterx.Matrix2D) 
 	}
 	_ = enc.Flush()
 	return buf.Bytes()
+}
+
+type transformScanner struct {
+	rasterx.Scanner
+	matrix rasterx.Matrix2D
+}
+
+func (ts *transformScanner) Start(a fixed.Point26_6) {
+	ts.Scanner.Start(ts.matrix.TFixed(a))
+}
+
+func (ts *transformScanner) Line(b fixed.Point26_6) {
+	ts.Scanner.Line(ts.matrix.TFixed(b))
+}
+
+var (
+	mAdderOffset     uintptr
+	linerColorOffset uintptr
+	offsetsInit      bool
+)
+
+func initPathOffsets() {
+	if offsetsInit {
+		return
+	}
+	var dummy oksvg.SvgPath
+	val := reflect.ValueOf(dummy)
+	styleVal := val.FieldByName("PathStyle")
+	styleTyp := styleVal.Type()
+	if f, ok := styleTyp.FieldByName("mAdder"); ok {
+		mAdderOffset = f.Offset
+	}
+	if f, ok := styleTyp.FieldByName("linerColor"); ok {
+		linerColorOffset = f.Offset
+	}
+	offsetsInit = true
+}
+
+func getPathMatrix(p *oksvg.SvgPath) rasterx.Matrix2D {
+	initPathOffsets()
+	ptr := (*rasterx.MatrixAdder)(unsafe.Pointer(uintptr(unsafe.Pointer(p)) + mAdderOffset))
+	return ptr.M
+}
+
+func getPathLinerColor(p *oksvg.SvgPath) interface{} {
+	initPathOffsets()
+	ptr := (*interface{})(unsafe.Pointer(uintptr(unsafe.Pointer(p)) + linerColorOffset))
+	return *ptr
+}
+
+func setPathLinerColor(p *oksvg.SvgPath, c interface{}) {
+	initPathOffsets()
+	ptr := (*interface{})(unsafe.Pointer(uintptr(unsafe.Pointer(p)) + linerColorOffset))
+	*ptr = c
+}
+
+// drawPathTransformed renders an SvgPath, correctly scaling strokes under anisotropic
+// (non-uniform) 2D affine transformations where horizontal and vertical stroke widths differ.
+func drawPathTransformed(r *rasterx.Dasher, svgp oksvg.SvgPath, t rasterx.Matrix2D, opacity float64, scaleFactor float64) {
+	m := getPathMatrix(&svgp)
+	linerColor := getPathLinerColor(&svgp)
+
+	totalMatrix := t.Mult(m)
+	sx := math.Hypot(totalMatrix.A, totalMatrix.B)
+	sy := math.Hypot(totalMatrix.C, totalMatrix.D)
+	isAnisotropic := (math.Abs(sx-sy) > 0.001 || math.Abs(totalMatrix.A*totalMatrix.C+totalMatrix.B*totalMatrix.D) > 0.001)
+
+	if !isAnisotropic || linerColor == nil || svgp.LineWidth <= 0 {
+		svgp.DrawTransformed(r, opacity, t)
+		return
+	}
+
+	// 1. Draw fill first if present (by clearing linerColor on a copy)
+	fillCopy := svgp
+	setPathLinerColor(&fillCopy, nil)
+	fillCopy.DrawTransformed(r, opacity, t)
+
+	// 2. Draw stroke in local space through transformScanner
+	r.Clear()
+	ts := &transformScanner{
+		Scanner: r.Scanner,
+		matrix:  totalMatrix,
+	}
+	localDasher := rasterx.NewDasher(10000, 10000, ts)
+	lineGap := svgp.LineGap
+	if lineGap == nil {
+		lineGap = rasterx.FlatGap
+	}
+	lineCap := svgp.LineCap
+	if lineCap == nil {
+		lineCap = rasterx.ButtCap
+	}
+	leadLineCap := lineCap
+	if svgp.LeadLineCap != nil {
+		leadLineCap = svgp.LeadLineCap
+	}
+	localLineWidth := svgp.LineWidth
+	if scaleFactor > 0 {
+		localLineWidth = svgp.LineWidth / scaleFactor
+	}
+	localDasher.SetStroke(
+		fixed.Int26_6(localLineWidth * 64),
+		fixed.Int26_6(svgp.MiterLimit * 64),
+		leadLineCap, lineCap, lineGap, svgp.LineJoin,
+		svgp.Dash, svgp.DashOffset,
+	)
+	svgp.Path.AddTo(localDasher)
+
+	switch lc := linerColor.(type) {
+	case color.Color:
+		r.SetColor(rasterx.ApplyOpacity(lc, svgp.LineOpacity*opacity))
+	case rasterx.Gradient:
+		if lc.Units == rasterx.ObjectBoundingBox {
+			fRect := r.GetPathExtent()
+			mnx, mny := float64(fRect.Min.X)/64, float64(fRect.Min.Y)/64
+			mxx, mxy := float64(fRect.Max.X)/64, float64(fRect.Max.Y)/64
+			lc.Bounds.X, lc.Bounds.Y = mnx, mny
+			lc.Bounds.W, lc.Bounds.H = mxx-mnx, mxy-mny
+		}
+		r.SetColor(lc.GetColorFunction(svgp.LineOpacity * opacity))
+	}
+	r.Draw()
 }
 
 

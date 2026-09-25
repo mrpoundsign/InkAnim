@@ -201,5 +201,35 @@ func TestPreprocess_DefaultStrokeLinejoin(t *testing.T) {
 	}
 }
 
+func TestPreprocess_GroupPaintOrderInheritance(t *testing.T) {
+	rawSVG := `<svg width="128" height="128">
+  <g id="parent" style="paint-order: stroke fill markers; fill: #22c55e; stroke: #0f172a; stroke-width: 16; stroke-linecap: round; stroke-linejoin: round">
+    <path id="child1" style="stroke: #3b82f6" d="M 24 24 H 104 V 104 H 24 Z" />
+  </g>
+</svg>`
+
+	preprocessed, err := PreprocessSVG([]byte(rawSVG))
+	if err != nil {
+		t.Fatalf("PreprocessSVG failed: %v", err)
+	}
+
+	res := string(preprocessed)
+	if !strings.Contains(res, `id="child1_stroke"`) {
+		t.Fatalf("expected child1 to be desugared with child1_stroke, got:\n%s", res)
+	}
+	if !strings.Contains(res, `id="child1"`) {
+		t.Fatalf("expected child1 fill element, got:\n%s", res)
+	}
+	if !strings.Contains(res, "stroke:#3b82f6") {
+		t.Errorf("expected child stroke override #3b82f6 on stroke element")
+	}
+	if !strings.Contains(res, "fill:#22c55e") {
+		t.Errorf("expected inherited fill #22c55e on fill element")
+	}
+	if !strings.Contains(res, "stroke-width:16") {
+		t.Errorf("expected inherited stroke-width 16 on stroke element")
+	}
+}
+
 
 

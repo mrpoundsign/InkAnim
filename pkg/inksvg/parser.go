@@ -235,7 +235,9 @@ func ComputeDrawingRect(data []byte) Rect {
 	}
 
 	dasher := rasterx.NewDasher(w, h, scanner)
-	icon.Draw(dasher, 1.0)
+	for _, p := range icon.SVGPaths {
+		drawPathTransformed(dasher, p, rasterx.Identity, 1.0, 1.0)
+	}
 
 	if scanner.found && scanner.maxX > scanner.minX && scanner.maxY > scanner.minY {
 		return Rect{

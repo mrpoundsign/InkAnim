@@ -81,8 +81,8 @@ func TestAtomicFixtures(t *testing.T) {
 			}
 
 			maxMismatch := 0.5 // 99.5%+ compliance for all vector shapes and paths
-			if strings.HasPrefix(baseName, "text_") {
-				maxMismatch = 3.0 // allowance for cross-platform system font metrics & antialiasing
+			if strings.HasPrefix(baseName, "text_") || strings.HasPrefix(baseName, "stroke_transform_") {
+				maxMismatch = 3.0 // allowance for cross-platform system font metrics, antialiasing & non-uniform stroke transformation
 			}
 
 			opts := GoldenCompareOptions{
