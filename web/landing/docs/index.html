@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Documentation — Inkscape Animation & Motion System (IAMS) | InkAnim</title>
+  <meta name="description" content="Comprehensive guide to authoring flat vector motion graphics, emote slide-ins, orbits, and frame animations in Inkscape using InkAnim's IAMS syntax.">
+  <link rel="icon" type="image/png" href="../icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../style.css">
+  <link rel="stylesheet" href="docs.css">
+</head>
+<body>
+  <div class="bg-glow-1"></div>
+  <div class="bg-glow-2"></div>
+
+  <!-- Navigation Bar -->
+  <nav class="navbar">
+    <div class="container nav-container">
+      <a href="../" class="brand">
+        <img src="../icon.png" alt="InkAnim Logo" class="brand-icon">
+        <span class="brand-gradient">InkAnim</span>
+      </a>
+      <ul class="nav-links">
+        <li><a href="../" class="nav-link">Home</a></li>
+        <li><a href="#overview" class="nav-link">Overview</a></li>
+        <li><a href="#authoring" class="nav-link">Inkscape Guide</a></li>
+        <li><a href="#syntax" class="nav-link">Syntax</a></li>
+        <li><a href="#sample" class="nav-link">Sample</a></li>
+        <li><a href="#exporting" class="nav-link">Exporting</a></li>
+      </ul>
+      <div class="nav-actions">
+        <a href="https://github.com/mrpoundsign/InkAnim" target="_blank" rel="noopener noreferrer" class="btn btn-secondary">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+          GitHub
+        </a>
+        <a href="../demo/" class="btn btn-primary">
+          <span>🚀 Launch Web Studio</span>
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Docs Header -->
+  <header style="padding: 48px 0 16px; border-bottom: 1px solid var(--border-color); background: rgba(18, 18, 22, 0.4);">
+    <div class="container">
+      <div class="hero-badge" style="margin-bottom: 12px;">
+        <span>📖 Motion & Staging Specification</span>
+      </div>
+      <h1 style="font-size: 2.4rem; font-weight: 800; color: #fff; margin-bottom: 8px;">
+        Inkscape Animation & Motion System <span class="gradient-text">(IAMS)</span>
+      </h1>
+      <p style="color: var(--text-muted); font-size: 1.15rem; max-width: 800px;">
+        A lightweight, friction-free way to animate flat vector graphics, emote slide-ins, and text in Inkscape using intuitive trajectory paths.
+      </p>
+    </div>
+  </header>
+
+  <!-- Main Content Layout -->
+  <main class="container docs-layout">
+    <!-- Sidebar Navigation -->
+    <aside class="docs-sidebar">
+      <div class="docs-sidebar-title">Documentation</div>
+      <ul class="docs-nav-list">
+        <li><a href="#overview" class="docs-nav-link">Overview & Concept</a></li>
+        <li><a href="#hierarchy" class="docs-nav-link">Layers & Groups Structure</a></li>
+        <li><a href="#authoring" class="docs-nav-link">Authoring in Inkscape</a></li>
+        <li><a href="#syntax" class="docs-nav-link">Syntax Reference</a></li>
+        <li><a href="#easing" class="docs-nav-link">Easing Curves</a></li>
+        <li><a href="#reverse" class="docs-nav-link">The "rev" Modifier</a></li>
+        <li><a href="#recipes" class="docs-nav-link">Common Recipes</a></li>
+        <li><a href="#sample" class="docs-nav-link">Live Sample (Star Swirl)</a></li>
+        <li><a href="#exporting" class="docs-nav-link">Exporting in InkAnim</a></li>
+      </ul>
+    </aside>
+
+    <!-- Main Documentation Articles -->
+    <article class="docs-body">
+      <!-- Section: Overview -->
+      <section id="overview" class="docs-section">
+        <h2>✨ Overview & Concept</h2>
+        <p>
+          Traditional hand-drawn vector animation often requires duplicating entire layers dozens of times across canvas artboards and manually nudging coordinates frame-by-frame. For emotes, badges, and stream alerts (which typically cap at 15–60 frames), this is tedious and error-prone.
+        </p>
+        <p>
+          The <strong>InkAnim Animation & Motion System (IAMS)</strong> allows you to keep your artwork in a single resting position and simply draw a **visual motion path** in Inkscape indicating where and how that object should move over time.
+        </p>
+        <div class="callout tip">
+          <div class="callout-title">💡 Pure Vector Preservation</div>
+          <p>
+            InkAnim never rasterizes or modifies your original SVG on disk. Motion guide paths are evaluated dynamically in memory, transforming vector coordinates on the fly and hiding the trajectory paths during final render.
+          </p>
+        </div>
+      </section>
+
+      <!-- Section: Hierarchy -->
+      <section id="hierarchy" class="docs-section">
+        <h2>📁 Layers & Groups Structure</h2>
+        <p>
+          IAMS operates on Inkscape layers and groups:
+        </p>
+        <ul>
+          <li><strong>The Animated Group/Layer</strong>: An Inkscape group (<code>&lt;g&gt;</code>) or layer containing the graphic elements you want to animate together (text, stars, character art).</li>
+          <li><strong>The Motion Path</strong>: An open path element (<code>&lt;path&gt;</code>) placed directly inside that group with its label set to <code>Motion {...}</code>.</li>
+        </ul>
+        <div class="code-card">
+          <div class="code-header"><span>SVG Document Structure</span><span>XML</span></div>
+          <pre class="code-content"><code>&lt;<span class="hl-keyword">g</span> <span class="hl-prop">inkscape:label</span>=<span class="hl-val">"Star Layer"</span> <span class="hl-prop">inkscape:groupmode</span>=<span class="hl-val">"layer"</span> <span class="hl-prop">id</span>=<span class="hl-val">"layer1"</span>&gt;
+  &lt;!-- The Visible Artwork --&gt;
+  &lt;<span class="hl-keyword">path</span> <span class="hl-prop">id</span>=<span class="hl-val">"star_graphic"</span> <span class="hl-prop">d</span>=<span class="hl-val">"..."</span> <span class="hl-prop">style</span>=<span class="hl-val">"fill:#facc15;"</span> /&gt;
+
+  &lt;!-- The Motion Guide (Trajectory) --&gt;
+  &lt;<span class="hl-keyword">path</span> <span class="hl-prop">id</span>=<span class="hl-val">"orbit_guide"</span> 
+        <span class="hl-prop">inkscape:label</span>=<span class="hl-val">"Motion {f:1-20 ease:out rev}"</span> 
+        <span class="hl-prop">d</span>=<span class="hl-val">"..."</span> 
+        <span class="hl-prop">style</span>=<span class="hl-val">"stroke:#ff0000;fill:none;"</span> /&gt;
+&lt;/<span class="hl-keyword">g</span>&gt;</code></pre>
+        </div>
+      </section>
+
+      <!-- Section: Authoring in Inkscape -->
+      <section id="authoring" class="docs-section">
+        <h2>🎨 Authoring in Inkscape</h2>
+        <p>
+          You can author motion paths using any of Inkscape's standard drawing tools:
+        </p>
+        <ol>
+          <li><strong>Bézier / Pen Tool (<kbd>B</kbd>)</strong>: For linear slides, curved arcs, and organic s-curves.</li>
+          <li><strong>Spiral Tool (<kbd>F9</kbd>)</strong>: For dramatic orbit, vortex, or spin-in effects.</li>
+          <li><strong>Straight Lines</strong>: For clean edge-to-center slides or marquee traversals.</li>
+        </ol>
+
+        <h3>Setting Path Labels in Inkscape</h3>
+        <p>
+          There are two convenient places to set the <code>Motion {...}</code> label in Inkscape:
+        </p>
+
+        <h4>Method 1: Layers and Objects Panel (<kbd>Ctrl+Shift+L</kbd>)</h4>
+        <p>
+          The fastest and cleanest method is using the <strong>Layers and Objects</strong> dock. You can see all your layers, graphics, and motion paths in one organized tree. Simply select the path and rename its label directly in the list:
+        </p>
+
+        <figure class="doc-figure">
+          <img src="img/inkscape_layers_panel.png" alt="Inkscape Layers and Objects Panel showing Motion label">
+          <figcaption class="doc-caption">
+            <strong>Figure 1</strong>: The Layers and Objects panel (<kbd>Ctrl+Shift+L</kbd>) showing <code>Motion {f:1-20}</code> guide path and artwork nested under Layer 1.
+          </figcaption>
+        </figure>
+
+        <h4>Method 2: Object Properties Dialog (<kbd>Shift+Ctrl+O</kbd>)</h4>
+        <p>
+          Alternatively, right-click any path and select <strong>Object Properties</strong> (or press <kbd>Shift+Ctrl+O</kbd>). Type your configuration into the <strong>Label</strong> field and click <strong>Set</strong>:
+        </p>
+
+        <figure class="doc-figure">
+          <img src="img/inkscape_object_properties.png" alt="Inkscape Object Properties dialog showing Motion label">
+          <figcaption class="doc-caption">
+            <strong>Figure 2</strong>: Object Properties panel with the <strong>Label</strong> field set to <code>Motion {f:1-20}</code> on a spiral trajectory.
+          </figcaption>
+        </figure>
+
+        <h3>Instant Preview in InkAnim Studio</h3>
+        <p>
+          Save your SVG (<kbd>Ctrl+S</kbd>) and load it directly into InkAnim (or drag-and-drop it into the application window). InkAnim automatically parses the motion path, synthesizes the 20 animation frames, and excludes the guide line from the canvas and final GIF:
+        </p>
+
+        <figure class="doc-figure">
+          <img src="img/inkanim_studio_preview.png" alt="InkAnim Studio previewing star_swirl.svg">
+          <figcaption class="doc-caption">
+            <strong>Figure 3</strong>: InkAnim Studio running <code>star_swirl.svg</code>. The spiral trajectory is hidden, and the 20 motion frames are immediately playable, inspectable across Twitch chat scales (112px, 56px, 28px) in both dark and light modes, and ready for 1-click GIF export.
+          </figcaption>
+        </figure>
+      </section>
+
+      <!-- Section: Syntax Reference -->
+      <section id="syntax" class="docs-section">
+        <h2>⚙️ Syntax Reference</h2>
+        <p>
+          The syntax is compact and space-separated. All parameters reside within curly braces:
+        </p>
+        <div class="code-card">
+          <div class="code-header"><span>IAMS Syntax Format</span><span>Format</span></div>
+          <pre class="code-content"><code>Motion {f:&lt;range&gt; [ease:&lt;curve&gt;] [rev] [t:none]}</code></pre>
+        </div>
+
+        <div class="docs-table-wrapper">
+          <table class="docs-table">
+            <thead>
+              <tr>
+                <th>Parameter</th>
+                <th>Example</th>
+                <th>Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>f:&lt;start&gt;-&lt;end&gt;</code></td>
+                <td><span class="badge badge-purple">f:1-15</span></td>
+                <td>Defines active frame window (1-based index). The object is hidden outside this range.</td>
+              </tr>
+              <tr>
+                <td><code>f:all</code></td>
+                <td><span class="badge badge-purple">f:all</span></td>
+                <td>Active across the entire timeline duration (from frame 1 to the max detected frame).</td>
+              </tr>
+              <tr>
+                <td><code>ease:&lt;curve&gt;</code></td>
+                <td><span class="badge badge-cyan">ease:out</span></td>
+                <td>Acceleration/deceleration curve. Options: <code>linear</code>, <code>in</code>, <code>out</code>, <code>in-out</code>. Defaults to <code>linear</code>.</td>
+              </tr>
+              <tr>
+                <td><code>rev</code> / <code>reverse</code></td>
+                <td><span class="badge badge-amber">rev</span></td>
+                <td>Reverses motion direction. Starts offset at the trajectory end and arrives at the drawn artwork position.</td>
+              </tr>
+              <tr>
+                <td><code>t:none</code></td>
+                <td><span class="badge badge-purple">t:none</span></td>
+                <td>Disables movement while keeping the frame visibility window active (static appearance/hold).</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Section: Easing -->
+      <section id="easing" class="docs-section">
+        <h2>📈 Easing Curves</h2>
+        <p>
+          InkAnim includes four built-in easing curves for natural vector motion:
+        </p>
+        <div class="docs-table-wrapper">
+          <table class="docs-table">
+            <thead>
+              <tr>
+                <th>Curve</th>
+                <th>Formula</th>
+                <th>Visual Feel</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="badge badge-cyan">linear</span></td>
+                <td>\(t\)</td>
+                <td>Constant speed throughout. Ideal for continuous spinning or steady scrolling banners.</td>
+              </tr>
+              <tr>
+                <td><span class="badge badge-cyan">in</span></td>
+                <td>\(t^2\)</td>
+                <td>Slow start, rapid acceleration. Great for launch, rocket, or sudden exit effects.</td>
+              </tr>
+              <tr>
+                <td><span class="badge badge-cyan">out</span></td>
+                <td>\(t(2 - t)\)</td>
+                <td>Fast start, smooth deceleration to a stop. Perfect for slide-in emotes and landings.</td>
+              </tr>
+              <tr>
+                <td><span class="badge badge-cyan">in-out</span></td>
+                <td>Piecewise S-curve</td>
+                <td>Slow start, rapid middle speed, and smooth landing. Best for natural organic movement.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Section: Reverse Modifier -->
+      <section id="reverse" class="docs-section">
+        <h2>🔄 The "rev" Modifier: Inward Entrances</h2>
+        <p>
+          By default, motion starts at the first vertex of your path (\(t = 0.0\)) where \(\Delta = (0, 0)\) and moves toward the endpoint. This means your drawn artwork starts in place and flies away.
+        </p>
+        <p>
+          When you add <span class="badge badge-amber">rev</span>, the direction is inverted:
+        </p>
+        <ul>
+          <li><strong>Frame 1 (\(t = 1.0\))</strong>: The object starts offset along the line (e.g. offscreen or at the outer spiral).</li>
+          <li><strong>Final Frame (\(t = 0.0\))</strong>: The object decelerates into \(\Delta = (0, 0)\), resting squarely at your designed SVG artwork position!</li>
+        </ul>
+        <div class="callout tip">
+          <div class="callout-title">💡 Artist Best Practice</div>
+          <p>
+            Draw your finished emote artwork exactly where you want it to look best in chat. Then draw a path starting from where it should arrive from, and add <code>rev</code>. You never have to manually calculate reverse coordinates!
+          </p>
+        </div>
+      </section>
+
+      <!-- Section: Common Recipes -->
+      <section id="recipes" class="docs-section">
+        <h2>🍳 Common Animation Recipes</h2>
+
+        <h3>1. The Emote "Slide-In Lurk"</h3>
+        <p>
+          A character peeks up from the bottom of the emote canvas and stops at the center:
+        </p>
+        <div class="code-card">
+          <div class="code-header"><span>Slide-In Recipe</span><span>Label</span></div>
+          <pre class="code-content"><code>Motion {f:1-12 ease:out rev}</code></pre>
+        </div>
+
+        <h3>2. The Spiral Dance</h3>
+        <p>
+          An icon spins inwards along a spiral trajectory into its central resting place:
+        </p>
+        <div class="code-card">
+          <div class="code-header"><span>Spiral Orbit Recipe</span><span>Label</span></div>
+          <pre class="code-content"><code>Motion {f:1-20 ease:in-out rev}</code></pre>
+        </div>
+
+        <h3>3. Continuous Fly-By</h3>
+        <p>
+          An object traverses from offscreen left to offscreen right throughout the entire emote loop:
+        </p>
+        <div class="code-card">
+          <div class="code-header"><span>Fly-By Recipe</span><span>Label</span></div>
+          <pre class="code-content"><code>Motion {f:all ease:linear}</code></pre>
+        </div>
+      </section>
+
+      <!-- Section: Live Sample Showcase -->
+      <section id="sample" class="docs-section">
+        <h2>🌟 Live Example: The Star Swirl</h2>
+        <p>
+          Below is a complete, working example built in Inkscape and exported directly via <code>inkanim-cli</code>:
+        </p>
+
+        <div class="sample-showcase">
+          <div class="sample-gif-frame">
+            <img src="img/star_swirl.gif" alt="Exported star_swirl.gif animated result" width="180" height="180">
+            <div class="sample-gif-caption">star_swirl.gif • 20 Frames • 51.7 KB</div>
+          </div>
+          <div class="sample-details">
+            <h3 style="color: #fff; font-size: 1.25rem;">Star Swirl (Twitch Emote Ready)</h3>
+            <p style="font-size: 0.95rem; color: var(--text-muted); margin-bottom: 12px;">
+              Authored in Inkscape using a single 5-pointed star and an inward spiral path labeled <code>Motion {f:1-20}</code>. Exported in seconds with <code>inkanim-cli</code>:
+            </p>
+            <div class="code-card" style="margin: 12px 0;">
+              <div class="code-header"><span>CLI Export Command</span><span>PowerShell / Bash</span></div>
+              <pre class="code-content" style="padding: 10px 14px; font-size: 0.88rem;"><code>inkanim-cli -i star_swirl.svg -o star_swirl.gif</code></pre>
+            </div>
+            <div class="sample-actions">
+              <a href="../samples/star_swirl.svg" download="star_swirl.svg" class="btn btn-secondary" style="font-size: 0.85rem; padding: 8px 14px;">
+                📥 Download star_swirl.svg
+              </a>
+              <a href="img/star_swirl.gif" download="star_swirl.gif" class="btn btn-secondary" style="font-size: 0.85rem; padding: 8px 14px;">
+                📥 Download star_swirl.gif
+              </a>
+              <a href="../demo/" class="btn btn-primary" style="font-size: 0.85rem; padding: 8px 14px;">
+                🚀 Open in Web Studio
+              </a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section: Exporting in InkAnim -->
+      <section id="exporting" class="docs-section">
+        <h2>🎬 Previewing & Exporting in InkAnim</h2>
+        <p>
+          Once your SVG file has its graphics and motion trajectories configured, InkAnim makes previewing, verifying, and exporting the animation effortless:
+        </p>
+
+        <h3>1. In-Studio Playback & Twitch Scale Inspector</h3>
+        <ul>
+          <li><strong>Playback Controls</strong>: Use <kbd>Space</kbd> or click <strong>Pause/Play</strong> to test timing in real time. Use <strong>Step ◀ / ▶</strong> to inspect individual animation frames.</li>
+          <li><strong>Global Speed</strong>: Change playback speed (e.g. 10 FPS, 15 FPS, 20 FPS) with a single dropdown selection.</li>
+          <li><strong>Looping Modes</strong>: Check <strong>Ping-Pong</strong> for oscillating back-and-forth animations or standard <strong>Loop</strong> for repeating cycles.</li>
+          <li><strong>Twitch Chat Inspector</strong>: Check the bottom panel to see your emote previewed simultaneously at actual Twitch chat dimensions (112×112, 56×56, and 28×28 pixels) on both dark (<code>#18181B</code>) and light (<code>#FFFFFF</code>) backgrounds.</li>
+        </ul>
+
+        <h3>2. 1-Click GIF Export</h3>
+        <p>
+          Switch to the <strong>Export</strong> tab in the right-hand panel:
+        </p>
+        <ul>
+          <li><strong>Auto-Square Padding</strong>: Automatically centers your artwork on a 1:1 square canvas with transparent padding, fulfilling Twitch emote submission rules without stretching.</li>
+          <li><strong>Target Resolution</strong>: Export at standard emote resolutions (512×512, 112×112) or custom dimensions.</li>
+          <li><strong>Color Quantization & Dithering</strong>: Select your palette depth (2 to 256 colors) and toggle Floyd-Steinberg dithering for smooth color gradients.</li>
+          <li><strong>Size Validator</strong>: InkAnim automatically verifies that the output GIF complies with Twitch's 1.0 MB file size limit.</li>
+        </ul>
+
+        <h3>3. Batch Export via CLI</h3>
+        <p>
+          If you have multiple SVGs or prefer headless automation, you can also use the standalone <code>inkanim-cli</code> executable:
+        </p>
+        <div class="code-card">
+          <div class="code-header"><span>Headless Export Command</span><span>Terminal</span></div>
+          <pre class="code-content"><code>inkanim-cli -i my_animation.svg -o my_animation.gif --fps 15</code></pre>
+        </div>
+      </section>
+    </article>
+  </main>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container footer-container">
+      <div class="footer-brand">
+        <img src="../icon.png" alt="InkAnim Logo" width="24" height="24">
+        <span>InkAnim — Open-Source Vector Animation Studio</span>
+      </div>
+      <p class="footer-text">Released under the MIT License • Built for Streamers and Emote Creators</p>
+    </div>
+  </footer>
+</body>
+</html>
