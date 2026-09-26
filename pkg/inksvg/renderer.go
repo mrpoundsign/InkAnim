@@ -357,6 +357,11 @@ func (ts *transformScanner) Line(b fixed.Point26_6) {
 	ts.Scanner.Line(ts.matrix.TFixed(b))
 }
 
+func (ts *transformScanner) SetBounds(w, h int) {
+	// Do not forward SetBounds to the destination scanner.
+	// The destination scanner must retain its true target image dimensions.
+}
+
 var (
 	mAdderOffset     uintptr
 	linerColorOffset uintptr
