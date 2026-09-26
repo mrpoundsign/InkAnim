@@ -126,7 +126,11 @@ func runLint(args []string) {
 
 	for i, mp := range doc.MotionPaths {
 		fmt.Printf("  [%d] GroupID: %s, PathID: %s\n", i+1, mp.GroupID, mp.ID)
-		fmt.Printf("      Config: f:%d-%d (Ease: %s)\n", mp.Config.StartFrame, mp.Config.EndFrame, mp.Config.Ease)
+		revStr := ""
+		if mp.Config.Reverse {
+			revStr = ", Rev: true"
+		}
+		fmt.Printf("      Config: f:%d-%d (Ease: %s%s)\n", mp.Config.StartFrame, mp.Config.EndFrame, mp.Config.Ease, revStr)
 		
 		if mp.Config.StartFrame == 0 && mp.Config.EndFrame == 0 {
 			fmt.Printf("      ❌ ERROR: Invalid or missing frame range.\n")

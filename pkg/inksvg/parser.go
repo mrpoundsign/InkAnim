@@ -9,6 +9,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/srwiley/oksvg"
 	"github.com/srwiley/rasterx"
@@ -437,13 +438,23 @@ func parseMotionConfig(label string) (MotionConfig, bool) {
 		return MotionConfig{}, false
 	}
 	configStr := label[idx+8 : idx+endIdx]
-	parts := strings.Split(configStr, ";")
+	parts := strings.FieldsFunc(configStr, func(r rune) bool {
+		return r == ';' || r == ',' || unicode.IsSpace(r)
+	})
 
 	config := MotionConfig{
 		Ease: "linear",
 	}
 
 	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if part == "rev" || part == "reverse" {
+			config.Reverse = true
+			continue
+		}
 		kv := strings.SplitN(part, ":", 2)
 		if len(kv) != 2 {
 			continue
@@ -455,6 +466,8 @@ func parseMotionConfig(label string) (MotionConfig, bool) {
 			config.Ease = v
 		case "t":
 			config.Type = v
+		case "rev", "reverse":
+			config.Reverse = (v == "true" || v == "1" || v == "yes")
 		case "f":
 			if v == "all" {
 				config.IsAll = true
