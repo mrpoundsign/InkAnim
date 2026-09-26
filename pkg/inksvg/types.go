@@ -94,6 +94,7 @@ type MotionConfig struct {
 	IsAll      bool
 	Ease       string
 	Type       string
+	Reverse    bool
 }
 
 // MotionPath represents a movement spline and its config found inside a group.

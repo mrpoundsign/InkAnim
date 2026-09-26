@@ -375,11 +375,15 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 					} else {
 						// Calculate t
 						duration := endF - startF
-						t := 0.0
+						progress := 0.0
 						if duration > 0 {
-							t = float64(frame1Idx-startF) / float64(duration)
+							progress = float64(frame1Idx-startF) / float64(duration)
 						}
-						t = ApplyEasing(t, mp.Config.Ease)
+						easedProgress := ApplyEasing(progress, mp.Config.Ease)
+						t := easedProgress
+						if mp.Config.Reverse {
+							t = 1.0 - easedProgress
+						}
 
 						dx, dy, err := EvaluatePathAt(mp.PathData, t)
 						if mp.Config.Type == "none" {
