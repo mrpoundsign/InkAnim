@@ -1,0 +1,311 @@
+/* InkAnim Documentation Styles */
+.docs-layout {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 48px;
+  padding: 40px 0 80px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .docs-layout {
+    grid-template-columns: 1fr;
+    gap: 32px;
+  }
+}
+
+/* Sticky Documentation Sidebar */
+.docs-sidebar {
+  position: sticky;
+  top: 96px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 24px;
+  backdrop-filter: blur(12px);
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+}
+
+.docs-sidebar-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent-purple-light);
+  margin-bottom: 16px;
+}
+
+.docs-nav-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.docs-nav-link {
+  display: block;
+  font-size: 0.95rem;
+  color: var(--text-muted);
+  text-decoration: none;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  transition: all 0.2s ease;
+}
+
+.docs-nav-link:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.docs-nav-link.active {
+  color: #fff;
+  background: var(--accent-purple-glow);
+  font-weight: 600;
+}
+
+/* Documentation Content Body */
+.docs-body {
+  min-width: 0;
+}
+
+.docs-section {
+  margin-bottom: 56px;
+  scroll-margin-top: 100px;
+}
+
+.docs-section h2 {
+  font-size: 1.85rem;
+  font-weight: 700;
+  margin-bottom: 16px;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.docs-section h3 {
+  font-size: 1.35rem;
+  font-weight: 600;
+  margin: 28px 0 12px;
+  color: var(--text-main);
+}
+
+.docs-section p {
+  color: var(--text-muted);
+  margin-bottom: 16px;
+  font-size: 1.05rem;
+  line-height: 1.7;
+}
+
+.docs-section ul, .docs-section ol {
+  margin-bottom: 20px;
+  padding-left: 24px;
+  color: var(--text-muted);
+}
+
+.docs-section li {
+  margin-bottom: 8px;
+  line-height: 1.6;
+}
+
+/* Callout Boxes */
+.callout {
+  background: rgba(145, 70, 255, 0.08);
+  border-left: 4px solid var(--accent-purple);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  padding: 16px 20px;
+  margin: 24px 0;
+}
+
+.callout.tip {
+  background: rgba(0, 245, 212, 0.08);
+  border-left-color: var(--accent-cyan);
+}
+
+.callout-title {
+  font-weight: 700;
+  font-size: 0.95rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.callout.tip .callout-title {
+  color: var(--accent-cyan);
+}
+
+.callout p:last-child {
+  margin-bottom: 0;
+}
+
+/* Syntax & Code Blocks */
+.code-card {
+  background: #0d0d11;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  margin: 20px 0;
+  overflow: hidden;
+}
+
+.code-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid var(--border-color);
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+}
+
+.code-content {
+  padding: 16px;
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  color: #e4e4e7;
+  overflow-x: auto;
+  line-height: 1.5;
+}
+
+.code-content .hl-keyword { color: #f43f5e; font-weight: 600; }
+.code-content .hl-prop { color: #a78bfa; }
+.code-content .hl-val { color: #38bdf8; }
+.code-content .hl-comment { color: #71717a; font-style: italic; }
+
+/* Image Figures */
+.doc-figure {
+  margin: 28px 0;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-card);
+}
+
+.doc-figure img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.doc-caption {
+  padding: 12px 16px;
+  font-size: 0.9rem;
+  color: var(--text-dim);
+  background: rgba(0, 0, 0, 0.3);
+  border-top: 1px solid var(--border-color);
+  text-align: center;
+}
+
+/* Reference Table */
+.docs-table-wrapper {
+  overflow-x: auto;
+  margin: 24px 0;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+}
+
+.docs-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.docs-table th, .docs-table td {
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.docs-table th {
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 0.85rem;
+  color: var(--text-main);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.docs-table td {
+  color: var(--text-muted);
+  font-size: 0.95rem;
+}
+
+.docs-table tr:last-child td {
+  border-bottom: none;
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+.badge-purple { background: rgba(145, 70, 255, 0.2); color: #d8b4fe; }
+.badge-cyan { background: rgba(0, 245, 212, 0.15); color: #5eead4; }
+.badge-amber { background: rgba(245, 158, 11, 0.15); color: #fcd34d; }
+
+/* Live Sample Showcase */
+.sample-showcase {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 28px;
+  margin: 32px 0;
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 32px;
+  align-items: center;
+}
+
+@media (max-width: 768px) {
+  .sample-showcase {
+    grid-template-columns: 1fr;
+    text-align: center;
+  }
+}
+
+.sample-gif-frame {
+  background: repeating-conic-gradient(#1f1f26 0% 25%, #121217 0% 50%) 50% / 16px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+}
+
+.sample-gif-frame img {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-sm);
+}
+
+.sample-gif-caption {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  margin-top: 10px;
+  text-align: center;
+}
+
+.sample-details h3 {
+  margin-top: 0;
+  margin-bottom: 8px;
+}
+
+.sample-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 20px;
+}
+
