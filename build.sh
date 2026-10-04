@@ -6,6 +6,7 @@ set -euo pipefail
 #   ./build.sh          # Run tests and build CLI & GUI into build/
 #   ./build.sh cli      # Build Pure-Go CLI into build/
 #   ./build.sh gui      # Build Desktop GUI into build/
+#   ./build.sh gui-win  # Build Desktop GUI for Windows via MinGW into build/
 #   ./build.sh test     # Run unit tests
 #   ./build.sh cross    # Cross-compile CLI for multiple targets
 #   ./build.sh clean    # Clean build outputs
@@ -49,6 +50,12 @@ build_gui() {
     echo "✓ Successfully built $BUILD_DIR/inkanim"
 }
 
+build_gui_win() {
+    echo "==> Building inkanim Desktop GUI for Windows (via MinGW)..."
+    CC=x86_64-w64-mingw32-gcc CGO_ENABLED=1 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-H windowsgui -s -w" -o "$BUILD_DIR/inkanim.exe" ./cmd/inkanim
+    echo "✓ Successfully built $BUILD_DIR/inkanim.exe"
+}
+
 build_wasm() {
     echo "==> Packaging WebAssembly studio & assembling GitHub Pages site..."
     local PAGES_DIR="$BUILD_DIR/gh-pages"
@@ -59,7 +66,7 @@ build_wasm() {
     echo "==> Compiling WebAssembly binary..."
     (
         cd "$WASM_TEMP"
-        go run fyne.io/fyne/v2/cmd/fyne@v2.8.1 package -os web --release \
+        go run fyne.io/tools/cmd/fyne@latest package -os web --release \
             --tags migrated_fynedo \
             --sourceDir "$ROOT_DIR/cmd/inkanim" \
             --icon "$ROOT_DIR/assets/icon.png" \
@@ -146,6 +153,9 @@ case "$TARGET" in
     gui)
         build_gui
         ;;
+    gui-win)
+        build_gui_win
+        ;;
     wasm)
         build_wasm
         ;;
@@ -168,7 +178,7 @@ case "$TARGET" in
         clean_artifacts
         ;;
     *)
-        echo "Unknown target: $TARGET. Available: all, cli, gui, wasm, serve, test, test-update-golden, lint, cross, clean"
+        echo "Unknown target: $TARGET. Available: all, cli, gui, gui-win, wasm, serve, test, test-update-golden, lint, cross, clean"
         exit 1
         ;;
 esac
