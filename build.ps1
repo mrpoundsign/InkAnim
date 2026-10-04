@@ -158,7 +158,7 @@ function Build-WASM {
     Write-Host "Compiling WebAssembly binary via Fyne..." -ForegroundColor DarkGray
     Push-Location $wasmTemp
     try {
-        & $GoExe run fyne.io/fyne/v2/cmd/fyne@v2.8.1 package -os web --release `
+        & $GoExe run fyne.io/tools/cmd/fyne@latest package -os web --release `
             --tags migrated_fynedo `
             --sourceDir (Join-Path $PSScriptRoot "cmd\inkanim") `
             --icon (Join-Path $PSScriptRoot "assets\icon.png") `
