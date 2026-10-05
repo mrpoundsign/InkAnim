@@ -582,8 +582,8 @@ func TestIntegration_PendulumAndComplexMotion(t *testing.T) {
 	if len(doc2.Layers) != 60 {
 		t.Errorf("complex_motion.svg frame layers count = %d, want 60", len(doc2.Layers))
 	}
-	if len(doc2.MotionPaths) != 39 {
-		t.Fatalf("complex_motion.svg motion paths count = %d, want 39", len(doc2.MotionPaths))
+	if len(doc2.MotionPaths) != 41 {
+		t.Fatalf("complex_motion.svg motion paths count = %d, want 41", len(doc2.MotionPaths))
 	}
 	if doc2.CameraPath == nil || doc2.CameraPath.Config.Type != "camera" || doc2.CameraPath.Config.StartFrame != 1 || doc2.CameraPath.Config.EndFrame != 60 {
 		t.Fatalf("complex_motion.svg CameraPath = %+v, want camera f: 1-60", doc2.CameraPath)
@@ -601,6 +601,14 @@ func TestIntegration_PendulumAndComplexMotion(t *testing.T) {
 	mpStarsColor := mpMap["mod_stars_color"]
 	if !mpStarsColor.Config.IsColor || !mpStarsColor.Config.IsPingPong {
 		t.Errorf("complex_motion.svg stars color mod = %+v, want isColor=true pingpong=true", mpStarsColor.Config)
+	}
+	mpRingBack := mpMap["ring_sweep_back"]
+	if !mpRingBack.Config.IsColor || !mpRingBack.Config.HasColorAngle || mpRingBack.Config.ColorAngle != -45 || mpRingBack.Config.ColorRepeat != 4 || mpRingBack.Config.ColorTarget != "stroke" {
+		t.Errorf("complex_motion.svg ring back sweep mod = %+v, want isColor=true angle=-45 r=4 target=stroke", mpRingBack.Config)
+	}
+	mpRingFront := mpMap["ring_sweep_front"]
+	if !mpRingFront.Config.IsColor || !mpRingFront.Config.HasColorAngle || mpRingFront.Config.ColorAngle != -45 || mpRingFront.Config.ColorRepeat != 4 || mpRingFront.Config.ColorTarget != "stroke" {
+		t.Errorf("complex_motion.svg ring front sweep mod = %+v, want isColor=true angle=-45 r=4 target=stroke", mpRingFront.Config)
 	}
 
 	mpFadeDown := mpMap["twinkle_fade_down"]
@@ -2269,6 +2277,194 @@ func TestBuildTimelineFrameSVG_ColorOpacityOverride(t *testing.T) {
 	sub9 := f9Str[idx9 : idx9+strings.Index(f9Str[idx9:], ">")]
 	if !strings.Contains(sub9, `fill-opacity:1`) && !strings.Contains(sub9, `fill-opacity: 1`) {
 		t.Errorf("styled_box frame 9 expected fill-opacity restored to 1, got: %s", sub9)
+	}
+}
+
+func TestBuildTimelineFrameSVG_GradientSweepAngle(t *testing.T) {
+	svgData := `<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="200" height="200" viewBox="0 0 200 200">
+  <defs>
+    <linearGradient id="shimmer">
+      <stop offset="0%" stop-color="#a78bfa" />
+      <stop offset="50%" stop-color="#22d3ee" />
+      <stop offset="100%" stop-color="#a78bfa" />
+    </linearGradient>
+  </defs>
+  <g id="layer1" inkscape:groupmode="layer" inkscape:label="Layer 1">
+    <rect id="sweep_box" x="0" y="0" width="100" height="50" fill="url(#shimmer)" inkscape:label="Color { f: 1-10; angle: 0; target: fill }" />
+    <rect id="target_rect" x="10" y="10" width="80" height="30" fill="#333333" />
+  </g>
+</svg>`
+
+	doc, err := ParseSVG([]byte(svgData))
+	if err != nil {
+		t.Fatalf("ParseSVG failed: %v", err)
+	}
+
+	// Frame 0: t=0.0
+	f0Bytes, err := BuildTimelineFrameSVG(doc, 0, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("BuildTimelineFrameSVG frame 0 failed: %v", err)
+	}
+	f0Str := string(f0Bytes)
+
+	// Verify modifier object is hidden
+	if strings.Contains(f0Str, `id="sweep_box"`) {
+		t.Errorf("expected sweep_box to be omitted from frame output")
+	}
+
+	// Verify linearGradient is generated in <defs>
+	if !strings.Contains(f0Str, `<linearGradient id="inkanim_sweep_sweep_box_1"`) {
+		t.Errorf("expected inkanim_sweep_sweep_box_1 in frame 0 output, got:\n%s", f0Str)
+	}
+	if !strings.Contains(f0Str, `gradientUnits="userSpaceOnUse"`) {
+		t.Errorf("expected gradientUnits=userSpaceOnUse in frame 0 output")
+	}
+
+	// Verify target_rect references the sweep gradient
+	if !strings.Contains(f0Str, `fill="url(#inkanim_sweep_sweep_box_1)"`) {
+		t.Errorf("expected target_rect to reference inkanim_sweep_sweep_box_1, got:\n%s", f0Str)
+	}
+
+	// Frame 9: t=1.0
+	f9Bytes, err := BuildTimelineFrameSVG(doc, 9, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("BuildTimelineFrameSVG frame 9 failed: %v", err)
+	}
+	f9Str := string(f9Bytes)
+	if !strings.Contains(f9Str, `<linearGradient id="inkanim_sweep_sweep_box_10"`) {
+		t.Errorf("expected inkanim_sweep_sweep_box_10 in frame 9 output")
+	}
+	if !strings.Contains(f9Str, `fill="url(#inkanim_sweep_sweep_box_10)"`) {
+		t.Errorf("expected target_rect to reference inkanim_sweep_sweep_box_10 in frame 9")
+	}
+
+	// Verify rasterization succeeds
+	img, err := RenderSVGToRGBA(f0Bytes, 200, 200)
+	if err != nil {
+		t.Fatalf("RenderSVGToRGBA frame 0 failed: %v", err)
+	}
+	if img == nil || img.Bounds().Dx() != 200 {
+		t.Fatalf("unexpected rendered image bounds: %v", img.Bounds())
+	}
+}
+
+func TestBuildTimelineFrameSVG_GradientSweepTargetStroke(t *testing.T) {
+	svgData := `<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="200" height="200" viewBox="0 0 200 200">
+  <defs>
+    <linearGradient id="ring_shimmer">
+      <stop offset="0%" stop-color="#a78bfa" />
+      <stop offset="50%" stop-color="#22d3ee" />
+      <stop offset="100%" stop-color="#a78bfa" />
+    </linearGradient>
+  </defs>
+  <g id="group_ring" inkscape:groupmode="layer" inkscape:label="Ring Layer">
+    <rect id="mod_ring" x="50" y="50" width="100" height="100" fill="url(#ring_shimmer)" inkscape:label="Color { f: 1-10; angle: -45; target: stroke }" />
+    <path id="ring_arc" d="M 60,100 A 40,20 0 0,1 140,100" fill="none" stroke="#a78bfa" stroke-width="4" />
+  </g>
+</svg>`
+
+	doc, err := ParseSVG([]byte(svgData))
+	if err != nil {
+		t.Fatalf("ParseSVG failed: %v", err)
+	}
+
+	f0Bytes, err := BuildTimelineFrameSVG(doc, 0, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("BuildTimelineFrameSVG frame 0 failed: %v", err)
+	}
+	f0Str := string(f0Bytes)
+
+	// Verify stroke gets url(#...) while fill remains none
+	arcIdx := strings.Index(f0Str, `id="ring_arc"`)
+	if arcIdx == -1 {
+		t.Fatalf("ring_arc not found in f0 output")
+	}
+	arcTag := f0Str[arcIdx : arcIdx+strings.Index(f0Str[arcIdx:], ">")]
+	if !strings.Contains(arcTag, `stroke="url(#inkanim_sweep_mod_ring_1)"`) {
+		t.Errorf("expected ring_arc stroke to reference inkanim_sweep_mod_ring_1, got: %s", arcTag)
+	}
+	if !strings.Contains(arcTag, `fill="none"`) {
+		t.Errorf("expected ring_arc fill to remain none, got: %s", arcTag)
+	}
+
+	// Verify rasterization
+	img, err := RenderSVGToRGBA(f0Bytes, 200, 200)
+	if err != nil {
+		t.Fatalf("RenderSVGToRGBA failed: %v", err)
+	}
+	if img == nil {
+		t.Fatalf("RenderSVGToRGBA returned nil image")
+	}
+}
+
+func TestBuildTimelineFrameSVG_GradientSweepPingPongAndRepeat(t *testing.T) {
+	svgData := `<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="100" height="100" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="g1">
+      <stop offset="0%" stop-color="#ff0000" />
+      <stop offset="100%" stop-color="#0000ff" />
+    </linearGradient>
+  </defs>
+  <g id="layer1" inkscape:groupmode="layer" inkscape:label="Layer 1">
+    <rect id="mod" x="0" y="0" width="100" height="100" fill="url(#g1)" inkscape:label="Color { f: 1-11; pingpong: true; angle: 90; target: all }" />
+    <circle id="circ" cx="50" cy="50" r="25" fill="#111111" stroke="#222222" />
+  </g>
+</svg>`
+
+	doc, err := ParseSVG([]byte(svgData))
+	if err != nil {
+		t.Fatalf("ParseSVG failed: %v", err)
+	}
+
+	// Frame 0: t=0.0 (start)
+	f0Bytes, err := BuildTimelineFrameSVG(doc, 0, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("BuildTimelineFrameSVG frame 0 failed: %v", err)
+	}
+	f0Str := string(f0Bytes)
+
+	// Frame 5: t=1.0 (peak of pingpong at halfway frame 6 of 11)
+	f5Bytes, err := BuildTimelineFrameSVG(doc, 5, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("BuildTimelineFrameSVG frame 5 failed: %v", err)
+	}
+	f5Str := string(f5Bytes)
+
+	// Frame 10: t=0.0 (pingpong returns to start)
+	f10Bytes, err := BuildTimelineFrameSVG(doc, 10, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("BuildTimelineFrameSVG frame 10 failed: %v", err)
+	}
+	f10Str := string(f10Bytes)
+
+	// Verify both fill and stroke on circ are updated to gradient url
+	if !strings.Contains(f0Str, `fill="url(#inkanim_sweep_mod_1)"`) || !strings.Contains(f0Str, `stroke="url(#inkanim_sweep_mod_1)"`) {
+		t.Errorf("expected both fill and stroke to reference sweep gradient in frame 0")
+	}
+
+	// Extract y1 from frame 0 and frame 10 (should be identical since pingpong returns to start)
+	extractY1 := func(s string) string {
+		start := strings.Index(s, `y1="`)
+		if start == -1 {
+			return ""
+		}
+		end := strings.Index(s[start+4:], `"`)
+		return s[start+4 : start+4+end]
+	}
+
+	y1F0 := extractY1(f0Str)
+	y1F5 := extractY1(f5Str)
+	y1F10 := extractY1(f10Str)
+
+	if y1F0 == "" || y1F5 == "" || y1F10 == "" {
+		t.Fatalf("failed to extract y1: f0=%s, f5=%s, f10=%s", y1F0, y1F5, y1F10)
+	}
+
+	if y1F0 != y1F10 {
+		t.Errorf("pingpong frame 0 and frame 10 y1 should match: f0=%s, f10=%s", y1F0, y1F10)
+	}
+	if y1F0 == y1F5 {
+		t.Errorf("pingpong frame 5 y1 should differ from frame 0: f0=%s, f5=%s", y1F0, y1F5)
 	}
 }
 

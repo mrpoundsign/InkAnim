@@ -197,6 +197,7 @@ type MotionPath struct {
 	PathData string
 	Config   MotionConfig
 	FillURL  string // gradient ID from url(#...) on modifier object
+	Bounds   Rect   // geometric bounding box of modifier object
 }
 
 // SVGDocument holds parsed SVG metadata and elements.

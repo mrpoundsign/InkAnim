@@ -1322,6 +1322,11 @@ func (m Matrix2D) ScaleFactor() float64 {
 	return math.Sqrt(sx * sy)
 }
 
+// Transform applies the 2D affine transformation to the point (x, y).
+func (m Matrix2D) Transform(x, y float64) (float64, float64) {
+	return m.A*x + m.C*y + m.E, m.B*x + m.D*y + m.F
+}
+
 // parseTransform parses an SVG transform attribute string into a cumulative Matrix2D.
 func parseTransform(s string) Matrix2D {
 	res := IdentityMatrix()

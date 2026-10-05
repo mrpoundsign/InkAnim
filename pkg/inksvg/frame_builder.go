@@ -578,6 +578,7 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 
 	var buf bytes.Buffer
 	encoder := xml.NewEncoder(&buf)
+	dynamicGradients, groupSweepMap := generateSweepGradients(doc, frame1Idx, maxF)
 
 	for _, tok := range preamble {
 		if err := encoder.EncodeToken(tok); err != nil {
@@ -588,8 +589,53 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 		return nil, err
 	}
 
+	if len(dynamicGradients) > 0 {
+		defsStart := xml.StartElement{Name: xml.Name{Local: "defs"}}
+		if err := encoder.EncodeToken(defsStart); err != nil {
+			return nil, err
+		}
+		for _, dg := range dynamicGradients {
+			gradStart := xml.StartElement{
+				Name: xml.Name{Local: "linearGradient"},
+				Attr: []xml.Attr{
+					{Name: xml.Name{Local: "id"}, Value: dg.ID},
+					{Name: xml.Name{Local: "gradientUnits"}, Value: "userSpaceOnUse"},
+					{Name: xml.Name{Local: "x1"}, Value: fmt.Sprintf("%.2f", dg.X1)},
+					{Name: xml.Name{Local: "y1"}, Value: fmt.Sprintf("%.2f", dg.Y1)},
+					{Name: xml.Name{Local: "x2"}, Value: fmt.Sprintf("%.2f", dg.X2)},
+					{Name: xml.Name{Local: "y2"}, Value: fmt.Sprintf("%.2f", dg.Y2)},
+				},
+			}
+			if err := encoder.EncodeToken(gradStart); err != nil {
+				return nil, err
+			}
+			for _, st := range dg.Stops {
+				stopElem := xml.StartElement{
+					Name: xml.Name{Local: "stop"},
+					Attr: []xml.Attr{
+						{Name: xml.Name{Local: "offset"}, Value: fmt.Sprintf("%.2f%%", st.Offset*100.0)},
+						{Name: xml.Name{Local: "stop-color"}, Value: st.Color},
+						{Name: xml.Name{Local: "stop-opacity"}, Value: fmt.Sprintf("%.3f", st.Opacity)},
+					},
+				}
+				if err := encoder.EncodeToken(stopElem); err != nil {
+					return nil, err
+				}
+				if err := encoder.EncodeToken(stopElem.End()); err != nil {
+					return nil, err
+				}
+			}
+			if err := encoder.EncodeToken(gradStart.End()); err != nil {
+				return nil, err
+			}
+		}
+		if err := encoder.EncodeToken(defsStart.End()); err != nil {
+			return nil, err
+		}
+	}
+
 	for _, node := range nodes {
-		if err := serializeNodeTokens(encoder, node.tokens, doc, frame1Idx, maxF, motionMap, cameraActive, camX, camY); err != nil {
+		if err := serializeNodeTokens(encoder, node.tokens, doc, frame1Idx, maxF, motionMap, cameraActive, camX, camY, groupSweepMap); err != nil {
 			return nil, err
 		}
 	}
@@ -610,7 +656,7 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 	return buf.Bytes(), nil
 }
 
-func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocument, frame1Idx, maxF int, motionMap map[string][]MotionPath, cameraActive bool, camX, camY float64) error {
+func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocument, frame1Idx, maxF int, motionMap map[string][]MotionPath, cameraActive bool, camX, camY float64, groupSweepMap map[string]string) error {
 	var currentGDepth int
 	var parallaxActiveDepth int
 
@@ -618,6 +664,7 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 		depth   int
 		hex     string
 		opacity float64
+		gradURL string
 		target  string
 	}
 	var colorStack []activeColorState
@@ -654,7 +701,7 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 				// Apply active group color modifier
 				if len(colorStack) > 0 {
 					topColor := colorStack[len(colorStack)-1]
-					applyColorOverride(&elem, topColor.hex, topColor.opacity, topColor.target)
+					applyColorOverride(&elem, topColor.hex, topColor.opacity, topColor.target, topColor.gradURL)
 				}
 			}
 
@@ -904,57 +951,75 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 						}
 					}
 
-					// Check for Color modifier attached to this group
-					for _, mp := range paths {
-						if mp.Config.IsColor && !mp.Config.HasColorAngle {
-							startF := mp.Config.StartFrame
-							endF := mp.Config.EndFrame
-							if mp.Config.IsAll {
-								startF = 1
-								endF = maxF
+					// Check for Color sweep modifier attached to this group (Mode 2)
+					var colorSweepPushed bool
+					if sweepID, ok := groupSweepMap[id]; ok {
+						for _, mp := range paths {
+							if mp.Config.IsColor && mp.Config.HasColorAngle {
+								colorStack = append(colorStack, activeColorState{
+									depth:   currentGDepth,
+									gradURL: sweepID,
+									target:  mp.Config.ColorTarget,
+								})
+								colorSweepPushed = true
+								break
 							}
-							if frame1Idx >= startF && frame1Idx <= endF {
-								duration := endF - startF
-								p := 0.0
-								if duration > 0 {
-									p = float64(frame1Idx-startF) / float64(duration)
+						}
+					}
+
+					// Check for Color solid shift modifier attached to this group (Mode 1)
+					if !colorSweepPushed {
+						for _, mp := range paths {
+							if mp.Config.IsColor && !mp.Config.HasColorAngle {
+								startF := mp.Config.StartFrame
+								endF := mp.Config.EndFrame
+								if mp.Config.IsAll {
+									startF = 1
+									endF = maxF
 								}
-								r := mp.Config.ColorRepeat
-								if r <= 0 {
-									r = 1
-								}
-								cycleP := p * float64(r)
-								fraction := 0.0
-								if p >= 1.0 {
-									fraction = 1.0
-								} else {
-									fraction = cycleP - math.Floor(cycleP)
-								}
-								eased := ApplyEasing(fraction, mp.Config.Ease)
-								if mp.Config.Reverse {
-									eased = 1.0 - eased
-								}
-								var t float64
-								if mp.Config.IsPingPong {
-									if eased <= 0.5 {
-										t = eased * 2.0
-									} else {
-										t = (1.0 - eased) * 2.0
+								if frame1Idx >= startF && frame1Idx <= endF {
+									duration := endF - startF
+									p := 0.0
+									if duration > 0 {
+										p = float64(frame1Idx-startF) / float64(duration)
 									}
-								} else {
-									t = eased
+									r := mp.Config.ColorRepeat
+									if r <= 0 {
+										r = 1
+									}
+									cycleP := p * float64(r)
+									fraction := 0.0
+									if p >= 1.0 {
+										fraction = 1.0
+									} else {
+										fraction = cycleP - math.Floor(cycleP)
+									}
+									eased := ApplyEasing(fraction, mp.Config.Ease)
+									if mp.Config.Reverse {
+										eased = 1.0 - eased
+									}
+									var t float64
+									if mp.Config.IsPingPong {
+										if eased <= 0.5 {
+											t = eased * 2.0
+										} else {
+											t = (1.0 - eased) * 2.0
+										}
+									} else {
+										t = eased
+									}
+									if grad, ok := doc.Gradients[mp.FillURL]; ok && len(grad.Stops) > 0 {
+										hex, op := InterpolateGradientColor(grad, t)
+										colorStack = append(colorStack, activeColorState{
+											depth:   currentGDepth,
+											hex:     hex,
+											opacity: op,
+											target:  mp.Config.ColorTarget,
+										})
+									}
 								}
-								if grad, ok := doc.Gradients[mp.FillURL]; ok && len(grad.Stops) > 0 {
-									hex, op := InterpolateGradientColor(grad, t)
-									colorStack = append(colorStack, activeColorState{
-										depth:   currentGDepth,
-										hex:     hex,
-										opacity: op,
-										target:  mp.Config.ColorTarget,
-									})
-								}
+								break
 							}
-							break
 						}
 					}
 				}
@@ -1009,6 +1074,147 @@ func resolvePivot(doc *SVGDocument, groupID string, config MotionConfig, pathDat
 		groupRect := doc.GetElementRect(groupID)
 		return groupRect.X + groupRect.Width/2.0, groupRect.Y + groupRect.Height/2.0
 	}
+}
+
+type dynamicSweepGradient struct {
+	ID    string
+	X1    float64
+	Y1    float64
+	X2    float64
+	Y2    float64
+	Stops []GradientStop
+}
+
+func generateSweepGradients(doc *SVGDocument, frame1Idx, maxF int) ([]dynamicSweepGradient, map[string]string) {
+	var dynGradients []dynamicSweepGradient
+	groupSweepMap := make(map[string]string)
+
+	for _, mp := range doc.MotionPaths {
+		if !mp.Config.IsColor || !mp.Config.HasColorAngle {
+			continue
+		}
+		startF := mp.Config.StartFrame
+		endF := mp.Config.EndFrame
+		if mp.Config.IsAll {
+			startF = 1
+			endF = maxF
+		}
+		if frame1Idx < startF || frame1Idx > endF {
+			continue
+		}
+		duration := endF - startF
+		p := 0.0
+		if duration > 0 {
+			p = float64(frame1Idx-startF) / float64(duration)
+		}
+		r := mp.Config.ColorRepeat
+		if r <= 0 {
+			r = 1
+		}
+		cycleP := p * float64(r)
+		fraction := 0.0
+		if p >= 1.0 {
+			fraction = 1.0
+		} else {
+			fraction = cycleP - math.Floor(cycleP)
+		}
+		eased := ApplyEasing(fraction, mp.Config.Ease)
+		if mp.Config.Reverse {
+			eased = 1.0 - eased
+		}
+		var t float64
+		if mp.Config.IsPingPong {
+			if eased <= 0.5 {
+				t = eased * 2.0
+			} else {
+				t = (1.0 - eased) * 2.0
+			}
+		} else {
+			t = eased
+		}
+
+		rect := mp.Bounds
+		if rect.Width <= 0 || rect.Height <= 0 {
+			if mp.ID != "" {
+				rect = doc.GetElementRect(mp.ID)
+			}
+		}
+		if rect.Width <= 0 || rect.Height <= 0 {
+			if mp.GroupID != "" {
+				rect = doc.GetElementRect(mp.GroupID)
+			}
+		}
+		if rect.Width <= 0 || rect.Height <= 0 {
+			rect = doc.GetDocumentRect()
+		}
+
+		rad := mp.Config.ColorAngle * math.Pi / 180.0
+		ux := math.Cos(rad)
+		uy := math.Sin(rad)
+
+		cx := rect.X + rect.Width/2.0
+		cy := rect.Y + rect.Height/2.0
+
+		corners := [4][2]float64{
+			{rect.X, rect.Y},
+			{rect.X + rect.Width, rect.Y},
+			{rect.X + rect.Width, rect.Y + rect.Height},
+			{rect.X, rect.Y + rect.Height},
+		}
+		pMin := corners[0][0]*ux + corners[0][1]*uy
+		pMax := pMin
+		for i := 1; i < 4; i++ {
+			proj := corners[i][0]*ux + corners[i][1]*uy
+			if proj < pMin {
+				pMin = proj
+			}
+			if proj > pMax {
+				pMax = proj
+			}
+		}
+		span := pMax - pMin
+		if span < 1e-4 {
+			span = 1.0
+		}
+
+		pCenter := pMin + t*span
+		pStart := pCenter - span/2.0
+		pEnd := pCenter + span/2.0
+
+		cProj := cx*ux + cy*uy
+		x1 := cx + (pStart-cProj)*ux
+		y1 := cy + (pStart-cProj)*uy
+		x2 := cx + (pEnd-cProj)*ux
+		y2 := cy + (pEnd-cProj)*uy
+
+		var stops []GradientStop
+		if grad, ok := doc.Gradients[mp.FillURL]; ok && len(grad.Stops) > 0 {
+			stops = grad.Stops
+		} else {
+			stops = []GradientStop{
+				{Offset: 0.0, Color: "#ffffff", Opacity: 1.0},
+				{Offset: 1.0, Color: "#000000", Opacity: 1.0},
+			}
+		}
+
+		sweepID := fmt.Sprintf("inkanim_sweep_%s_%d", mp.ID, frame1Idx)
+		if mp.ID == "" {
+			sweepID = fmt.Sprintf("inkanim_sweep_%s_%d", mp.GroupID, frame1Idx)
+		}
+
+		if mp.GroupID != "" {
+			groupSweepMap[mp.GroupID] = sweepID
+		}
+		dynGradients = append(dynGradients, dynamicSweepGradient{
+			ID:    sweepID,
+			X1:    x1,
+			Y1:    y1,
+			X2:    x2,
+			Y2:    y2,
+			Stops: stops,
+		})
+	}
+	return dynGradients, groupSweepMap
 }
 
 // InterpolateGradientColor evaluates a gradient at progress t (0.0 to 1.0) and returns
@@ -1074,7 +1280,7 @@ func parseColorRGB(colorStr string) (uint8, uint8, uint8) {
 	return 0, 0, 0
 }
 
-func applyColorOverride(elem *xml.StartElement, hex string, opacity float64, target string) {
+func applyColorOverride(elem *xml.StartElement, hex string, opacity float64, target string, gradURL string) {
 	var styleVal string
 	var styleAttrIdx = -1
 	var fillAttrIdx = -1
@@ -1110,37 +1316,46 @@ func applyColorOverride(elem *xml.StartElement, hex string, opacity float64, tar
 		attrStroke = elem.Attr[strokeAttrIdx].Value
 	}
 
+	colorVal := hex
+	if gradURL != "" {
+		colorVal = fmt.Sprintf("url(#%s)", gradURL)
+	}
+
 	// 1. Fill Override
 	if target == "fill" || target == "all" {
 		isFillNone := (styleFill == "none") || (styleFill == "" && attrFill == "none")
 		if !isFillNone {
 			if styleAttrIdx >= 0 && styleFill != "" {
-				styleVal = setStyleProp(styleVal, "fill", hex)
-				if opacity < 1.0 {
-					styleVal = setStyleProp(styleVal, "fill-opacity", fmt.Sprintf("%.3f", opacity))
-				} else if extractCSSProp(styleVal, "fill-opacity") != "" {
-					styleVal = setStyleProp(styleVal, "fill-opacity", "1")
+				styleVal = setStyleProp(styleVal, "fill", colorVal)
+				if gradURL == "" {
+					if opacity < 1.0 {
+						styleVal = setStyleProp(styleVal, "fill-opacity", fmt.Sprintf("%.3f", opacity))
+					} else if extractCSSProp(styleVal, "fill-opacity") != "" {
+						styleVal = setStyleProp(styleVal, "fill-opacity", "1")
+					}
 				}
 			}
 			if fillAttrIdx >= 0 {
-				elem.Attr[fillAttrIdx].Value = hex
+				elem.Attr[fillAttrIdx].Value = colorVal
 			} else if styleAttrIdx < 0 || styleFill == "" {
 				elem.Attr = append(elem.Attr, xml.Attr{
 					Name:  xml.Name{Local: "fill"},
-					Value: hex,
+					Value: colorVal,
 				})
 			}
-			if opacity < 1.0 {
-				if fillOpacityAttrIdx >= 0 {
-					elem.Attr[fillOpacityAttrIdx].Value = fmt.Sprintf("%.3f", opacity)
-				} else if styleAttrIdx < 0 || styleFill == "" {
-					elem.Attr = append(elem.Attr, xml.Attr{
-						Name:  xml.Name{Local: "fill-opacity"},
-						Value: fmt.Sprintf("%.3f", opacity),
-					})
+			if gradURL == "" {
+				if opacity < 1.0 {
+					if fillOpacityAttrIdx >= 0 {
+						elem.Attr[fillOpacityAttrIdx].Value = fmt.Sprintf("%.3f", opacity)
+					} else if styleAttrIdx < 0 || styleFill == "" {
+						elem.Attr = append(elem.Attr, xml.Attr{
+							Name:  xml.Name{Local: "fill-opacity"},
+							Value: fmt.Sprintf("%.3f", opacity),
+						})
+					}
+				} else if fillOpacityAttrIdx >= 0 {
+					elem.Attr[fillOpacityAttrIdx].Value = "1"
 				}
-			} else if fillOpacityAttrIdx >= 0 {
-				elem.Attr[fillOpacityAttrIdx].Value = "1"
 			}
 		}
 	}
@@ -1150,32 +1365,36 @@ func applyColorOverride(elem *xml.StartElement, hex string, opacity float64, tar
 		hasStroke := (styleStroke != "" && styleStroke != "none") || (styleStroke == "" && attrStroke != "" && attrStroke != "none")
 		if hasStroke {
 			if styleAttrIdx >= 0 && styleStroke != "" {
-				styleVal = setStyleProp(styleVal, "stroke", hex)
-				if opacity < 1.0 {
-					styleVal = setStyleProp(styleVal, "stroke-opacity", fmt.Sprintf("%.3f", opacity))
-				} else if extractCSSProp(styleVal, "stroke-opacity") != "" {
-					styleVal = setStyleProp(styleVal, "stroke-opacity", "1")
+				styleVal = setStyleProp(styleVal, "stroke", colorVal)
+				if gradURL == "" {
+					if opacity < 1.0 {
+						styleVal = setStyleProp(styleVal, "stroke-opacity", fmt.Sprintf("%.3f", opacity))
+					} else if extractCSSProp(styleVal, "stroke-opacity") != "" {
+						styleVal = setStyleProp(styleVal, "stroke-opacity", "1")
+					}
 				}
 			}
 			if strokeAttrIdx >= 0 {
-				elem.Attr[strokeAttrIdx].Value = hex
+				elem.Attr[strokeAttrIdx].Value = colorVal
 			} else if styleAttrIdx < 0 || styleStroke == "" {
 				elem.Attr = append(elem.Attr, xml.Attr{
 					Name:  xml.Name{Local: "stroke"},
-					Value: hex,
+					Value: colorVal,
 				})
 			}
-			if opacity < 1.0 {
-				if strokeOpacityAttrIdx >= 0 {
-					elem.Attr[strokeOpacityAttrIdx].Value = fmt.Sprintf("%.3f", opacity)
-				} else if styleAttrIdx < 0 || styleStroke == "" {
-					elem.Attr = append(elem.Attr, xml.Attr{
-						Name:  xml.Name{Local: "stroke-opacity"},
-						Value: fmt.Sprintf("%.3f", opacity),
-					})
+			if gradURL == "" {
+				if opacity < 1.0 {
+					if strokeOpacityAttrIdx >= 0 {
+						elem.Attr[strokeOpacityAttrIdx].Value = fmt.Sprintf("%.3f", opacity)
+					} else if styleAttrIdx < 0 || styleStroke == "" {
+						elem.Attr = append(elem.Attr, xml.Attr{
+							Name:  xml.Name{Local: "stroke-opacity"},
+							Value: fmt.Sprintf("%.3f", opacity),
+						})
+					}
+				} else if strokeOpacityAttrIdx >= 0 {
+					elem.Attr[strokeOpacityAttrIdx].Value = "1"
 				}
-			} else if strokeOpacityAttrIdx >= 0 {
-				elem.Attr[strokeOpacityAttrIdx].Value = "1"
 			}
 		}
 	}
