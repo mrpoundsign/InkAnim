@@ -72,6 +72,18 @@
          fill="#38bdf8"
          id="path3" />
     </marker>
+    <!-- Engine Flame Color Pulse Gradient (Yellow -> Orange -> Cyan) -->
+    <linearGradient id="flame_pulse_grad">
+      <stop offset="0%" stop-color="#fef08a" />
+      <stop offset="50%" stop-color="#f97316" />
+      <stop offset="100%" stop-color="#38bdf8" />
+    </linearGradient>
+    <!-- Twinkling Stars Chromatic Shift Gradient (White -> Light Blue -> Soft Yellow) -->
+    <linearGradient id="stars_twinkle_grad">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="50%" stop-color="#93c5fd" />
+      <stop offset="100%" stop-color="#fef08a" />
+    </linearGradient>
   </defs>
   <!-- Global Camera Trajectory: 320px right pan across top of scene (f: 1-60, ease: in-out) -->
   <path
@@ -94,6 +106,15 @@
      id="stars_twinkle"
      inkscape:groupmode="layer"
      inkscape:label="Twinkling Stars">
+    <!-- Color Modifier: subtle background star color cycle across 60 frames -->
+    <rect
+       id="mod_stars_color"
+       x="0"
+       y="0"
+       width="1"
+       height="1"
+       fill="url(#stars_twinkle_grad)"
+       inkscape:label="Color { f: 1-60; pingpong: true; target: fill }" />
     <circle
        cx="28"
        cy="45"
@@ -385,17 +406,26 @@
        id="shuttle_dist"
        inkscape:label="Dist {factor: 0.0}"
        d="M 0,0 L 0,0" />
-    <!-- Spaceship Artwork facing right (+X), enlarged 2x -->
+    <!-- Spaceship Artwork facing right (+X), enlarged 2x, green body for high contrast -->
     <polygon
        points="60,128 6,108 18,128 6,148"
-       fill="#38bdf8"
-       stroke="#0284c7"
+       fill="#22c55e"
+       stroke="#15803d"
        stroke-width="3"
        id="polygon24" />
     <!-- Pulsing Exhaust Flame (grows/shrinks and fades in/out repeatedly, enlarged 2x) -->
     <g
        id="engine_trail"
        inkscape:label="Engine Flame">
+      <!-- Color Modifier: exhaust flames pulse between Yellow, Orange, Cyan in sync with scale pulses -->
+      <rect
+         id="mod_flame_color"
+         x="0"
+         y="0"
+         width="1"
+         height="1"
+         fill="url(#flame_pulse_grad)"
+         inkscape:label="Color { f: 1-60; pingpong: true; r: 4; target: fill }" />
       <polygon
          points="18,122 -6,128 18,134"
          fill="#f97316"

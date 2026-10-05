@@ -8,6 +8,8 @@ import (
 	"math"
 	"sort"
 	"strings"
+
+	"github.com/srwiley/oksvg"
 )
 
 // BuildLayerFrameSVG generates an SVG where only the target layer and any pinned layers are visible,
@@ -612,12 +614,20 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 	var currentGDepth int
 	var parallaxActiveDepth int
 
+	type activeColorState struct {
+		depth   int
+		hex     string
+		opacity float64
+		target  string
+	}
+	var colorStack []activeColorState
+
 	for i := 0; i < len(tokens); i++ {
 		token := tokens[i]
 		switch elem := token.(type) {
 		case xml.StartElement:
 			// Hide the motion paths or markers themselves
-			if elem.Name.Local == "path" || elem.Name.Local == "circle" || elem.Name.Local == "rect" || elem.Name.Local == "ellipse" || elem.Name.Local == "line" {
+			if elem.Name.Local == "path" || elem.Name.Local == "circle" || elem.Name.Local == "rect" || elem.Name.Local == "ellipse" || elem.Name.Local == "line" || elem.Name.Local == "polygon" || elem.Name.Local == "polyline" {
 				var isMotionPath bool
 				for _, attr := range elem.Attr {
 					if attr.Name.Local == "label" {
@@ -639,6 +649,12 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 						}
 					}
 					continue
+				}
+
+				// Apply active group color modifier
+				if len(colorStack) > 0 {
+					topColor := colorStack[len(colorStack)-1]
+					applyColorOverride(&elem, topColor.hex, topColor.opacity, topColor.target)
 				}
 			}
 
@@ -887,6 +903,60 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 							})
 						}
 					}
+
+					// Check for Color modifier attached to this group
+					for _, mp := range paths {
+						if mp.Config.IsColor && !mp.Config.HasColorAngle {
+							startF := mp.Config.StartFrame
+							endF := mp.Config.EndFrame
+							if mp.Config.IsAll {
+								startF = 1
+								endF = maxF
+							}
+							if frame1Idx >= startF && frame1Idx <= endF {
+								duration := endF - startF
+								p := 0.0
+								if duration > 0 {
+									p = float64(frame1Idx-startF) / float64(duration)
+								}
+								r := mp.Config.ColorRepeat
+								if r <= 0 {
+									r = 1
+								}
+								cycleP := p * float64(r)
+								fraction := 0.0
+								if p >= 1.0 {
+									fraction = 1.0
+								} else {
+									fraction = cycleP - math.Floor(cycleP)
+								}
+								eased := ApplyEasing(fraction, mp.Config.Ease)
+								if mp.Config.Reverse {
+									eased = 1.0 - eased
+								}
+								var t float64
+								if mp.Config.IsPingPong {
+									if eased <= 0.5 {
+										t = eased * 2.0
+									} else {
+										t = (1.0 - eased) * 2.0
+									}
+								} else {
+									t = eased
+								}
+								if grad, ok := doc.Gradients[mp.FillURL]; ok && len(grad.Stops) > 0 {
+									hex, op := InterpolateGradientColor(grad, t)
+									colorStack = append(colorStack, activeColorState{
+										depth:   currentGDepth,
+										hex:     hex,
+										opacity: op,
+										target:  mp.Config.ColorTarget,
+									})
+								}
+							}
+							break
+						}
+					}
 				}
 			}
 
@@ -896,6 +966,9 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 
 		case xml.EndElement:
 			if elem.Name.Local == "g" {
+				for len(colorStack) > 0 && colorStack[len(colorStack)-1].depth >= currentGDepth {
+					colorStack = colorStack[:len(colorStack)-1]
+				}
 				if parallaxActiveDepth == currentGDepth {
 					parallaxActiveDepth = 0
 				}
@@ -935,6 +1008,180 @@ func resolvePivot(doc *SVGDocument, groupID string, config MotionConfig, pathDat
 	default: // "center"
 		groupRect := doc.GetElementRect(groupID)
 		return groupRect.X + groupRect.Width/2.0, groupRect.Y + groupRect.Height/2.0
+	}
+}
+
+// InterpolateGradientColor evaluates a gradient at progress t (0.0 to 1.0) and returns
+// the interpolated color formatted as a #rrggbb hex string and opacity (0.0 to 1.0).
+func InterpolateGradientColor(grad SVGGradient, t float64) (string, float64) {
+	if len(grad.Stops) == 0 {
+		return "#ffffff", 1.0
+	}
+	if t < 0.0 {
+		t = 0.0
+	} else if t > 1.0 {
+		t = 1.0
+	}
+
+	if len(grad.Stops) == 1 || t <= grad.Stops[0].Offset {
+		r, g, b := parseColorRGB(grad.Stops[0].Color)
+		return fmt.Sprintf("#%02x%02x%02x", r, g, b), grad.Stops[0].Opacity
+	}
+	lastIdx := len(grad.Stops) - 1
+	if t >= grad.Stops[lastIdx].Offset {
+		r, g, b := parseColorRGB(grad.Stops[lastIdx].Color)
+		return fmt.Sprintf("#%02x%02x%02x", r, g, b), grad.Stops[lastIdx].Opacity
+	}
+
+	// Find the two stops surrounding t
+	var s0, s1 GradientStop
+	for i := 0; i < len(grad.Stops)-1; i++ {
+		if grad.Stops[i].Offset <= t && t <= grad.Stops[i+1].Offset {
+			s0 = grad.Stops[i]
+			s1 = grad.Stops[i+1]
+			break
+		}
+	}
+
+	span := s1.Offset - s0.Offset
+	factor := 0.0
+	if span > 1e-9 {
+		factor = (t - s0.Offset) / span
+	}
+
+	r0, g0, b0 := parseColorRGB(s0.Color)
+	r1, g1, b1 := parseColorRGB(s1.Color)
+
+	r := uint8(math.Round(float64(r0) + factor*float64(int(r1)-int(r0))))
+	g := uint8(math.Round(float64(g0) + factor*float64(int(g1)-int(g0))))
+	b := uint8(math.Round(float64(b0) + factor*float64(int(b1)-int(b0))))
+
+	op := s0.Opacity + factor*(s1.Opacity-s0.Opacity)
+	op = math.Max(0.0, math.Min(1.0, op))
+
+	return fmt.Sprintf("#%02x%02x%02x", r, g, b), op
+}
+
+func parseColorRGB(colorStr string) (uint8, uint8, uint8) {
+	colorStr = strings.TrimSpace(colorStr)
+	if r, g, b, err := oksvg.ParseSVGColorNum(colorStr); err == nil {
+		return r, g, b
+	}
+	if c, err := oksvg.ParseSVGColor(colorStr); err == nil && c != nil {
+		r, g, b, _ := c.RGBA()
+		return uint8(r >> 8), uint8(g >> 8), uint8(b >> 8)
+	}
+	return 0, 0, 0
+}
+
+func applyColorOverride(elem *xml.StartElement, hex string, opacity float64, target string) {
+	var styleVal string
+	var styleAttrIdx = -1
+	var fillAttrIdx = -1
+	var strokeAttrIdx = -1
+	var fillOpacityAttrIdx = -1
+	var strokeOpacityAttrIdx = -1
+
+	for i, attr := range elem.Attr {
+		switch attr.Name.Local {
+		case "style":
+			styleVal = attr.Value
+			styleAttrIdx = i
+		case "fill":
+			fillAttrIdx = i
+		case "stroke":
+			strokeAttrIdx = i
+		case "fill-opacity":
+			fillOpacityAttrIdx = i
+		case "stroke-opacity":
+			strokeOpacityAttrIdx = i
+		}
+	}
+
+	styleFill := extractCSSProp(styleVal, "fill")
+	styleStroke := extractCSSProp(styleVal, "stroke")
+
+	attrFill := ""
+	if fillAttrIdx >= 0 {
+		attrFill = elem.Attr[fillAttrIdx].Value
+	}
+	attrStroke := ""
+	if strokeAttrIdx >= 0 {
+		attrStroke = elem.Attr[strokeAttrIdx].Value
+	}
+
+	// 1. Fill Override
+	if target == "fill" || target == "all" {
+		isFillNone := (styleFill == "none") || (styleFill == "" && attrFill == "none")
+		if !isFillNone {
+			if styleAttrIdx >= 0 && styleFill != "" {
+				styleVal = setStyleProp(styleVal, "fill", hex)
+				if opacity < 1.0 {
+					styleVal = setStyleProp(styleVal, "fill-opacity", fmt.Sprintf("%.3f", opacity))
+				} else if extractCSSProp(styleVal, "fill-opacity") != "" {
+					styleVal = setStyleProp(styleVal, "fill-opacity", "1")
+				}
+			}
+			if fillAttrIdx >= 0 {
+				elem.Attr[fillAttrIdx].Value = hex
+			} else if styleAttrIdx < 0 || styleFill == "" {
+				elem.Attr = append(elem.Attr, xml.Attr{
+					Name:  xml.Name{Local: "fill"},
+					Value: hex,
+				})
+			}
+			if opacity < 1.0 {
+				if fillOpacityAttrIdx >= 0 {
+					elem.Attr[fillOpacityAttrIdx].Value = fmt.Sprintf("%.3f", opacity)
+				} else if styleAttrIdx < 0 || styleFill == "" {
+					elem.Attr = append(elem.Attr, xml.Attr{
+						Name:  xml.Name{Local: "fill-opacity"},
+						Value: fmt.Sprintf("%.3f", opacity),
+					})
+				}
+			} else if fillOpacityAttrIdx >= 0 {
+				elem.Attr[fillOpacityAttrIdx].Value = "1"
+			}
+		}
+	}
+
+	// 2. Stroke Override
+	if target == "stroke" || target == "all" {
+		hasStroke := (styleStroke != "" && styleStroke != "none") || (styleStroke == "" && attrStroke != "" && attrStroke != "none")
+		if hasStroke {
+			if styleAttrIdx >= 0 && styleStroke != "" {
+				styleVal = setStyleProp(styleVal, "stroke", hex)
+				if opacity < 1.0 {
+					styleVal = setStyleProp(styleVal, "stroke-opacity", fmt.Sprintf("%.3f", opacity))
+				} else if extractCSSProp(styleVal, "stroke-opacity") != "" {
+					styleVal = setStyleProp(styleVal, "stroke-opacity", "1")
+				}
+			}
+			if strokeAttrIdx >= 0 {
+				elem.Attr[strokeAttrIdx].Value = hex
+			} else if styleAttrIdx < 0 || styleStroke == "" {
+				elem.Attr = append(elem.Attr, xml.Attr{
+					Name:  xml.Name{Local: "stroke"},
+					Value: hex,
+				})
+			}
+			if opacity < 1.0 {
+				if strokeOpacityAttrIdx >= 0 {
+					elem.Attr[strokeOpacityAttrIdx].Value = fmt.Sprintf("%.3f", opacity)
+				} else if styleAttrIdx < 0 || styleStroke == "" {
+					elem.Attr = append(elem.Attr, xml.Attr{
+						Name:  xml.Name{Local: "stroke-opacity"},
+						Value: fmt.Sprintf("%.3f", opacity),
+					})
+				}
+			} else if strokeOpacityAttrIdx >= 0 {
+				elem.Attr[strokeOpacityAttrIdx].Value = "1"
+			}
+		}
+	}
+
+	if styleAttrIdx >= 0 {
+		elem.Attr[styleAttrIdx].Value = styleVal
 	}
 }
 
