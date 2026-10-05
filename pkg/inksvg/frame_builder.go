@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"sort"
 	"strings"
 )
 
@@ -369,23 +370,33 @@ func setElementOpacity(elem *xml.StartElement, opacity float64) {
 	}
 }
 
+type topLevelNode struct {
+	id         string
+	isDefs     bool
+	baseZ      int
+	effectiveZ int
+	tokens     []xml.Token
+}
+
 // BuildTimelineFrameSVG generates an SVG frame for a timeline animation.
-// It hides any path with a "Movement" label and injects translate transforms into animated groups.
+// It hides any motion paths/markers, dynamically reorders top-level groups according to Depth directives,
+// and injects translate/rotate/scale/opacity/visibility into animated groups.
 func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]byte, error) {
 	if boundary.Width <= 0 || boundary.Height <= 0 {
 		boundary = doc.GetDocumentRect()
 	}
 
 	decoder := xml.NewDecoder(bytes.NewReader(doc.RawContent))
-	var buf bytes.Buffer
-	encoder := xml.NewEncoder(&buf)
-	var processedRoot bool
+	var preamble []xml.Token
+	var rootElem xml.StartElement
+	var rootFound bool
+	var rootEnd xml.EndElement
+	var postTokens []xml.Token
 
-	// Map GroupID to slice of MotionPaths for multi-motion support
-	motionMap := make(map[string][]MotionPath)
-	for _, mp := range doc.MotionPaths {
-		motionMap[mp.GroupID] = append(motionMap[mp.GroupID], mp)
-	}
+	var nodes []topLevelNode
+	var currentNodeTokens []xml.Token
+	var currentDepth int
+	var baseZCounter int
 
 	for {
 		token, err := decoder.Token()
@@ -396,17 +407,179 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 			return nil, fmt.Errorf("xml transform error: %w", err)
 		}
 
+		if !rootFound {
+			switch elem := token.(type) {
+			case xml.StartElement:
+				if elem.Name.Local == "svg" {
+					rootFound = true
+					applyBoundaryToSVG(&elem, boundary)
+					rootElem = elem
+					currentDepth = 1
+				} else {
+					preamble = append(preamble, xml.CopyToken(token))
+				}
+			default:
+				preamble = append(preamble, xml.CopyToken(token))
+			}
+			continue
+		}
+
+		switch {
+		case currentDepth == 1:
+			switch elem := token.(type) {
+			case xml.StartElement:
+				currentDepth++
+				currentNodeTokens = []xml.Token{xml.CopyToken(elem)}
+			case xml.EndElement:
+				if elem.Name.Local == "svg" {
+					rootEnd = elem
+					currentDepth = 0
+				}
+			default:
+				if len(nodes) == 0 {
+					preamble = append(preamble, xml.CopyToken(token))
+				} else {
+					nodes[len(nodes)-1].tokens = append(nodes[len(nodes)-1].tokens, xml.CopyToken(token))
+				}
+			}
+		case currentDepth > 1:
+			currentNodeTokens = append(currentNodeTokens, xml.CopyToken(token))
+			switch token.(type) {
+			case xml.StartElement:
+				currentDepth++
+			case xml.EndElement:
+				currentDepth--
+				if currentDepth == 1 {
+					startElem := currentNodeTokens[0].(xml.StartElement)
+					var id string
+					for _, attr := range startElem.Attr {
+						if attr.Name.Local == "id" {
+							id = attr.Value
+							break
+						}
+					}
+					isDefs := startElem.Name.Local == "defs" ||
+						startElem.Name.Local == "metadata" ||
+						startElem.Name.Local == "style" ||
+						startElem.Name.Space == "http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+
+					nodes = append(nodes, topLevelNode{
+						id:     id,
+						isDefs: isDefs,
+						baseZ:  baseZCounter,
+						tokens: currentNodeTokens,
+					})
+					baseZCounter++
+					currentNodeTokens = nil
+				}
+			}
+		default:
+			postTokens = append(postTokens, xml.CopyToken(token))
+		}
+	}
+
+	frame1Idx := frameIndex + 1
+	maxF := len(doc.Layers)
+	if maxF == 0 {
+		for _, mp := range doc.MotionPaths {
+			if mp.Config.EndFrame > maxF {
+				maxF = mp.Config.EndFrame
+			}
+		}
+	}
+	if maxF == 0 {
+		maxF = 15
+	}
+
+	// Map GroupID to slice of MotionPaths
+	motionMap := make(map[string][]MotionPath)
+	for _, mp := range doc.MotionPaths {
+		motionMap[mp.GroupID] = append(motionMap[mp.GroupID], mp)
+	}
+
+	// Calculate EffectiveZ for each node
+	for i := range nodes {
+		if nodes[i].isDefs {
+			nodes[i].effectiveZ = -999999
+			continue
+		}
+		activeDepth := 0
+		if paths, ok := motionMap[nodes[i].id]; ok {
+			for _, mp := range paths {
+				if !mp.Config.HasDepth {
+					continue
+				}
+				startF := mp.Config.StartFrame
+				endF := mp.Config.EndFrame
+				if mp.Config.IsAll {
+					startF = 1
+					endF = maxF
+				}
+				if frame1Idx >= startF && frame1Idx <= endF {
+					activeDepth = mp.Config.DepthOffset
+				}
+			}
+		}
+		switch {
+		case activeDepth == 0:
+			nodes[i].effectiveZ = nodes[i].baseZ * 2
+		case activeDepth < 0:
+			nodes[i].effectiveZ = (nodes[i].baseZ + activeDepth)*2 - 1
+		default:
+			nodes[i].effectiveZ = (nodes[i].baseZ + activeDepth)*2 + 1
+		}
+	}
+
+	// Stable sort nodes to establish Painter's rendering order
+	sort.SliceStable(nodes, func(i, j int) bool {
+		if nodes[i].isDefs != nodes[j].isDefs {
+			return nodes[i].isDefs
+		}
+		if nodes[i].effectiveZ != nodes[j].effectiveZ {
+			return nodes[i].effectiveZ < nodes[j].effectiveZ
+		}
+		return nodes[i].baseZ < nodes[j].baseZ
+	})
+
+	var buf bytes.Buffer
+	encoder := xml.NewEncoder(&buf)
+
+	for _, tok := range preamble {
+		if err := encoder.EncodeToken(tok); err != nil {
+			return nil, err
+		}
+	}
+	if err := encoder.EncodeToken(rootElem); err != nil {
+		return nil, err
+	}
+
+	for _, node := range nodes {
+		if err := serializeNodeTokens(encoder, node.tokens, doc, frame1Idx, maxF, motionMap); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := encoder.EncodeToken(rootEnd); err != nil {
+		return nil, err
+	}
+	for _, tok := range postTokens {
+		if err := encoder.EncodeToken(tok); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := encoder.Flush(); err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
+}
+
+func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocument, frame1Idx, maxF int, motionMap map[string][]MotionPath) error {
+	for i := 0; i < len(tokens); i++ {
+		token := tokens[i]
 		switch elem := token.(type) {
 		case xml.StartElement:
-			if elem.Name.Local == "svg" && !processedRoot {
-				processedRoot = true
-				applyBoundaryToSVG(&elem, boundary)
-				if err := encoder.EncodeToken(elem); err != nil {
-					return nil, err
-				}
-				continue
-			}
-
 			// Hide the motion paths or markers themselves
 			if elem.Name.Local == "path" || elem.Name.Local == "circle" || elem.Name.Local == "rect" || elem.Name.Local == "ellipse" || elem.Name.Local == "line" {
 				var isMotionPath bool
@@ -419,8 +592,15 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 					}
 				}
 				if isMotionPath {
-					if err := decoder.Skip(); err != nil {
-						return nil, err
+					depth := 1
+					for i+1 < len(tokens) && depth > 0 {
+						i++
+						switch tokens[i].(type) {
+						case xml.StartElement:
+							depth++
+						case xml.EndElement:
+							depth--
+						}
 					}
 					continue
 				}
@@ -436,16 +616,17 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 					}
 				}
 				if paths, ok := motionMap[id]; ok && len(paths) > 0 {
-					frame1Idx := frameIndex + 1 // 1-based index for logic
-					maxF := len(doc.Layers)
-
 					var activePaths []MotionPath
 					var hasShowRules bool
 					var isShown bool
 					var hasHideRules bool
 					var isHidden bool
+					var hasSpatialOrFadeRules bool
 
 					for _, mp := range paths {
+						if mp.Config.Type == "move" || mp.Config.Type == "rot" || mp.Config.Type == "scale" || mp.Config.Type == "fade" {
+							hasSpatialOrFadeRules = true
+						}
 						startF := mp.Config.StartFrame
 						endF := mp.Config.EndFrame
 						if mp.Config.IsAll {
@@ -479,8 +660,9 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 						groupHidden = true
 					case !hasShowRules && !hasHideRules:
 						// Group has no explicit Show/Hide rules:
-						// Hide if outside active range of all defined motion paths
-						if len(activePaths) == 0 {
+						// Hide if outside active range of defined spatial/fade motion paths.
+						// If group only has Depth rules, it remains visible across all frames.
+						if hasSpatialOrFadeRules && len(activePaths) == 0 {
 							groupHidden = true
 						}
 					}
@@ -488,13 +670,20 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 					if groupHidden {
 						setElementHidden(&elem)
 						if err := encoder.EncodeToken(elem); err != nil {
-							return nil, err
+							return err
 						}
-						if err := decoder.Skip(); err != nil {
-							return nil, err
+						depth := 1
+						for i+1 < len(tokens) && depth > 0 {
+							i++
+							switch tokens[i].(type) {
+							case xml.StartElement:
+								depth++
+							case xml.EndElement:
+								depth--
+							}
 						}
 						if err := encoder.EncodeToken(elem.End()); err != nil {
-							return nil, err
+							return err
 						}
 						continue
 					}
@@ -618,9 +807,9 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 					if len(transformParts) > 0 {
 						newTransform := strings.Join(transformParts, " ")
 						transformFound := false
-						for i, attr := range elem.Attr {
+						for iAttr, attr := range elem.Attr {
 							if attr.Name.Local == "transform" {
-								elem.Attr[i].Value = newTransform + " " + attr.Value
+								elem.Attr[iAttr].Value = newTransform + " " + attr.Value
 								transformFound = true
 								break
 							}
@@ -636,21 +825,16 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 			}
 
 			if err := encoder.EncodeToken(elem); err != nil {
-				return nil, err
+				return err
 			}
 
 		default:
 			if err := encoder.EncodeToken(token); err != nil {
-				return nil, err
+				return err
 			}
 		}
 	}
-
-	if err := encoder.Flush(); err != nil {
-		return nil, err
-	}
-
-	return buf.Bytes(), nil
+	return nil
 }
 
 func resolvePivot(doc *SVGDocument, groupID string, config MotionConfig, pathData string) (float64, float64) {

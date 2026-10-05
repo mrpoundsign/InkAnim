@@ -187,7 +187,8 @@ Rot   {f:&lt;range&gt; [ease:&lt;curve&gt;] [rev] angle:&lt;deg&gt; [dir:cw|ccw]
 Scale {f:&lt;range&gt; [ease:&lt;curve&gt;] [rev] [scale:&lt;multiplier&gt;] [scale-x:&lt;val&gt;] [scale-y:&lt;val&gt;] [from:&lt;val&gt;] [to:&lt;val&gt;] [pivot:&lt;origin&gt;]}
 Fade  {f:&lt;range&gt; [ease:&lt;curve&gt;] [from:&lt;val&gt;] [to:&lt;val&gt;] [opacity:&lt;val&gt;]}
 Show  {f:&lt;range&gt;}
-Hide  {f:&lt;range&gt;}</code></pre>
+Hide  {f:&lt;range&gt;}
+Depth {f:&lt;range&gt; z:&lt;signed-int&gt;}</code></pre>
         </div>
 
         <div class="docs-table-wrapper">
@@ -234,6 +235,11 @@ Hide  {f:&lt;range&gt;}</code></pre>
                 <td><code>opacity:&lt;val&gt;</code></td>
                 <td><span class="badge badge-cyan">opacity:50%</span></td>
                 <td>Target or constant opacity for <code>Fade</code> (accepts <code>0-100%</code> or <code>0.0-1.0</code> alpha).</td>
+              </tr>
+              <tr>
+                <td><code>z:&lt;val&gt;</code>, <code>depth:&lt;val&gt;</code></td>
+                <td><span class="badge badge-cyan">z:-1</span>, <span class="badge badge-cyan">z:+1</span></td>
+                <td>Relative signed integer modifier applied to layer/group rendering order (e.g. <code>z:-1</code> renders behind earlier layers, <code>z:+1</code> pulls forward on top).</td>
               </tr>
               <tr>
                 <td><code>angle:&lt;deg&gt;</code></td>
@@ -385,6 +391,16 @@ Hide  {f:&lt;range&gt;}</code></pre>
           <div class="code-header"><span>Twinkle & Blink Recipes</span><span>Label</span></div>
           <pre class="code-content"><code>Fade {f:1-10 ease:in-out from:100 to:20}
 Hide {f:9-13}</code></pre>
+        </div>
+
+        <h3>6. 2.5D Orbit & Depth Shifting</h3>
+        <p>
+          Solve the classic 2.5D animation challenge (e.g. an orbiting moon or character walking behind an object and then in front) by shifting Z-index stacking order across specific frame windows:
+        </p>
+        <div class="code-card">
+          <div class="code-header"><span>2.5D Orbit Stacking Recipe</span><span>Label</span></div>
+          <pre class="code-content"><code>Depth {f:1-10 z:-1}
+Depth {f:11-20 z:+1}</code></pre>
         </div>
       </section>
 

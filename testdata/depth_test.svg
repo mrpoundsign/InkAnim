@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="100"
+   height="100"
+   viewBox="0 0 100 100"
+   version="1.1"
+   id="svg_depth_test"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns="http://www.w3.org/2000/svg">
+  <!-- Layer 1: Red Base (Z=0) -->
+  <g id="layer_red" inkscape:groupmode="layer" inkscape:label="Red Layer">
+    <rect width="80" height="80" x="10" y="10" fill="#ff0000" id="rect_red" />
+  </g>
+
+  <!-- Layer 2: Green Middle (Z=1, shifts behind Red on frames 2-3) -->
+  <g id="layer_green" inkscape:groupmode="layer" inkscape:label="Green Layer">
+    <rect width="60" height="60" x="20" y="20" fill="#00ff00" id="rect_green" />
+    <path id="depth_shift_green" inkscape:label="Depth {f: 2-3; z: -2}" d="M 0,0 L 0,0" />
+  </g>
+
+  <!-- Layer 3: Blue Top (Z=2) -->
+  <g id="layer_blue" inkscape:groupmode="layer" inkscape:label="Blue Layer">
+    <rect width="40" height="40" x="30" y="30" fill="#0000ff" id="rect_blue" />
+  </g>
+</svg>

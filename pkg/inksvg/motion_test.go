@@ -534,8 +534,8 @@ func TestIntegration_PendulumAndComplexMotion(t *testing.T) {
 	if len(doc2.Layers) != 20 {
 		t.Errorf("complex_motion.svg frame layers count = %d, want 20", len(doc2.Layers))
 	}
-	if len(doc2.MotionPaths) != 22 {
-		t.Fatalf("complex_motion.svg motion paths count = %d, want 22", len(doc2.MotionPaths))
+	if len(doc2.MotionPaths) != 29 {
+		t.Fatalf("complex_motion.svg motion paths count = %d, want 29", len(doc2.MotionPaths))
 	}
 	mpFadeDown := doc2.MotionPaths[0]
 	if mpFadeDown.Config.Type != "fade" || mpFadeDown.Config.OpacityFrom != 1.0 || mpFadeDown.Config.OpacityTo != 0.2 {
@@ -549,16 +549,24 @@ func TestIntegration_PendulumAndComplexMotion(t *testing.T) {
 	if mpFadeBlink.Config.Type != "fade" || mpFadeBlink.Config.OpacityFrom != 0.15 || mpFadeBlink.Config.OpacityTo != 1.0 {
 		t.Errorf("complex_motion.svg fade blink = %+v, want fade 0.15 to 1.0", mpFadeBlink.Config)
 	}
-	mpFlameUp := doc2.MotionPaths[11]
+	mpMoonDepthBack := doc2.MotionPaths[12]
+	if mpMoonDepthBack.Config.Type != "depth" || mpMoonDepthBack.Config.DepthOffset != -1 || mpMoonDepthBack.Config.StartFrame != 1 || mpMoonDepthBack.Config.EndFrame != 10 {
+		t.Errorf("complex_motion.svg moon depth back = %+v, want depth z: -1 f: 1-10", mpMoonDepthBack.Config)
+	}
+	mpMoonDepthFront := doc2.MotionPaths[13]
+	if mpMoonDepthFront.Config.Type != "depth" || mpMoonDepthFront.Config.DepthOffset != 1 || mpMoonDepthFront.Config.StartFrame != 11 || mpMoonDepthFront.Config.EndFrame != 20 {
+		t.Errorf("complex_motion.svg moon depth front = %+v, want depth z: +1 f: 11-20", mpMoonDepthFront.Config)
+	}
+	mpFlameUp := doc2.MotionPaths[18]
 	if mpFlameUp.Config.Type != "scale" || mpFlameUp.Config.ScaleFromX != 0.7 || mpFlameUp.Config.ScaleToX != 1.6 {
 		t.Errorf("complex_motion.svg flame up = %+v, want scale from-x: 0.7 to-x: 1.6", mpFlameUp.Config)
 	}
-	mpScale := doc2.MotionPaths[21]
+	mpScale := doc2.MotionPaths[28]
 	if mpScale.Config.Type != "scale" || mpScale.Config.ScaleFromX != 0.6 || mpScale.Config.ScaleToX != 1.4 {
 		t.Errorf("complex_motion.svg scale path config = %+v, want scale from 0.6 to 1.4", mpScale.Config)
 	}
 
-	// Render all 20 frames to verify compositing across overlapping Move, Rot, and Scale
+	// Render all 20 frames to verify compositing across overlapping Move, Rot, Scale, Fade, Show/Hide, and Depth
 	for i := 0; i < len(doc2.Layers); i++ {
 		frameBytes, err := BuildTimelineFrameSVG(doc2, i, doc2.GetDrawingRect())
 		if err != nil {
@@ -566,6 +574,24 @@ func TestIntegration_PendulumAndComplexMotion(t *testing.T) {
 		}
 		if len(frameBytes) == 0 {
 			t.Fatalf("BuildTimelineFrameSVG(complex_motion, frame %d) returned empty bytes", i)
+		}
+
+		frameStr := string(frameBytes)
+		idxPlanet := strings.Index(frameStr, `id="group_planet"`)
+		idxMoon := strings.Index(frameStr, `id="group_moon"`)
+		if idxPlanet == -1 || idxMoon == -1 {
+			t.Fatalf("Frame %d missing planet or moon group in serialized frame", i)
+		}
+		if i < 10 {
+			// Frames 1-10 (i=0..9): Moon is behind planet (idxMoon < idxPlanet)
+			if idxMoon >= idxPlanet {
+				t.Errorf("Frame %d: expected Moon to render behind Planet, got Moon idx %d >= Planet idx %d", i+1, idxMoon, idxPlanet)
+			}
+		} else {
+			// Frames 11-20 (i=10..19): Moon is in front of planet (idxPlanet < idxMoon)
+			if idxPlanet >= idxMoon {
+				t.Errorf("Frame %d: expected Moon to render in front of Planet, got Planet idx %d >= Moon idx %d", i+1, idxPlanet, idxMoon)
+			}
 		}
 	}
 }
@@ -953,6 +979,92 @@ func TestParseMotionConfig_FadeAndVisibility(t *testing.T) {
 	}
 }
 
+func TestParseMotionConfig_Depth(t *testing.T) {
+	tests := []struct {
+		label           string
+		wantOK          bool
+		wantType        string
+		wantStart       int
+		wantEnd         int
+		wantAll         bool
+		wantDepthOffset int
+		wantHasDepth    bool
+	}{
+		{
+			label:           "Depth {f: 30-60; z: -1}",
+			wantOK:          true,
+			wantType:        "depth",
+			wantStart:       30,
+			wantEnd:         60,
+			wantAll:         false,
+			wantDepthOffset: -1,
+			wantHasDepth:    true,
+		},
+		{
+			label:           "Depth {f: 15-30; z: +2}",
+			wantOK:          true,
+			wantType:        "depth",
+			wantStart:       15,
+			wantEnd:         30,
+			wantAll:         false,
+			wantDepthOffset: 2,
+			wantHasDepth:    true,
+		},
+		{
+			label:           "Depth {z: 1}",
+			wantOK:          true,
+			wantType:        "depth",
+			wantAll:         true,
+			wantDepthOffset: 1,
+			wantHasDepth:    true,
+		},
+		{
+			label:           "Depth {f: all; z: -3}",
+			wantOK:          true,
+			wantType:        "depth",
+			wantAll:         true,
+			wantDepthOffset: -3,
+			wantHasDepth:    true,
+		},
+		{
+			label:           "Depth {f: 1-10; depth: 4}",
+			wantOK:          true,
+			wantType:        "depth",
+			wantStart:       1,
+			wantEnd:         10,
+			wantAll:         false,
+			wantDepthOffset: 4,
+			wantHasDepth:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		cfg, ok := parseMotionConfig(tt.label)
+		if ok != tt.wantOK {
+			t.Errorf("[%s] ok = %v, want %v", tt.label, ok, tt.wantOK)
+			continue
+		}
+		if !tt.wantOK {
+			continue
+		}
+		if cfg.Type != tt.wantType {
+			t.Errorf("[%s] type = %s, want %s", tt.label, cfg.Type, tt.wantType)
+		}
+		if cfg.StartFrame != tt.wantStart || cfg.EndFrame != tt.wantEnd {
+			t.Errorf("[%s] range = %d-%d, want %d-%d", tt.label, cfg.StartFrame, cfg.EndFrame, tt.wantStart, tt.wantEnd)
+		}
+		if cfg.IsAll != tt.wantAll {
+			t.Errorf("[%s] isAll = %v, want %v", tt.label, cfg.IsAll, tt.wantAll)
+		}
+		if cfg.DepthOffset != tt.wantDepthOffset {
+			t.Errorf("[%s] depthOffset = %d, want %d", tt.label, cfg.DepthOffset, tt.wantDepthOffset)
+		}
+		if cfg.HasDepth != tt.wantHasDepth {
+			t.Errorf("[%s] hasDepth = %v, want %v", tt.label, cfg.HasDepth, tt.wantHasDepth)
+		}
+	}
+}
+
 func groupHasDisplayNone(svgStr, groupID string) bool {
 	idx := strings.Index(svgStr, `id="`+groupID+`"`)
 	if idx == -1 {
@@ -1131,6 +1243,96 @@ func TestFadeAndVisibility_MultiMotionCompositing(t *testing.T) {
 	}
 	if !strings.Contains(f1Str, "translate(") || !strings.Contains(f1Str, "rotate(") || !strings.Contains(f1Str, "scale(") {
 		t.Errorf("f1 expected composed translate, rotate, scale transforms, got:\n%s", f1Str)
+	}
+}
+
+func TestDepth_ReorderingAndRasterOcclusion(t *testing.T) {
+	data, err := os.ReadFile("../../testdata/depth_test.svg")
+	if err != nil {
+		t.Fatalf("Failed to read depth_test.svg: %v", err)
+	}
+
+	doc, err := ParseSVG(data)
+	if err != nil {
+		t.Fatalf("ParseSVG failed: %v", err)
+	}
+
+	// Frame 1 (frameIndex 0, outside active range 2-3):
+	// Natural order: Red (Z=0) -> Green (Z=1) -> Blue (Z=2)
+	f1Bytes, err := BuildTimelineFrameSVG(doc, 0, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("BuildTimelineFrameSVG frame 1 failed: %v", err)
+	}
+	f1Str := string(f1Bytes)
+	idxRed1 := strings.Index(f1Str, `id="layer_red"`)
+	idxGreen1 := strings.Index(f1Str, `id="layer_green"`)
+	idxBlue1 := strings.Index(f1Str, `id="layer_blue"`)
+	if idxRed1 >= idxGreen1 || idxGreen1 >= idxBlue1 {
+		t.Errorf("Frame 1 expected Red < Green < Blue, got Red=%d Green=%d Blue=%d", idxRed1, idxGreen1, idxBlue1)
+	}
+
+	// Raster occlusion check on Frame 1:
+	// Point (25, 25) is covered by both Red (10..90) and Green (20..80).
+	// Because Green is rendered after Red, Green should occlude Red.
+	img1, err := RenderSVGToRGBA(f1Bytes, 100, 100)
+	if err != nil {
+		t.Fatalf("RenderSVGToRGBA frame 1 failed: %v", err)
+	}
+	c1 := img1.At(25, 25)
+	r1, g1, b1, _ := c1.RGBA()
+	// 16-bit color: > 0xc000 is > 192 in 8-bit
+	if g1 < 0xc000 || r1 > 0x4000 {
+		t.Errorf("Frame 1 (25,25) expected Green on top of Red, got RGBA=(%d, %d, %d)", r1>>8, g1>>8, b1>>8)
+	}
+
+	// Frame 2 (frameIndex 1, inside active range 2-3 with z: -2):
+	// Green is pushed behind Red: Green (Z=-3) -> Red (Z=0) -> Blue (Z=2)
+	f2Bytes, err := BuildTimelineFrameSVG(doc, 1, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("BuildTimelineFrameSVG frame 2 failed: %v", err)
+	}
+	f2Str := string(f2Bytes)
+	idxRed2 := strings.Index(f2Str, `id="layer_red"`)
+	idxGreen2 := strings.Index(f2Str, `id="layer_green"`)
+	idxBlue2 := strings.Index(f2Str, `id="layer_blue"`)
+	if idxGreen2 >= idxRed2 || idxRed2 >= idxBlue2 {
+		t.Errorf("Frame 2 expected Green < Red < Blue, got Green=%d Red=%d Blue=%d", idxGreen2, idxRed2, idxBlue2)
+	}
+
+	// Raster occlusion check on Frame 2:
+	// Because Green is rendered BEFORE Red, Red now occludes Green at (25, 25)!
+	img2, err := RenderSVGToRGBA(f2Bytes, 100, 100)
+	if err != nil {
+		t.Fatalf("RenderSVGToRGBA frame 2 failed: %v", err)
+	}
+	c2 := img2.At(25, 25)
+	r2, g2, b2, _ := c2.RGBA()
+	if r2 < 0xc000 || g2 > 0x4000 {
+		t.Errorf("Frame 2 (25,25) expected Red on top of Green, got RGBA=(%d, %d, %d)", r2>>8, g2>>8, b2>>8)
+	}
+
+	// Frame 4 (frameIndex 3, outside range 2-3):
+	// Green returns to natural order: Red -> Green -> Blue
+	f4Bytes, err := BuildTimelineFrameSVG(doc, 3, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("BuildTimelineFrameSVG frame 4 failed: %v", err)
+	}
+	f4Str := string(f4Bytes)
+	idxRed4 := strings.Index(f4Str, `id="layer_red"`)
+	idxGreen4 := strings.Index(f4Str, `id="layer_green"`)
+	idxBlue4 := strings.Index(f4Str, `id="layer_blue"`)
+	if idxRed4 >= idxGreen4 || idxGreen4 >= idxBlue4 {
+		t.Errorf("Frame 4 expected Red < Green < Blue, got Red=%d Green=%d Blue=%d", idxRed4, idxGreen4, idxBlue4)
+	}
+
+	img4, err := RenderSVGToRGBA(f4Bytes, 100, 100)
+	if err != nil {
+		t.Fatalf("RenderSVGToRGBA frame 4 failed: %v", err)
+	}
+	c4 := img4.At(25, 25)
+	r4, g4, b4, _ := c4.RGBA()
+	if g4 < 0xc000 || r4 > 0x4000 {
+		t.Errorf("Frame 4 (25,25) expected Green on top of Red again, got RGBA=(%d, %d, %d)", r4>>8, g4>>8, b4>>8)
 	}
 }
 

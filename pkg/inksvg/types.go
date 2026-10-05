@@ -110,6 +110,16 @@ type MotionConfig struct {
 	HasOpacity      bool    // true if Fade directive parsed
 	VisibilityState string  // "show" or "hide"
 	HasVisibility   bool    // true if Show or Hide directive parsed
+	DepthOffset     int     // signed integer modifier applied to base Z-index (e.g. -1, +1)
+	HasDepth        bool    // true if Depth directive parsed
+}
+
+// LayerRenderOrder tracks the document and effective Z-index for frame reordering.
+type LayerRenderOrder struct {
+	Index      int
+	ID         string
+	BaseZ      int
+	EffectiveZ int
 }
 
 // DefaultMotionConfig returns a MotionConfig with standard defaults.
@@ -137,6 +147,8 @@ func DefaultMotionConfig(configType string) MotionConfig {
 	case "hide":
 		cfg.VisibilityState = "hide"
 		cfg.HasVisibility = true
+	case "depth":
+		cfg.HasDepth = true
 	}
 	return cfg
 }
