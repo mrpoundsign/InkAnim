@@ -103,7 +103,7 @@
         </p>
         <ul>
           <li><strong>The Animated Group/Layer</strong>: An Inkscape group (<code>&lt;g&gt;</code>) or layer containing the graphic elements you want to animate together (text, stars, character art).</li>
-          <li><strong>The Motion Path</strong>: An open path element (<code>&lt;path&gt;</code>) placed directly inside that group with its label set to <code>Motion {...}</code>.</li>
+          <li><strong>The Motion Path</strong>: An open path element (<code>&lt;path&gt;</code>) placed directly inside that group with its label set to <code>Move {...}</code>.</li>
         </ul>
         <div class="code-card">
           <div class="code-header"><span>SVG Document Structure</span><span>XML</span></div>
@@ -113,7 +113,7 @@
 
   &lt;!-- The Motion Guide (Trajectory) --&gt;
   &lt;<span class="hl-keyword">path</span> <span class="hl-prop">id</span>=<span class="hl-val">"orbit_guide"</span> 
-        <span class="hl-prop">inkscape:label</span>=<span class="hl-val">"Motion {f:1-20 ease:out rev}"</span> 
+        <span class="hl-prop">inkscape:label</span>=<span class="hl-val">"Move {f:1-20 ease:out rev}"</span> 
         <span class="hl-prop">d</span>=<span class="hl-val">"..."</span> 
         <span class="hl-prop">style</span>=<span class="hl-val">"stroke:#ff0000;fill:none;"</span> /&gt;
 &lt;/<span class="hl-keyword">g</span>&gt;</code></pre>
@@ -134,7 +134,7 @@
 
         <h3>Setting Path Labels in Inkscape</h3>
         <p>
-          There are two convenient places to set the <code>Motion {...}</code> label in Inkscape:
+          There are two convenient places to set the <code>Move {...}</code> label in Inkscape:
         </p>
 
         <h4>Method 1: Layers and Objects Panel (<kbd>Ctrl+Shift+L</kbd>)</h4>
@@ -143,9 +143,9 @@
         </p>
 
         <figure class="doc-figure">
-          <img src="img/inkscape_layers_panel.png" alt="Inkscape Layers and Objects Panel showing Motion label">
+          <img src="img/inkscape_layers_panel.png" alt="Inkscape Layers and Objects Panel showing Move label">
           <figcaption class="doc-caption">
-            <strong>Figure 1</strong>: The Layers and Objects panel (<kbd>Ctrl+Shift+L</kbd>) showing <code>Motion {f:1-20}</code> guide path and artwork nested under Layer 1.
+            <strong>Figure 1</strong>: The Layers and Objects panel (<kbd>Ctrl+Shift+L</kbd>) showing <code>Move {f:1-20}</code> guide path and artwork nested under Layer 1.
           </figcaption>
         </figure>
 
@@ -155,9 +155,9 @@
         </p>
 
         <figure class="doc-figure">
-          <img src="img/inkscape_object_properties.png" alt="Inkscape Object Properties dialog showing Motion label">
+          <img src="img/inkscape_object_properties.png" alt="Inkscape Object Properties dialog showing Move label">
           <figcaption class="doc-caption">
-            <strong>Figure 2</strong>: Object Properties panel with the <strong>Label</strong> field set to <code>Motion {f:1-20}</code> on a spiral trajectory.
+            <strong>Figure 2</strong>: Object Properties panel with the <strong>Label</strong> field set to <code>Move {f:1-20}</code> on a spiral trajectory.
           </figcaption>
         </figure>
 
@@ -182,20 +182,23 @@
         </p>
         <div class="code-card">
           <div class="code-header"><span>IAMS Syntax Format</span><span>Format</span></div>
-          <pre class="code-content"><code>Move  {f:&lt;range&gt; [ease:&lt;curve&gt;] [rev] [orient:true] [angle:&lt;deg&gt;] [dir:cw|ccw] [pivot:&lt;origin&gt;]}
-Rot   {f:&lt;range&gt; [ease:&lt;curve&gt;] [rev] angle:&lt;deg&gt; [dir:cw|ccw] [pivot:&lt;origin&gt;]}
-Scale {f:&lt;range&gt; [ease:&lt;curve&gt;] [rev] [scale:&lt;multiplier&gt;] [scale-x:&lt;val&gt;] [scale-y:&lt;val&gt;] [from:&lt;val&gt;] [to:&lt;val&gt;] [pivot:&lt;origin&gt;]}
-Fade  {f:&lt;range&gt; [ease:&lt;curve&gt;] [from:&lt;val&gt;] [to:&lt;val&gt;] [opacity:&lt;val&gt;]}
-Show  {f:&lt;range&gt;}
-Hide  {f:&lt;range&gt;}
-Depth {f:&lt;range&gt; z:&lt;signed-int&gt;}</code></pre>
+          <pre class="code-content"><code>Move   {f:&lt;range&gt; [ease:&lt;curve&gt;] [rev] [pingpong:true] [orient:true] [angle:&lt;deg&gt;] [dir:cw|ccw] [pivot:&lt;origin&gt;]}
+Rot    {f:&lt;range&gt; [ease:&lt;curve&gt;] [rev] [pingpong:true] angle:&lt;deg&gt; [dir:cw|ccw] [pivot:&lt;origin&gt;]}
+Scale  {f:&lt;range&gt; [ease:&lt;curve&gt;] [rev] [pingpong:true] [scale:&lt;multiplier&gt;] [scale-x:&lt;val&gt;] [scale-y:&lt;val&gt;] [from:&lt;val&gt;] [to:&lt;val&gt;] [pivot:&lt;origin&gt;]}
+Fade   {f:&lt;range&gt; [ease:&lt;curve&gt;] [from:&lt;val&gt;] [to:&lt;val&gt;] [opacity:&lt;val&gt;]}
+Show   {f:&lt;range&gt;}
+Hide   {f:&lt;range&gt;}
+Depth  {f:&lt;range&gt; z:&lt;signed-int&gt;}
+Camera {f:&lt;range&gt; [ease:&lt;curve&gt;] [rev]}
+Dist   {factor:&lt;multiplier&gt; | depth:&lt;distance&gt; | fixed}
+Color  {f:&lt;range&gt; [pingpong:true] [r:&lt;count&gt;] [target:fill|stroke|all] [angle:&lt;deg&gt;]}</code></pre>
         </div>
 
         <div class="docs-table-wrapper">
           <table class="docs-table">
             <thead>
               <tr>
-                <th>Parameter</th>
+                <th>Parameter / Modifier</th>
                 <th>Example</th>
                 <th>Description</th>
               </tr>
@@ -215,6 +218,26 @@ Depth {f:&lt;range&gt; z:&lt;signed-int&gt;}</code></pre>
                 <td><code>ease:&lt;curve&gt;</code></td>
                 <td><span class="badge badge-cyan">ease:out</span></td>
                 <td>Acceleration/deceleration curve: <code>linear</code>, <code>in</code>, <code>out</code>, <code>in-out</code>. Defaults to <code>linear</code>.</td>
+              </tr>
+              <tr>
+                <td><code>pingpong</code>, <code>pingpong:true</code></td>
+                <td><span class="badge badge-amber">pingpong:true</span></td>
+                <td>Oscillates animation forward and backward smoothly (0 → 1 → 0) across the active frame range.</td>
+              </tr>
+              <tr>
+                <td><code>r:&lt;count&gt;</code>, <code>repeat:&lt;count&gt;</code></td>
+                <td><span class="badge badge-amber">r:4</span></td>
+                <td>Repeats the modifier animation cycle <em>N</em> times evenly across the specified frame range.</td>
+              </tr>
+              <tr>
+                <td><code>Color {f:...}</code></td>
+                <td><span class="badge badge-purple">Color {f:1-30 pingpong:true}</span></td>
+                <td>Color modifier attached to a dummy gradient shape inside a group (shape is hidden during render). Mode 1 interpolates solid color across gradient stops. Mode 2 (with <code>angle:&lt;deg&gt;</code>) generates an angular linear gradient highlight sweep.</td>
+              </tr>
+              <tr>
+                <td><code>target:&lt;target&gt;</code></td>
+                <td><span class="badge badge-cyan">target:fill</span>, <span class="badge badge-cyan">target:stroke</span></td>
+                <td>Specifies which SVG properties receive <code>Color</code> styling: <code>fill</code> (default), <code>stroke</code>, or <code>all</code>.</td>
               </tr>
               <tr>
                 <td><code>scale:&lt;val&gt;</code></td>
@@ -243,8 +266,8 @@ Depth {f:&lt;range&gt; z:&lt;signed-int&gt;}</code></pre>
               </tr>
               <tr>
                 <td><code>angle:&lt;deg&gt;</code></td>
-                <td><span class="badge badge-cyan">angle:360</span></td>
-                <td>Degrees of rotation to complete over the frame range.</td>
+                <td><span class="badge badge-cyan">angle:360</span>, <span class="badge badge-cyan">angle:-45</span></td>
+                <td>Degrees of rotation for <code>Rot</code>, or directional sweep angle for <code>Color</code> gradient sweeps.</td>
               </tr>
               <tr>
                 <td><code>dir:&lt;cw|ccw&gt;</code></td>
@@ -363,7 +386,7 @@ Depth {f:&lt;range&gt; z:&lt;signed-int&gt;}</code></pre>
         </p>
         <div class="code-card">
           <div class="code-header"><span>Slide-In Recipe</span><span>Label</span></div>
-          <pre class="code-content"><code>Motion {f:1-12 ease:out rev}</code></pre>
+          <pre class="code-content"><code>Move {f:1-12 ease:out rev}</code></pre>
         </div>
 
         <h3>2. The Spiral Dance</h3>
@@ -372,7 +395,7 @@ Depth {f:&lt;range&gt; z:&lt;signed-int&gt;}</code></pre>
         </p>
         <div class="code-card">
           <div class="code-header"><span>Spiral Orbit Recipe</span><span>Label</span></div>
-          <pre class="code-content"><code>Motion {f:1-20 ease:in-out rev}</code></pre>
+          <pre class="code-content"><code>Move {f:1-20 ease:in-out rev}</code></pre>
         </div>
 
         <h3>3. Continuous Fly-By</h3>
@@ -431,6 +454,19 @@ Dist {factor:0.5}
 &lt;!-- Fixed HUD Overlay --&gt;
 Dist {fixed}</code></pre>
         </div>
+
+        <h3>8. Color Shifting & Specular Gradient Sweeps</h3>
+        <p>
+          Add a dummy vector element (such as a <code>&lt;rect&gt;</code> or <code>&lt;path&gt;</code>) inside any group and fill it with a linear gradient. The dummy shape is automatically hidden from the render, and its colors are applied to sibling elements:
+        </p>
+        <div class="code-card">
+          <div class="code-header"><span>Color Shifting Recipes</span><span>Label</span></div>
+          <pre class="code-content"><code>&lt;!-- Mode 1: Solid Color Shifting (Interpolates across gradient stops) --&gt;
+Color {f:1-30 pingpong:true target:fill}
+
+&lt;!-- Mode 2: Directional Gradient Sweep / Shimmer along angle --&gt;
+Color {f:1-60 angle:-45 r:4 target:stroke}</code></pre>
+        </div>
       </section>
 
       <!-- Section: Live Sample Showcase -->
@@ -448,7 +484,7 @@ Dist {fixed}</code></pre>
           <div class="sample-details">
             <h3 style="color: #fff; font-size: 1.25rem;">Star Swirl (Twitch Emote Ready)</h3>
             <p style="font-size: 0.95rem; color: var(--text-muted); margin-bottom: 12px;">
-              Authored in Inkscape using a single 5-pointed star and an inward spiral path labeled <code>Motion {f:1-20}</code>. Exported in seconds with <code>inkanim-cli</code>:
+              Authored in Inkscape using a single 5-pointed star and an inward spiral path labeled <code>Move {f:1-20}</code>. Exported in seconds with <code>inkanim-cli</code>:
             </p>
             <div class="code-card" style="margin: 12px 0;">
               <div class="code-header"><span>CLI Export Command</span><span>PowerShell / Bash</span></div>
@@ -501,7 +537,76 @@ Dist {fixed}</code></pre>
         </p>
         <div class="code-card">
           <div class="code-header"><span>Headless Export Command</span><span>Terminal</span></div>
-          <pre class="code-content"><code>inkanim-cli -i my_animation.svg -o my_animation.gif --fps 15</code></pre>
+          <pre class="code-content"><code>inkanim-cli -i character.svg -o emote.gif -square -size 512 -fps 10</code></pre>
+        </div>
+
+        <div class="docs-table-wrapper" style="margin-top: 16px;">
+          <table class="docs-table">
+            <thead>
+              <tr>
+                <th>Flag</th>
+                <th>Default</th>
+                <th>Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>-i &lt;file&gt;</code></td>
+                <td><em>(required)</em></td>
+                <td>Input Inkscape SVG file path.</td>
+              </tr>
+              <tr>
+                <td><code>-o &lt;file&gt;</code></td>
+                <td><code>&lt;input&gt;.gif</code></td>
+                <td>Output animated GIF file path.</td>
+              </tr>
+              <tr>
+                <td><code>-square</code></td>
+                <td><code>true</code></td>
+                <td>Pad graphic with transparent margin to guarantee a 1:1 square canvas (Twitch standard).</td>
+              </tr>
+              <tr>
+                <td><code>-size &lt;px&gt;</code></td>
+                <td><code>0</code> (auto)</td>
+                <td>Target square dimension (e.g. <code>512</code> for Twitch, <code>128</code> for Discord, max <code>4096</code>).</td>
+              </tr>
+              <tr>
+                <td><code>-width &lt;px&gt;</code>, <code>-height &lt;px&gt;</code></td>
+                <td><code>0</code></td>
+                <td>Custom target dimensions when <code>-square=false</code>.</td>
+              </tr>
+              <tr>
+                <td><code>-fps &lt;num&gt;</code></td>
+                <td><code>10</code></td>
+                <td>Playback frame rate / speed in frames per second.</td>
+              </tr>
+              <tr>
+                <td><code>-colors &lt;2-256&gt;</code></td>
+                <td><code>256</code></td>
+                <td>Maximum palette colors for quantization (2 to 256).</td>
+              </tr>
+              <tr>
+                <td><code>-dither</code></td>
+                <td><code>false</code></td>
+                <td>Apply Floyd-Steinberg error diffusion dithering for smooth color gradients.</td>
+              </tr>
+              <tr>
+                <td><code>-pingpong</code></td>
+                <td><code>false</code></td>
+                <td>Enable ping-pong loop (forward then reverse bounce).</td>
+              </tr>
+              <tr>
+                <td><code>-check-twitch</code></td>
+                <td><code>true</code></td>
+                <td>Validate output against Twitch animated emote specifications (&lt; 1 MB).</td>
+              </tr>
+              <tr>
+                <td><code>-v</code></td>
+                <td><code>false</code></td>
+                <td>Print version and build information.</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </section>
     </article>
