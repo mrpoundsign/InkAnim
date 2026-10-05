@@ -784,6 +784,216 @@
       transform: translateY(-1px);
       box-shadow: 0 6px 24px rgba(0, 0, 0, 0.7), 0 0 18px rgba(145, 70, 255, 0.4);
     }
+
+    /* WebAssembly Speed Warning Modal Styles */
+    .warning-modal-banner {
+      background: linear-gradient(135deg, rgba(234, 179, 8, 0.12) 0%, rgba(249, 115, 22, 0.12) 100%);
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+
+    .warning-modal-banner-title {
+      font-weight: 700;
+      font-size: 0.95rem;
+      color: #fbbf24;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+
+    .warning-modal-banner-text {
+      font-size: 0.86rem;
+      line-height: 1.5;
+      color: #e2e8f0;
+      margin: 0;
+    }
+
+    .warning-complex-callout {
+      background: rgba(145, 70, 255, 0.12);
+      border: 1px solid rgba(145, 70, 255, 0.35);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+
+    .warning-complex-title {
+      font-weight: 700;
+      font-size: 0.92rem;
+      color: #d8b4fe;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+
+    .warning-complex-text {
+      font-size: 0.85rem;
+      line-height: 1.5;
+      color: #cbd5e1;
+      margin: 0;
+    }
+
+    .warning-compare-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+
+    @media (max-width: 600px) {
+      .warning-compare-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .warning-compare-card {
+      border-radius: 12px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .warning-compare-card.desktop {
+      border: 1px solid rgba(16, 185, 129, 0.35);
+      background: rgba(16, 185, 129, 0.06);
+    }
+
+    .warning-compare-card.web {
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      background: rgba(245, 158, 11, 0.05);
+    }
+
+    .warning-card-title {
+      font-size: 0.88rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .warning-card-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      font-size: 0.8rem;
+      color: #a1a1aa;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .warning-card-list li {
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+      line-height: 1.4;
+    }
+
+    /* Active Sample Loading Overlay */
+    .sample-loading-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(8, 8, 11, 0.9);
+      backdrop-filter: blur(10px);
+      z-index: 25000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s ease;
+      text-align: center;
+    }
+
+    .sample-loading-overlay.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .sample-loading-card {
+      background: #141419;
+      border: 1px solid rgba(145, 70, 255, 0.4);
+      border-radius: 20px;
+      padding: 32px 28px;
+      max-width: 520px;
+      width: 100%;
+      box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.95), 0 0 40px -10px rgba(145, 70, 255, 0.4);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      transform: scale(0.95) translateY(10px);
+      transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .sample-loading-overlay.active .sample-loading-card {
+      transform: scale(1) translateY(0);
+    }
+
+    .sample-loading-spinner {
+      width: 54px;
+      height: 54px;
+      border: 4px solid rgba(145, 70, 255, 0.2);
+      border-top-color: var(--accent-purple);
+      border-right-color: var(--accent-teal);
+      border-radius: 50%;
+      animation: spin 0.9s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+      margin-bottom: 20px;
+    }
+
+    .sample-loading-title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 8px;
+    }
+
+    .sample-loading-desc {
+      font-size: 0.88rem;
+      color: #a1a1aa;
+      line-height: 1.5;
+      margin-bottom: 18px;
+    }
+
+    .sample-loading-notice {
+      background: rgba(245, 158, 11, 0.1);
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      border-radius: 10px;
+      padding: 12px 16px;
+      font-size: 0.84rem;
+      line-height: 1.5;
+      color: #fde68a;
+      text-align: left;
+      margin-bottom: 20px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    .sample-loading-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #f4f4f6;
+      padding: 9px 18px;
+      border-radius: 8px;
+      font-size: 0.84rem;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all 0.2s ease;
+    }
+
+    .sample-loading-btn:hover {
+      background: rgba(255, 255, 255, 0.15);
+      color: #fff;
+      border-color: #00f5d4;
+    }
   </style>
 
   <script>
@@ -857,6 +1067,7 @@
               main.style.display = "none";
               go.run(result.instance);
               updateRuntimeStatusInUI();
+              checkShowSpeedWarningModal();
             }).catch((err) => {
               action.innerText = "Error loading WebAssembly: " + err;
               action.style.color = "#ef4444";
@@ -874,7 +1085,7 @@
 
     const sampleDetails = {
       complex_motion: {
-        title: "🪐 Complex Planetary Motion",
+        title: "🪐 Complex Motion",
         file: "complex_motion.svg",
         inkscapeImg: "../samples/complex_motion_inkscape.png",
         animImg: "../samples/complex_motion.gif",
@@ -1007,6 +1218,92 @@
       }
     }
 
+    // Speed Warning Modal Controls
+    function openSpeedWarningModal() {
+      hideSamplePreview();
+      var modal = document.getElementById('wasm-speed-warning-modal');
+      if (modal) {
+        modal.classList.add('active');
+        var check = document.getElementById('dont-show-speed-warning-check');
+        if (check) {
+          try {
+            check.checked = (localStorage.getItem('inkanim_hide_speed_warning') === '1');
+          } catch(e) {}
+        }
+      }
+    }
+
+    function closeSpeedWarningModal() {
+      var modal = document.getElementById('wasm-speed-warning-modal');
+      if (modal) {
+        modal.classList.remove('active');
+      }
+      var check = document.getElementById('dont-show-speed-warning-check');
+      if (check && check.checked) {
+        try {
+          localStorage.setItem('inkanim_hide_speed_warning', '1');
+        } catch(e) {}
+      }
+    }
+
+    function handleSpeedBackdropClick(e) {
+      if (e.target.id === 'wasm-speed-warning-modal') {
+        closeSpeedWarningModal();
+      }
+    }
+
+    function handleSpeedCheckboxChange(cb) {
+      try {
+        if (cb.checked) {
+          localStorage.setItem('inkanim_hide_speed_warning', '1');
+        } else {
+          localStorage.removeItem('inkanim_hide_speed_warning');
+        }
+      } catch(e) {}
+    }
+
+    function checkShowSpeedWarningModal() {
+      try {
+        if (localStorage.getItem('inkanim_hide_speed_warning') === '1') {
+          return;
+        }
+      } catch(e) {}
+      openSpeedWarningModal();
+    }
+
+    // Active Sample Loading Overlay Controls
+    function showSampleLoadingOverlay(filename, isComplex) {
+      var overlay = document.getElementById('sample-loading-overlay');
+      if (!overlay) return;
+      var title = document.getElementById('loading-overlay-title');
+      var desc = document.getElementById('loading-overlay-desc');
+      var warn = document.getElementById('loading-overlay-warning');
+
+      if (title) title.textContent = "Loading " + filename + "...";
+      if (desc) desc.textContent = "Parsing vector geometry and rasterizing animation frames in WebAssembly...";
+      if (warn) {
+        if (isComplex) {
+          warn.innerHTML = '⚠️ <strong>Performance Notice:</strong> This 60-frame complex motion sample can take <strong>tens of seconds</strong> to load and rasterize due to single-threaded WebAssembly limitations.<br><br>The <a href="../#downloads" target="_blank" style="color:#00f5d4; font-weight:700;">Desktop Version</a> does this in seconds using multi-threaded native hardware!';
+        } else {
+          warn.innerHTML = '⚡ <strong>WebAssembly Notice:</strong> In-browser vector rasterization is single-threaded. For instant loading and multi-core compilation, check out the <a href="../#downloads" target="_blank" style="color:#00f5d4; font-weight:700;">Desktop App</a>.';
+        }
+      }
+      overlay.classList.add('active');
+    }
+
+    function hideSampleLoadingOverlay() {
+      var overlay = document.getElementById('sample-loading-overlay');
+      if (overlay) {
+        overlay.classList.remove('active');
+      }
+    }
+
+    // Callback invoked by Go WASM runtime when an SVG document has finished loading and rasterizing
+    window.inkanimOnLoaded = function(filename) {
+      hideSampleLoadingOverlay();
+      showToast("✓ " + filename + " loaded into Studio!");
+    };
+
     // Helper to load sample files programmatically into InkAnim
     async function loadSampleSVG(key, btn) {
       var data = sampleDetails[key];
@@ -1014,7 +1311,11 @@
 
       var filename = data.file;
       var url = '../samples/' + filename;
+      var isComplex = (key === 'complex_motion');
       var origText = btn ? btn.innerText : '';
+
+      hideSamplePreview();
+      showSampleLoadingOverlay(filename, isComplex);
 
       if (btn) btn.innerText = "⏳ Loading...";
 
@@ -1024,36 +1325,40 @@
         statusEl.innerHTML = '<span>⏳ <strong>Compiling WebAssembly (~25MB). In-browser WASM compilation is very slow</strong> — auto-injecting ' + filename + ' into canvas as soon as compilation finishes...</span>';
       }
 
+      // Small tick allowing browser to paint the loading overlay before synchronous WASM executes
+      await new Promise(function(r) { setTimeout(r, 60); });
+
       try {
         const res = await fetch(url);
         if (!res.ok) throw new Error("HTTP " + res.status);
         const buf = await res.arrayBuffer();
 
         if (window.inkanimLoadBytes) {
-          window.inkanimLoadBytes(filename, new Uint8Array(buf));
-          if (btn) {
-            btn.innerText = "✓ Loaded!";
-            setTimeout(function() { btn.innerText = origText; }, 2500);
-          }
-          hideSamplePreview();
-          showToast("✓ " + filename + " loaded into Studio!");
+          setTimeout(function() {
+            window.inkanimLoadBytes(filename, new Uint8Array(buf));
+            if (btn) {
+              btn.innerText = "✓ Loaded!";
+              setTimeout(function() { btn.innerText = origText; }, 2500);
+            }
+          }, 50);
         } else {
           // Runtime still initializing
           if (btn) btn.innerText = "⏳ WASM loading is very slow... please wait";
           var waitInterval = setInterval(function() {
             if (window.inkanimLoadBytes) {
               clearInterval(waitInterval);
-              window.inkanimLoadBytes(filename, new Uint8Array(buf));
-              if (btn) {
-                btn.innerText = "✓ Loaded!";
-                setTimeout(function() { btn.innerText = origText; }, 2500);
-              }
-              hideSamplePreview();
-              showToast("✓ " + filename + " loaded into Studio!");
+              setTimeout(function() {
+                window.inkanimLoadBytes(filename, new Uint8Array(buf));
+                if (btn) {
+                  btn.innerText = "✓ Loaded!";
+                  setTimeout(function() { btn.innerText = origText; }, 2500);
+                }
+              }, 50);
             }
           }, 400);
         }
       } catch(err) {
+        hideSampleLoadingOverlay();
         console.error("Failed to load sample SVG:", err);
         alert("Could not load sample: " + err.message);
         if (btn) btn.innerText = origText;
@@ -1127,14 +1432,20 @@
     }
 
     async function doLoadSampleDirect(filename) {
+      var isComplex = (filename.indexOf('complex') !== -1);
+      closeDemoModal();
+      showSampleLoadingOverlay(filename, isComplex);
+      await new Promise(function(r) { setTimeout(r, 60); });
+
       try {
         var res = await fetch('../samples/' + encodeURIComponent(filename));
         if (!res.ok) throw new Error("HTTP " + res.status);
         var buf = await res.arrayBuffer();
-        window.inkanimLoadBytes(filename, new Uint8Array(buf));
-        closeDemoModal();
-        showToast("✓ " + filename + " loaded into Studio!");
+        setTimeout(function() {
+          window.inkanimLoadBytes(filename, new Uint8Array(buf));
+        }, 50);
       } catch(err) {
+        hideSampleLoadingOverlay();
         console.error("Failed to load sample:", err);
         alert("Failed to load sample: " + err.message);
       }
@@ -1169,6 +1480,9 @@
       var params = new URLSearchParams(window.location.search);
       var sample = params.get('sample');
       if (!sample) return;
+      var isComplex = (sample.indexOf('complex') !== -1);
+      showSampleLoadingOverlay(sample, isComplex);
+
       var attempts = 0;
       var maxAttempts = 60; // 30 seconds max
       var interval = setInterval(async function() {
@@ -1179,13 +1493,16 @@
             var res = await fetch('../samples/' + encodeURIComponent(sample));
             if (!res.ok) throw new Error("HTTP " + res.status);
             var buf = await res.arrayBuffer();
-            window.inkanimLoadBytes(sample, new Uint8Array(buf));
-            console.log("Auto-loaded sample:", sample);
-            showToast("✓ " + sample + " loaded into Studio!");
+            setTimeout(function() {
+              window.inkanimLoadBytes(sample, new Uint8Array(buf));
+              console.log("Auto-loaded sample:", sample);
+            }, 50);
           } catch(err) {
+            hideSampleLoadingOverlay();
             console.error("Auto-load sample failed:", err);
           }
         } else if (attempts >= maxAttempts) {
+          hideSampleLoadingOverlay();
           clearInterval(interval);
         }
       }, 500);
@@ -1203,6 +1520,7 @@
     document.addEventListener('keydown', function(e) {
       if (e.key === 'Escape') {
         closeDemoModal();
+        closeSpeedWarningModal();
         hideSamplePreview();
       }
     });
@@ -1391,6 +1709,9 @@
       🚶 Walk Cycle
     </button>
     <div class="tool-sep"></div>
+    <button type="button" class="tool-btn" onclick="openSpeedWarningModal()" title="WebAssembly Performance & Limitations Notice">
+      ⚡ Speed Notice
+    </button>
     <a href="https://github.com/mrpoundsign/InkAnim" target="_blank" rel="noopener noreferrer" class="tool-btn">
       ⭐ GitHub
     </a>
@@ -1398,6 +1719,94 @@
     <button type="button" class="tool-btn tool-btn-close" id="toolbar-close-btn" title="Hide Quick Samples Toolbar" onclick="toggleToolbar(true)">
       ✕
     </button>
+  </div>
+
+  <!-- WebAssembly Speed & Limitations Warning Modal -->
+  <div id="wasm-speed-warning-modal" class="modal-backdrop" onclick="handleSpeedBackdropClick(event)">
+    <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="speed-modal-title" style="max-width: 680px;">
+      <div class="modal-header">
+        <h3 id="speed-modal-title" style="display: flex; align-items: center; gap: 8px;">
+          <span style="color: #fbbf24;">⚠️</span> Web Performance Notice
+        </h3>
+        <button type="button" class="modal-close-btn" onclick="closeSpeedWarningModal()" aria-label="Close notice">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="warning-modal-banner">
+          <div class="warning-modal-banner-title">
+            <span>⚙️ Single-Threaded WebAssembly Runtime</span>
+          </div>
+          <p class="warning-modal-banner-text">
+            InkAnim in the browser runs entirely client-side via WebAssembly. Due to browser sandboxing and single-threaded execution (<code>GOMAXPROCS=1</code>), SVG parsing, vector rendering, and GIF quantization are <strong>substantially slower than the native desktop version</strong>.
+          </p>
+        </div>
+
+        <div class="warning-complex-callout">
+          <div class="warning-complex-title">
+            <span>🪐 Multi-Frame Animations (Tens of Seconds to Load)</span>
+          </div>
+          <p class="warning-complex-text">
+            Animations with many frames or advanced features—<strong>especially the 60-frame Complex Motion sample</strong>—require rasterizing every vector layer frame-by-frame. In WebAssembly, <strong>this can take tens of seconds to load</strong>, during which the browser tab may become busy or unresponsive.
+          </p>
+        </div>
+
+        <div class="warning-compare-grid">
+          <div class="warning-compare-card desktop">
+            <div class="warning-card-title" style="color: #34d399;">
+              ⚡ Desktop App (Recommended)
+            </div>
+            <ul class="warning-card-list">
+              <li>✓ <strong>Multi-threaded:</strong> Uses all CPU cores for parallel rendering</li>
+              <li>✓ <strong>Loads in seconds:</strong> Instant startup, no WASM overhead</li>
+              <li>✓ <strong>Unrestricted speed:</strong> Native hardware performance</li>
+              <li>✓ Free for Windows, macOS, and Linux</li>
+            </ul>
+          </div>
+
+          <div class="warning-compare-card web">
+            <div class="warning-card-title" style="color: #fbbf24;">
+              ⏳ Web Studio (In-Browser)
+            </div>
+            <ul class="warning-card-list">
+              <li>• Single CPU core execution</li>
+              <li>• Tens of seconds for complex multi-frame animations</li>
+              <li>• Memory & JIT overhead in browser VM</li>
+              <li>• Best for quick previews and simple emote tests</li>
+            </ul>
+          </div>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 10px; margin-top: 14px; font-size: 0.82rem; color: #a1a1aa; cursor: pointer;">
+          <input type="checkbox" id="dont-show-speed-warning-check" style="cursor: pointer; accent-color: var(--accent-purple);" onchange="handleSpeedCheckboxChange(this)">
+          <label for="dont-show-speed-warning-check" style="cursor: pointer; user-select: none;">
+            Don't show this notice automatically on studio startup
+          </label>
+        </div>
+      </div>
+      <div class="modal-footer" style="justify-content: space-between;">
+        <button type="button" class="modal-btn modal-btn-secondary" onclick="closeSpeedWarningModal()">
+          Continue in Web Studio
+        </button>
+        <a href="../#downloads" target="_blank" class="modal-btn modal-btn-primary">
+          <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          Download Desktop App (Instant & Fast)
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Active Sample Loading Overlay -->
+  <div id="sample-loading-overlay" class="sample-loading-overlay">
+    <div class="sample-loading-card">
+      <div class="sample-loading-spinner"></div>
+      <div id="loading-overlay-title" class="sample-loading-title">Rendering Animation Frames...</div>
+      <div id="loading-overlay-desc" class="sample-loading-desc">Parsing SVG vector data in WebAssembly...</div>
+      <div id="loading-overlay-warning" class="sample-loading-notice">
+        ⚠️ <strong>Notice:</strong> Single-threaded WebAssembly can take <strong>tens of seconds</strong> to render complex multi-frame animations. Please wait while frames are processed.
+      </div>
+      <a href="../#downloads" target="_blank" class="sample-loading-btn">
+        ⚡ Want Instant Performance? Get the Desktop App →
+      </a>
+    </div>
   </div>
 
   <!-- Collapsed Reopen Button (Bottom Right) -->

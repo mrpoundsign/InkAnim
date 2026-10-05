@@ -75,6 +75,9 @@ func (mw *MainWindow) initPlatform() {
 			if data != nil {
 				fyne.Do(func() {
 					mw.loadData(data, name)
+					if fn := js.Global().Get("inkanimOnLoaded"); fn.Type() == js.TypeFunction {
+						fn.Invoke(name)
+					}
 				})
 			}
 		}()
@@ -94,6 +97,9 @@ func (mw *MainWindow) initPlatform() {
 		js.CopyBytesToGo(data, uint8Array)
 		fyne.Do(func() {
 			mw.loadData(data, name)
+			if fn := js.Global().Get("inkanimOnLoaded"); fn.Type() == js.TypeFunction {
+				fn.Invoke(name)
+			}
 		})
 		return nil
 	})
@@ -154,6 +160,9 @@ func (mw *MainWindow) promptOpenFile() {
 			if data != nil {
 				fyne.Do(func() {
 					mw.loadData(data, name)
+					if fn := js.Global().Get("inkanimOnLoaded"); fn.Type() == js.TypeFunction {
+						fn.Invoke(name)
+					}
 				})
 			}
 		}()
