@@ -69,6 +69,7 @@
       margin-bottom: 6px;
       background: linear-gradient(135deg, #ffffff 40%, var(--accent-purple-hover) 100%);
       -webkit-background-clip: text;
+      background-clip: text;
       -webkit-text-fill-color: transparent;
     }
 
@@ -172,41 +173,556 @@
       font-weight: 500;
     }
 
-    .sample-group {
-      display: inline-flex;
+    /* Hover Preview Popover (Large samples area style) */
+    #sample-hover-popover {
+      position: fixed;
+      bottom: 78px;
+      left: 50%;
+      transform: translateX(-50%) translateY(10px);
+      z-index: 15000;
+      width: 700px;
+      max-width: 95vw;
+      background: rgba(18, 18, 23, 0.98);
+      backdrop-filter: blur(24px);
+      border: 1px solid rgba(145, 70, 255, 0.45);
+      border-radius: 20px;
+      padding: 20px;
+      box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.95), 0 0 36px rgba(145, 70, 255, 0.35);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease, transform 0.2s ease;
+      text-align: left;
+    }
+
+    #sample-hover-popover.active {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    .popover-header {
+      display: flex;
       align-items: center;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(145, 70, 255, 0.28);
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+
+    .popover-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .popover-badge {
+      font-size: 0.74rem;
+      font-weight: 600;
+      color: var(--accent-purple-hover);
+      background: rgba(145, 70, 255, 0.18);
+      border: 1px solid rgba(145, 70, 255, 0.35);
+      padding: 3px 10px;
       border-radius: 9999px;
-      padding: 2px 4px 2px 2px;
-      gap: 2px;
-      transition: all 0.2s ease;
     }
 
-    .sample-group:hover {
-      border-color: var(--accent-purple);
-      background: rgba(255, 255, 255, 0.08);
+    .popover-compare {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 14px;
     }
 
-    .tool-btn-sub {
+    @media (max-width: 600px) {
+      .popover-compare {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .popover-box {
+      background: rgba(14, 14, 18, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      padding: 12px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .popover-header-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+
+    .popover-tag {
+      font-size: 0.74rem;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      padding: 2px 8px;
+      border-radius: 6px;
+    }
+
+    .popover-tag.static {
+      background: rgba(59, 130, 246, 0.15);
+      color: #60a5fa;
+      border: 1px solid rgba(59, 130, 246, 0.3);
+    }
+
+    .popover-tag.animated {
+      background: rgba(16, 185, 129, 0.15);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    .popover-thumb {
+      width: 100%;
+      height: 210px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background-color: #0e0e12;
+      background-image: 
+        linear-gradient(45deg, #18181f 25%, transparent 25%),
+        linear-gradient(-45deg, #18181f 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #18181f 75%),
+        linear-gradient(-45deg, transparent 75%, #18181f 75%);
+      background-size: 16px 16px;
+      background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      margin-bottom: 8px;
+    }
+
+    .popover-thumb img {
+      max-width: 90%;
+      max-height: 90%;
+      object-fit: contain;
+    }
+
+    .popover-box-desc {
+      font-size: 0.78rem;
+      color: #a1a1aa;
+      line-height: 1.4;
+      margin: 0;
+      text-align: left;
+    }
+
+    .popover-status {
+      font-size: 0.84rem;
+      padding: 10px 14px;
+      border-radius: 10px;
+      margin-bottom: 14px;
+      line-height: 1.45;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .popover-status.loading {
+      background: rgba(239, 68, 68, 0.12);
+      border: 1px solid rgba(239, 68, 68, 0.35);
+      color: #fca5a5;
+    }
+
+    .popover-status.loading strong {
+      color: #fff;
+    }
+
+    .popover-status.ready {
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: #6ee7b7;
+    }
+
+    .popover-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 14px;
+    }
+
+    .popover-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      padding-top: 14px;
+      flex-wrap: wrap;
+    }
+
+    .popover-btn {
+      font-size: 0.84rem;
+      font-weight: 600;
       display: inline-flex;
       align-items: center;
-      gap: 3px;
-      background: transparent;
+      gap: 6px;
+      padding: 8px 14px;
+      border-radius: 8px;
+      text-decoration: none;
+      cursor: pointer;
+      transition: all 0.2s ease;
       border: 1px solid transparent;
-      color: #a1a1aa;
-      font-size: 0.75rem;
-      font-weight: 500;
-      padding: 4px 8px;
+      box-sizing: border-box;
+    }
+
+    .popover-btn-secondary {
+      background: rgba(255, 255, 255, 0.08);
+      color: #f4f4f6;
+      border-color: rgba(255, 255, 255, 0.12);
+    }
+
+    .popover-btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.14);
+      color: #fff;
+    }
+
+    .popover-btn-primary {
+      background: linear-gradient(135deg, var(--accent-purple) 0%, #772ce8 100%);
+      color: #fff;
+      box-shadow: 0 4px 14px rgba(145, 70, 255, 0.35);
+    }
+
+    .popover-btn-primary:hover {
+      background: linear-gradient(135deg, var(--accent-purple-hover) 0%, var(--accent-purple) 100%);
+      transform: translateY(-1px);
+    }
+
+    /* Initial Loader Speed Warning */
+    .loader-speed-warning {
+      margin-top: 24px;
+      padding: 16px 20px;
+      background: rgba(239, 68, 68, 0.12);
+      border: 1px solid rgba(239, 68, 68, 0.35);
+      border-radius: 14px;
+      text-align: center;
+    }
+
+    .speed-warning-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .speed-warning-body {
+      font-size: 0.82rem;
+      color: #e4e4e7;
+      line-height: 1.5;
+      margin: 0 0 14px 0;
+    }
+
+    .speed-warning-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 18px;
+      background: linear-gradient(135deg, #00f5d4 0%, #00bbf9 100%);
+      color: #09090b;
+      font-weight: 700;
+      font-size: 0.84rem;
       border-radius: 9999px;
       text-decoration: none;
       transition: all 0.2s ease;
+      box-shadow: 0 4px 16px rgba(0, 245, 212, 0.35);
     }
 
-    .tool-btn-sub:hover {
-      background: rgba(255, 255, 255, 0.12);
+    .speed-warning-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 22px rgba(0, 245, 212, 0.55);
+    }
+
+    /* Comparison Modal */
+    .modal-backdrop {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(0, 0, 0, 0.85);
+      backdrop-filter: blur(16px);
+      z-index: 20000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s ease;
+      box-sizing: border-box;
+      text-align: left;
+    }
+
+    .modal-backdrop.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .modal-dialog {
+      background: #141419;
+      border: 1px solid rgba(145, 70, 255, 0.35);
+      border-radius: 20px;
+      width: 100%;
+      max-width: 820px;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.9), 0 0 40px -10px rgba(145, 70, 255, 0.4);
+      transform: scale(0.95) translateY(10px);
+      transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      display: flex;
+      flex-direction: column;
+      color: #f4f4f6;
+    }
+
+    .modal-backdrop.active .modal-dialog {
+      transform: scale(1) translateY(0);
+    }
+
+    .modal-header {
+      padding: 18px 24px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .modal-header h3 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      margin: 0;
       color: #fff;
-      border-color: rgba(255, 255, 255, 0.15);
+    }
+
+    .modal-close-btn {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #a1a1aa;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.1rem;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .modal-close-btn:hover {
+      background: rgba(239, 68, 68, 0.2);
+      border-color: rgba(239, 68, 68, 0.4);
+      color: #ef4444;
+    }
+
+    .modal-body {
+      padding: 20px 24px;
+    }
+
+    .modal-speed-disclaimer {
+      background: rgba(145, 70, 255, 0.12);
+      border: 1px solid rgba(145, 70, 255, 0.3);
+      border-radius: 10px;
+      padding: 10px 16px;
+      font-size: 0.84rem;
+      color: #d8b4fe;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .modal-speed-disclaimer strong {
+      color: #fff;
+    }
+
+    .speed-link {
+      color: #00f5d4;
+      text-decoration: underline;
+      font-weight: 600;
+      font-size: 0.8rem;
+    }
+
+    .compare-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+      margin-bottom: 20px;
+    }
+
+    @media (max-width: 600px) {
+      .compare-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .compare-col {
+      background: rgba(18, 18, 23, 0.7);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 12px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .compare-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+
+    .compare-tag {
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 6px;
+    }
+
+    .compare-tag.static {
+      background: rgba(59, 130, 246, 0.15);
+      color: #60a5fa;
+      border: 1px solid rgba(59, 130, 246, 0.3);
+    }
+
+    .compare-tag.animated {
+      background: rgba(16, 185, 129, 0.15);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    .compare-view {
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      background-color: #0e0e12;
+      background-image: 
+        linear-gradient(45deg, #18181f 25%, transparent 25%),
+        linear-gradient(-45deg, #18181f 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #18181f 75%),
+        linear-gradient(-45deg, transparent 75%, #18181f 75%);
+      background-size: 16px 16px;
+      background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      margin-bottom: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.04);
+    }
+
+    .compare-view img {
+      max-width: 90%;
+      max-height: 90%;
+      object-fit: contain;
+    }
+
+    .compare-caption {
+      font-size: 0.8rem;
+      color: #a1a1aa;
+      line-height: 1.4;
+      margin: 0;
+    }
+
+    .compare-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 14px;
+    }
+
+    .compare-pill {
+      font-size: 0.74rem;
+      font-family: 'JetBrains Mono', monospace;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      color: #a1a1aa;
+      padding: 3px 8px;
+      border-radius: 6px;
+    }
+
+    .modal-footer {
+      padding: 16px 24px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .modal-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 18px;
+      border-radius: 10px;
+      font-size: 0.86rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.2s ease;
+      border: 1px solid transparent;
+      box-sizing: border-box;
+    }
+
+    .modal-btn-secondary {
+      background: rgba(255, 255, 255, 0.08);
+      color: #f4f4f6;
+      border-color: rgba(255, 255, 255, 0.12);
+    }
+
+    .modal-btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.14);
+      color: #fff;
+    }
+
+    .modal-btn-primary {
+      background: linear-gradient(135deg, var(--accent-purple) 0%, #772ce8 100%);
+      color: #fff;
+      box-shadow: 0 4px 16px rgba(145, 70, 255, 0.4);
+    }
+
+    .modal-btn-primary:hover:not(:disabled) {
+      background: linear-gradient(135deg, var(--accent-purple-hover) 0%, var(--accent-purple) 100%);
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(145, 70, 255, 0.5);
+    }
+
+    .modal-btn-primary:disabled {
+      opacity: 0.65;
+      cursor: wait;
+    }
+
+    .toast-notice {
+      position: fixed;
+      top: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(-20px);
+      background: rgba(18, 18, 23, 0.95);
+      border: 1px solid #10b981;
+      color: #fff;
+      padding: 10px 20px;
+      border-radius: 9999px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.8);
+      z-index: 30000;
+      opacity: 0;
+      pointer-events: none;
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .toast-notice.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
     }
 
     @media (max-width: 680px) {
@@ -334,12 +850,13 @@
               };
             }
 
-            action.innerText = "Loading InkAnim WebAssembly (~40MB)...";
+            action.innerHTML = 'Loading WebAssembly Studio (~25MB)...<br><span style="font-size:0.78rem; color:#a1a1aa; margin-top:6px; display:inline-block;">⚡ Note: The <a href="../#downloads" target="_blank" style="color:#00f5d4; text-decoration:underline;">desktop version</a> is far faster and launches instantly</span>';
 
             const go = new Go();
             WebAssembly.instantiateStreaming(fetch("InkAnim.wasm"), go.importObject).then((result) => {
               main.style.display = "none";
               go.run(result.instance);
+              updateRuntimeStatusInUI();
             }).catch((err) => {
               action.innerText = "Error loading WebAssembly: " + err;
               action.style.color = "#ef4444";
@@ -355,29 +872,282 @@
       }
     }
 
+    const sampleDetails = {
+      complex_motion: {
+        title: "🪐 Complex Planetary Motion",
+        file: "complex_motion.svg",
+        inkscapeImg: "../samples/complex_motion_inkscape.png",
+        animImg: "../samples/complex_motion.gif",
+        badge: "Featured IAMS • 60 Frames",
+        inkscapeDesc: "Static Inkscape vector document layout.",
+        animDesc: "Mode 2 color shifting, spline trajectory orbit, and parallax depth.",
+        pills: ["#orbit spline", "360° spin", "Color Mode 2", "Parallax Depth", "60 Frames", "256 × 256"]
+      },
+      star_swirl: {
+        title: "✨ Star Swirl Trajectory",
+        file: "star_swirl.svg",
+        inkscapeImg: "../samples/star_swirl_inkscape.png",
+        animImg: "../samples/star_swirl.gif",
+        badge: "Spline Motion • 30 Frames",
+        inkscapeDesc: "Static vector star icon with motion path spline.",
+        animDesc: "Constant velocity path traversal with orient:true and axial spin.",
+        pills: ["Spline Path", "orient: true", "360° CW Spin", "30 Frames", "256 × 256"]
+      },
+      pendulum: {
+        title: "🕰️ Harmonic Pendulum",
+        file: "pendulum.svg",
+        inkscapeImg: "../samples/pendulum_inkscape.png",
+        animImg: "../samples/pendulum.gif",
+        badge: "Ping-Pong • 10 Frames",
+        inkscapeDesc: "Resting harmonic pendulum vector graphic in Inkscape.",
+        animDesc: "10-frame swinging arc bouncing with Ping-Pong loop ($2N-2$).",
+        pills: ["Ping-Pong Loop", "10 Frames (18-step bounce)", "128 × 128", "Twitch Ready"]
+      },
+      character_walk: {
+        title: "🚶 Character Walk Cycle",
+        file: "character_walk.svg",
+        inkscapeImg: "../samples/character_walk_inkscape.png",
+        animImg: "../samples/character_walk.gif",
+        badge: "Layer Cycle • 4 Frames",
+        inkscapeDesc: "Layer groups in Inkscape (inkscape:groupmode='layer').",
+        animDesc: "4-frame walk cycle cycling through discrete SVG layer groups.",
+        pills: ["Layer Mode", "inkscape:groupmode='layer'", "4 Frames", "128 × 128"]
+      }
+    };
+
+    var popoverHideTimer = null;
+    var currentPopoverSample = null;
+
+    function showSamplePreview(key, btnEl) {
+      if (popoverHideTimer) {
+        clearTimeout(popoverHideTimer);
+        popoverHideTimer = null;
+      }
+      var data = sampleDetails[key];
+      if (!data) return;
+      currentPopoverSample = key;
+
+      var popover = document.getElementById('sample-hover-popover');
+      document.getElementById('popover-title').textContent = data.title;
+      document.getElementById('popover-badge').textContent = data.badge;
+      document.getElementById('popover-inkscape-img').src = data.inkscapeImg;
+      document.getElementById('popover-inkscape-desc').textContent = data.inkscapeDesc;
+      document.getElementById('popover-anim-img').src = data.animImg;
+      document.getElementById('popover-anim-desc').textContent = data.animDesc;
+
+      var pillsContainer = document.getElementById('popover-pills');
+      if (pillsContainer) {
+        pillsContainer.innerHTML = '';
+        data.pills.forEach(function(pillText) {
+          var span = document.createElement('span');
+          span.className = 'compare-pill';
+          span.textContent = pillText;
+          pillsContainer.appendChild(span);
+        });
+      }
+
+      var downloadLink = document.getElementById('popover-download-link');
+      downloadLink.href = '../samples/' + data.file;
+      downloadLink.download = data.file;
+
+      updatePopoverRuntimeStatus();
+
+      // Position popover horizontally centered over button or viewport
+      if (btnEl) {
+        var rect = btnEl.getBoundingClientRect();
+        var center = rect.left + rect.width / 2;
+        var popoverWidth = 700;
+        var minLeft = 16;
+        var maxLeft = window.innerWidth - popoverWidth - 16;
+        var targetLeft = Math.max(minLeft, Math.min(maxLeft, center - popoverWidth / 2));
+        popover.style.left = targetLeft + 'px';
+        popover.style.transform = 'translateY(0)';
+      }
+
+      popover.classList.add('active');
+    }
+
+    function scheduleHidePreview() {
+      popoverHideTimer = setTimeout(function() {
+        hideSamplePreview();
+      }, 300);
+    }
+
+    function cancelHidePreview() {
+      if (popoverHideTimer) {
+        clearTimeout(popoverHideTimer);
+        popoverHideTimer = null;
+      }
+    }
+
+    function hideSamplePreview() {
+      var popover = document.getElementById('sample-hover-popover');
+      if (popover) {
+        popover.classList.remove('active');
+      }
+    }
+
+    function updatePopoverRuntimeStatus() {
+      var statusEl = document.getElementById('popover-status-box');
+      if (!statusEl) return;
+      if (window.inkanimLoadBytes) {
+        statusEl.className = 'popover-status ready';
+        statusEl.innerHTML = '<span>⚡ <strong>WebAssembly Studio Ready</strong> — Click "Load into Studio Canvas" below to open this sample!</span>';
+      } else {
+        statusEl.className = 'popover-status loading';
+        statusEl.innerHTML = '<span>⏳ <strong>WebAssembly is loading (~25MB). In-browser WebAssembly compilation is very slow</strong> — the native desktop version is far faster and launches instantly!</span> <a href="../#downloads" target="_blank" class="speed-warning-btn" style="padding:4px 10px; font-size:0.75rem;">Get Desktop App →</a>';
+      }
+    }
+
+    function updateRuntimeStatusInUI() {
+      updatePopoverRuntimeStatus();
+      var bannerStatus = document.getElementById('runtime-status-label');
+      if (bannerStatus) {
+        bannerStatus.textContent = "✓ WebAssembly runtime active! (Tip: Native desktop version compiles GIFs even faster ⚡)";
+      }
+    }
+
     // Helper to load sample files programmatically into InkAnim
-    async function loadSampleSVG(url, filename, btn) {
+    async function loadSampleSVG(key, btn) {
+      var data = sampleDetails[key];
+      if (!data) return;
+
+      var filename = data.file;
+      var url = '../samples/' + filename;
       var origText = btn ? btn.innerText : '';
-      if (btn) btn.innerText = "Loading...";
+
+      if (btn) btn.innerText = "⏳ Loading...";
+
+      var statusEl = document.getElementById('popover-status-box');
+      if (statusEl && !window.inkanimLoadBytes) {
+        statusEl.className = 'popover-status loading';
+        statusEl.innerHTML = '<span>⏳ <strong>Compiling WebAssembly (~25MB). In-browser WASM compilation is very slow</strong> — auto-injecting ' + filename + ' into canvas as soon as compilation finishes...</span>';
+      }
+
       try {
         const res = await fetch(url);
         if (!res.ok) throw new Error("HTTP " + res.status);
         const buf = await res.arrayBuffer();
+
         if (window.inkanimLoadBytes) {
           window.inkanimLoadBytes(filename, new Uint8Array(buf));
           if (btn) {
             btn.innerText = "✓ Loaded!";
             setTimeout(function() { btn.innerText = origText; }, 2500);
           }
+          hideSamplePreview();
+          showToast("✓ " + filename + " loaded into Studio!");
         } else {
-          alert("InkAnim is still starting up. Please try again in a few seconds!");
-          if (btn) btn.innerText = origText;
+          // Runtime still initializing
+          if (btn) btn.innerText = "⏳ WASM loading is very slow... please wait";
+          var waitInterval = setInterval(function() {
+            if (window.inkanimLoadBytes) {
+              clearInterval(waitInterval);
+              window.inkanimLoadBytes(filename, new Uint8Array(buf));
+              if (btn) {
+                btn.innerText = "✓ Loaded!";
+                setTimeout(function() { btn.innerText = origText; }, 2500);
+              }
+              hideSamplePreview();
+              showToast("✓ " + filename + " loaded into Studio!");
+            }
+          }, 400);
         }
       } catch(err) {
         console.error("Failed to load sample SVG:", err);
         alert("Could not load sample: " + err.message);
         if (btn) btn.innerText = origText;
       }
+    }
+
+    var activeModalSample = null;
+
+    function openDemoModal(key) {
+      hideSamplePreview();
+      var data = sampleDetails[key];
+      if (!data) return;
+      activeModalSample = key;
+
+      document.getElementById('demo-modal-title').textContent = data.title;
+      document.getElementById('demo-modal-inkscape-img').src = data.inkscapeImg;
+      document.getElementById('demo-modal-inkscape-desc').textContent = data.inkscapeDesc;
+      document.getElementById('demo-modal-anim-img').src = data.animImg;
+      document.getElementById('demo-modal-anim-desc').textContent = data.animDesc;
+
+      var pillsContainer = document.getElementById('demo-modal-pills');
+      pillsContainer.innerHTML = '';
+      data.pills.forEach(function(pillText) {
+        var span = document.createElement('span');
+        span.className = 'compare-pill';
+        span.textContent = pillText;
+        pillsContainer.appendChild(span);
+      });
+
+      var downloadLink = document.getElementById('demo-modal-download-btn');
+      downloadLink.href = '../samples/' + data.file;
+      downloadLink.download = data.file;
+
+      var modal = document.getElementById('demo-compare-modal');
+      modal.classList.add('active');
+    }
+
+    function closeDemoModal() {
+      var modal = document.getElementById('demo-compare-modal');
+      if (modal) modal.classList.remove('active');
+    }
+
+    function handleDemoBackdropClick(e) {
+      if (e.target.id === 'demo-compare-modal') {
+        closeDemoModal();
+      }
+    }
+
+    function confirmModalLoad() {
+      if (!activeModalSample) return;
+      var data = sampleDetails[activeModalSample];
+      if (!data) return;
+
+      var loadBtn = document.getElementById('demo-modal-load-btn');
+      var label = document.getElementById('load-btn-label');
+
+      if (window.inkanimLoadBytes) {
+        doLoadSampleDirect(data.file);
+      } else {
+        loadBtn.disabled = true;
+        label.innerText = "⏳ Loading... (desktop version is far faster)";
+        var poll = setInterval(function() {
+          if (window.inkanimLoadBytes) {
+            clearInterval(poll);
+            loadBtn.disabled = false;
+            label.innerText = "Load into Studio Canvas";
+            doLoadSampleDirect(data.file);
+          }
+        }, 400);
+      }
+    }
+
+    async function doLoadSampleDirect(filename) {
+      try {
+        var res = await fetch('../samples/' + encodeURIComponent(filename));
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        var buf = await res.arrayBuffer();
+        window.inkanimLoadBytes(filename, new Uint8Array(buf));
+        closeDemoModal();
+        showToast("✓ " + filename + " loaded into Studio!");
+      } catch(err) {
+        console.error("Failed to load sample:", err);
+        alert("Failed to load sample: " + err.message);
+      }
+    }
+
+    function showToast(msg) {
+      var toast = document.getElementById('toast-notice');
+      if (!toast) return;
+      toast.innerText = msg;
+      toast.classList.add('show');
+      setTimeout(function() {
+        toast.classList.remove('show');
+      }, 3000);
     }
 
     function toggleToolbar(collapse) {
@@ -395,12 +1165,46 @@
       }
     }
 
+    function checkAutoLoadSample() {
+      var params = new URLSearchParams(window.location.search);
+      var sample = params.get('sample');
+      if (!sample) return;
+      var attempts = 0;
+      var maxAttempts = 60; // 30 seconds max
+      var interval = setInterval(async function() {
+        attempts++;
+        if (window.inkanimLoadBytes) {
+          clearInterval(interval);
+          try {
+            var res = await fetch('../samples/' + encodeURIComponent(sample));
+            if (!res.ok) throw new Error("HTTP " + res.status);
+            var buf = await res.arrayBuffer();
+            window.inkanimLoadBytes(sample, new Uint8Array(buf));
+            console.log("Auto-loaded sample:", sample);
+            showToast("✓ " + sample + " loaded into Studio!");
+          } catch(err) {
+            console.error("Auto-load sample failed:", err);
+          }
+        } else if (attempts >= maxAttempts) {
+          clearInterval(interval);
+        }
+      }, 500);
+    }
+
     document.addEventListener('DOMContentLoaded', function() {
       try {
         if (localStorage.getItem('inkanim_toolbar_collapsed') === '1') {
           toggleToolbar(true);
         }
       } catch(e) {}
+      checkAutoLoadSample();
+    });
+
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        closeDemoModal();
+        hideSamplePreview();
+      }
     });
   </script>
 </head>
@@ -418,11 +1222,139 @@
         </div>
         <div id="action" class="status-text">
           <noscript>JavaScript is required to run InkAnim in the browser.</noscript>
-          Starting...
+          Starting runtime...
+        </div>
+        <div class="loader-speed-warning">
+          <div class="speed-warning-title">⏳ In-Browser WebAssembly Loading is Very Slow</div>
+          <p class="speed-warning-body">
+            Browsers must download and compile a ~25MB Go WebAssembly binary in real time before the studio can start up.
+          </p>
+          <a href="../#downloads" target="_blank" class="speed-warning-btn">
+            ⚡ Download Desktop Version (Instant & Far Faster)
+          </a>
         </div>
       </div>
     </div>
   </div>
+
+  <!-- Hover Preview Popover (Large samples area style) -->
+  <div id="sample-hover-popover" onmouseenter="cancelHidePreview()" onmouseleave="scheduleHidePreview()">
+    <div class="popover-header">
+      <span class="popover-title" id="popover-title">Sample Preview</span>
+      <span class="popover-badge" id="popover-badge"></span>
+    </div>
+
+    <div class="popover-compare">
+      <!-- Left: Rendered by Inkscape -->
+      <div class="popover-box">
+        <div class="popover-header-row">
+          <span class="popover-tag static">🖌️ Rendered by Inkscape</span>
+          <span style="font-size: 0.72rem; color: #a1a1aa;">Static Vector Document</span>
+        </div>
+        <div class="popover-thumb">
+          <img id="popover-inkscape-img" src="" alt="Inkscape Static Vector">
+        </div>
+        <p id="popover-inkscape-desc" class="popover-box-desc"></p>
+      </div>
+
+      <!-- Right: Animated in InkAnim -->
+      <div class="popover-box">
+        <div class="popover-header-row">
+          <span class="popover-tag animated">✨ Animated in InkAnim</span>
+          <span style="font-size: 0.72rem; color: #a1a1aa;">Compiled Output GIF</span>
+        </div>
+        <div class="popover-thumb">
+          <img id="popover-anim-img" src="" alt="InkAnim Output GIF">
+        </div>
+        <p id="popover-anim-desc" class="popover-box-desc"></p>
+      </div>
+    </div>
+
+    <div class="popover-pills" id="popover-pills"></div>
+
+    <div id="popover-status-box" class="popover-status loading">
+      <span>⏳ <strong>WebAssembly is loading (~25MB). In-browser WebAssembly compilation is very slow</strong> — the native desktop version is far faster and launches instantly!</span>
+      <a href="../#downloads" target="_blank" class="speed-warning-btn" style="padding: 4px 10px; font-size: 0.75rem;">Get Desktop App →</a>
+    </div>
+
+    <div class="popover-footer">
+      <div style="display: flex; gap: 8px; align-items: center;">
+        <a id="popover-download-link" href="#" download="" class="popover-btn popover-btn-secondary">
+          <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          Download Source SVG
+        </a>
+        <button type="button" class="popover-btn popover-btn-secondary" onclick="openDemoModal(currentPopoverSample)">
+          🔍 Side-by-Side Modal
+        </button>
+      </div>
+      <button type="button" class="popover-btn popover-btn-primary" onclick="loadSampleSVG(currentPopoverSample, this)">
+        <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3" fill="currentColor"/></svg>
+        Load into Studio Canvas
+      </button>
+    </div>
+  </div>
+
+  <!-- Full Comparison Modal -->
+  <div id="demo-compare-modal" class="modal-backdrop" onclick="handleDemoBackdropClick(event)">
+    <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="demo-modal-title">
+      <div class="modal-header">
+        <h3 id="demo-modal-title">Sample Comparison</h3>
+        <button type="button" class="modal-close-btn" onclick="closeDemoModal()" aria-label="Close modal">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-speed-disclaimer">
+          <div>
+            ⚡ <strong>WebAssembly Runtime</strong>
+            <span id="runtime-status-label" style="display:block; font-size:0.78rem; opacity:0.85; margin-top:2px;">
+              Note: The native desktop version launches instantly and runs far faster.
+            </span>
+          </div>
+          <a href="../#downloads" target="_blank" class="speed-link">Download Desktop App →</a>
+        </div>
+
+        <div class="compare-grid">
+          <!-- Left: Rendered by Inkscape -->
+          <div class="compare-col">
+            <div class="compare-header">
+              <span class="compare-tag static">🖌️ Rendered by Inkscape</span>
+              <span style="font-size: 0.72rem; color: #a1a1aa;">Static Vector Document</span>
+            </div>
+            <div class="compare-view">
+              <img id="demo-modal-inkscape-img" src="" alt="Inkscape Render">
+            </div>
+            <p id="demo-modal-inkscape-desc" class="compare-caption"></p>
+          </div>
+
+          <!-- Right: Animated in InkAnim -->
+          <div class="compare-col">
+            <div class="compare-header">
+              <span class="compare-tag animated">✨ Animated in InkAnim</span>
+              <span style="font-size: 0.72rem; color: #a1a1aa;">Compiled Output GIF</span>
+            </div>
+            <div class="compare-view">
+              <img id="demo-modal-anim-img" src="" alt="Animated GIF Result">
+            </div>
+            <p id="demo-modal-anim-desc" class="compare-caption"></p>
+          </div>
+        </div>
+
+        <div class="compare-pills" id="demo-modal-pills"></div>
+      </div>
+      <div class="modal-footer">
+        <a id="demo-modal-download-btn" href="#" download="" class="modal-btn modal-btn-secondary">
+          <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          Download Source SVG
+        </a>
+        <button type="button" id="demo-modal-load-btn" onclick="confirmModalLoad()" class="modal-btn modal-btn-primary">
+          <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3" fill="currentColor"/></svg>
+          <span id="load-btn-label">Load into Studio Canvas</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div id="toast-notice" class="toast-notice"></div>
 
   <!-- Floating Utility Toolbar -->
   <div id="studio-toolbar">
@@ -434,41 +1366,30 @@
     </a>
     <div class="tool-sep"></div>
     <span class="tool-label">Quick Samples:</span>
-    <div class="sample-group">
-      <button type="button" class="tool-btn tool-btn-primary" onclick="loadSampleSVG('../samples/star_swirl.svg', 'star_swirl.svg', this)">
-        ✨ Star Swirl (Motion)
-      </button>
-      <a href="../samples/star_swirl.svg" download="star_swirl.svg" class="tool-btn-sub" title="Download Source SVG">
-        📥 Source
-      </a>
-    </div>
-
-    <div class="sample-group">
-      <button type="button" class="tool-btn tool-btn-primary" onclick="loadSampleSVG('../samples/pendulum.svg', 'pendulum.svg', this)">
-        🕰️ Pendulum (Ping-Pong)
-      </button>
-      <a href="../samples/pendulum.svg" download="pendulum.svg" class="tool-btn-sub" title="Download Source SVG">
-        📥 Source
-      </a>
-    </div>
-
-    <div class="sample-group">
-      <button type="button" class="tool-btn tool-btn-primary" onclick="loadSampleSVG('../samples/bouncing_walker.svg', 'bouncing_walker.svg', this)">
-        ⚡ Bounce (Layers)
-      </button>
-      <a href="../samples/bouncing_walker.svg" download="bouncing_walker.svg" class="tool-btn-sub" title="Download Source SVG">
-        📥 Source
-      </a>
-    </div>
-
-    <div class="sample-group">
-      <button type="button" class="tool-btn tool-btn-primary" onclick="loadSampleSVG('../samples/hydrate.svg', 'hydrate.svg', this)">
-        💧 Hydrate
-      </button>
-      <a href="../samples/hydrate.svg" download="hydrate.svg" class="tool-btn-sub" title="Download Source SVG">
-        📥 Source
-      </a>
-    </div>
+    <button type="button" class="tool-btn tool-btn-primary" 
+      onmouseenter="showSamplePreview('complex_motion', this)" 
+      onmouseleave="scheduleHidePreview()" 
+      onclick="loadSampleSVG('complex_motion', this)">
+      🪐 Complex Motion
+    </button>
+    <button type="button" class="tool-btn tool-btn-primary" 
+      onmouseenter="showSamplePreview('star_swirl', this)" 
+      onmouseleave="scheduleHidePreview()" 
+      onclick="loadSampleSVG('star_swirl', this)">
+      ✨ Star Swirl
+    </button>
+    <button type="button" class="tool-btn tool-btn-primary" 
+      onmouseenter="showSamplePreview('pendulum', this)" 
+      onmouseleave="scheduleHidePreview()" 
+      onclick="loadSampleSVG('pendulum', this)">
+      🕰️ Pendulum
+    </button>
+    <button type="button" class="tool-btn tool-btn-primary" 
+      onmouseenter="showSamplePreview('character_walk', this)" 
+      onmouseleave="scheduleHidePreview()" 
+      onclick="loadSampleSVG('character_walk', this)">
+      🚶 Walk Cycle
+    </button>
     <div class="tool-sep"></div>
     <a href="https://github.com/mrpoundsign/InkAnim" target="_blank" rel="noopener noreferrer" class="tool-btn">
       ⭐ GitHub

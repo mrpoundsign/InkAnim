@@ -5,42 +5,597 @@
    viewBox="0 0 256 256"
    version="1.1"
    id="svg_complex_motion_demo"
+   sodipodi:docname="complex_motion.svg"
+   inkscape:version="1.4.4 (dcaf3e7, 2026-05-05)"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
-   xmlns="http://www.w3.org/2000/svg">
-  <!-- Space Background with Stars -->
-  <rect width="256" height="256" fill="#0f172a" id="space_bg" />
-  <circle cx="40" cy="60" r="1.5" fill="#fef08a" opacity="0.8" />
-  <circle cx="180" cy="50" r="2" fill="#fef08a" opacity="0.9" />
-  <circle cx="90" cy="200" r="1" fill="#fef08a" opacity="0.6" />
-  <circle cx="210" cy="190" r="1.5" fill="#fef08a" opacity="0.7" />
-  <circle cx="130" cy="30" r="1" fill="#ffffff" opacity="0.5" />
-
-  <!-- Shuttle Group with overlapping 20-frame flight path and mid-flight 360 roll -->
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview26"
+     pagecolor="#505050"
+     bordercolor="#eeeeee"
+     borderopacity="1"
+     inkscape:showpageshadow="0"
+     inkscape:pageopacity="0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#505050"
+     showgrid="false"
+     inkscape:zoom="4.7382812"
+     inkscape:cx="128"
+     inkscape:cy="128"
+     inkscape:window-width="2560"
+     inkscape:window-height="1494"
+     inkscape:window-x="-11"
+     inkscape:window-y="-11"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="stars_twinkle" />
+  <defs
+     id="defs3">
+    <!-- Arrowhead markers for visual motion direction -->
+    <marker
+       id="arrow_gold"
+       viewBox="0 0 10 10"
+       refX="7"
+       refY="5"
+       markerWidth="6"
+       markerHeight="6"
+       orient="auto-start-reverse">
+      <path
+         d="M 1 2 L 8 5 L 1 8 z"
+         fill="#fbbf24"
+         id="path1" />
+    </marker>
+    <marker
+       id="arrow_purple"
+       viewBox="0 0 10 10"
+       refX="7"
+       refY="5"
+       markerWidth="6"
+       markerHeight="6"
+       orient="auto-start-reverse">
+      <path
+         d="M 1 2 L 8 5 L 1 8 z"
+         fill="#c084fc"
+         id="path2" />
+    </marker>
+    <marker
+       id="arrow_cyan"
+       viewBox="0 0 10 10"
+       refX="7"
+       refY="5"
+       markerWidth="6"
+       markerHeight="6"
+       orient="auto-start-reverse">
+      <path
+         d="M 1 2 L 8 5 L 1 8 z"
+         fill="#38bdf8"
+         id="path3" />
+    </marker>
+    <!-- Engine Flame Color Pulse Gradient (Yellow -> Orange -> Cyan) -->
+    <linearGradient id="flame_pulse_grad">
+      <stop offset="0%" stop-color="#fef08a" />
+      <stop offset="50%" stop-color="#f97316" />
+      <stop offset="100%" stop-color="#38bdf8" />
+    </linearGradient>
+    <!-- Twinkling Stars Chromatic Shift Gradient (White -> Light Blue -> Soft Yellow) -->
+    <linearGradient id="stars_twinkle_grad">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="50%" stop-color="#93c5fd" />
+      <stop offset="100%" stop-color="#fef08a" />
+    </linearGradient>
+    <!-- Planetary Ring Specular Shimmer Gradient (Purple -> Bright Cyan Highlight -> Purple) -->
+    <linearGradient id="ring_shimmer">
+      <stop offset="0%" stop-color="#a78bfa" />
+      <stop offset="50%" stop-color="#22d3ee" />
+      <stop offset="100%" stop-color="#a78bfa" />
+    </linearGradient>
+  </defs>
+  <!-- Global Camera Trajectory: 320px right pan across top of scene (f: 1-60, ease: in-out) -->
+  <path
+     id="camera_pan"
+     inkscape:label="Camera {f: 1-60; ease: in-out}"
+     d="M 0,20 L 320,20"
+     fill="none"
+     stroke="#fbbf24"
+     stroke-width="1.2"
+     stroke-dasharray="3 3"
+     marker-end="url(#arrow_gold)" />
+  <!-- Fixed Space Background Canvas -->
+  <rect
+     width="256"
+     height="256"
+     fill="#0f172a"
+     id="space_bg" />
+  <!-- Twinkling Stars (smooth opacity cycle across 60 frames, subtle parallax factor 0.08) -->
+  <g
+     id="stars_twinkle"
+     inkscape:groupmode="layer"
+     inkscape:label="Twinkling Stars">
+    <!-- Color Modifier: subtle background star color cycle across 60 frames -->
+    <rect
+       id="mod_stars_color"
+       x="0"
+       y="0"
+       width="1"
+       height="1"
+       fill="url(#stars_twinkle_grad)"
+       inkscape:label="Color { f: 1-60; pingpong: true; target: fill }" />
+    <circle
+       cx="28"
+       cy="45"
+       r="1.5"
+       fill="#fef08a"
+       id="circle3" />
+    <circle
+       cx="55"
+       cy="110"
+       r="1.2"
+       fill="#ffffff"
+       id="circle4" />
+    <circle
+       cx="115"
+       cy="35"
+       r="1.0"
+       fill="#ffffff"
+       id="circle5" />
+    <circle
+       cx="140"
+       cy="85"
+       r="1.4"
+       fill="#fef08a"
+       id="circle6" />
+    <circle
+       cx="175"
+       cy="40"
+       r="1.2"
+       fill="#ffffff"
+       id="circle7" />
+    <circle
+       cx="210"
+       cy="190"
+       r="1.6"
+       fill="#fef08a"
+       id="circle8" />
+    <circle
+       cx="235"
+       cy="75"
+       r="1.0"
+       fill="#ffffff"
+       id="circle9" />
+    <circle
+       cx="70"
+       cy="225"
+       r="1.4"
+       fill="#fef08a"
+       id="circle10" />
+    <circle
+       cx="160"
+       cy="235"
+       r="1.2"
+       fill="#ffffff"
+       id="circle11" />
+    <path
+       id="twinkle_dist"
+       inkscape:label="Dist {factor: 0.08}"
+       d="M 0,0 L 0,0" />
+    <!-- Twinkle: fade down then back up -->
+    <path
+       id="twinkle_fade_down"
+       inkscape:label="Fade {f: 1-30; ease: in-out; from: 100; to: 20}"
+       d="M 0,0 L 0,0" />
+    <path
+       id="twinkle_fade_up"
+       inkscape:label="Fade {f: 31-60; ease: in-out; from: 20; to: 100}"
+       d="M 0,0 L 0,0" />
+  </g>
+  <!-- Rapid Blinking Star (5 Show bursts, parallax factor 0.15) -->
+  <g
+     id="star_blink"
+     inkscape:groupmode="layer"
+     inkscape:label="Blinking Star">
+    <circle
+       cx="180"
+       cy="50"
+       r="2.5"
+       fill="#fef08a"
+       id="circle12" />
+    <circle
+       cx="45"
+       cy="180"
+       r="2.0"
+       fill="#fef08a"
+       id="circle13" />
+    <circle
+       cx="130"
+       cy="210"
+       r="2.2"
+       fill="#fef08a"
+       id="circle14" />
+    <circle
+       cx="225"
+       cy="135"
+       r="1.8"
+       fill="#fde047"
+       id="circle15" />
+    <path
+       id="blink_dist"
+       inkscape:label="Dist {factor: 0.15}"
+       d="M 0,0 L 0,0" />
+    <path
+       id="strobe_1"
+       inkscape:label="Show {f: 1-6}"
+       d="M 0,0 L 0,0" />
+    <path
+       id="strobe_2"
+       inkscape:label="Show {f: 13-18}"
+       d="M 0,0 L 0,0" />
+    <path
+       id="strobe_3"
+       inkscape:label="Show {f: 25-30}"
+       d="M 0,0 L 0,0" />
+    <path
+       id="strobe_4"
+       inkscape:label="Show {f: 37-42}"
+       d="M 0,0 L 0,0" />
+    <path
+       id="strobe_5"
+       inkscape:label="Show {f: 49-54}"
+       d="M 0,0 L 0,0" />
+  </g>
+  <!-- Star that both Fades AND Blinks (parallax factor 0.12) -->
+  <g
+     id="star_fade_blink"
+     inkscape:groupmode="layer"
+     inkscape:label="Fade and Blink Star">
+    <circle
+       cx="90"
+       cy="200"
+       r="1.8"
+       fill="#fef08a"
+       id="circle16" />
+    <circle
+       cx="80"
+       cy="70"
+       r="1.5"
+       fill="#fef08a"
+       id="circle17" />
+    <circle
+       cx="205"
+       cy="100"
+       r="1.6"
+       fill="#ffffff"
+       id="circle18" />
+    <circle
+       cx="150"
+       cy="170"
+       r="1.5"
+       fill="#fef08a"
+       id="circle19" />
+    <path
+       id="fb_dist"
+       inkscape:label="Dist {factor: 0.12}"
+       d="M 0,0 L 0,0" />
+    <!-- Smooth fade-in over 60 frames combined with intermittent blinks -->
+    <path
+       id="fb_fade"
+       inkscape:label="Fade {f: 1-60; ease: in-out; from: 15; to: 100}"
+       d="M 0,0 L 0,0" />
+    <path
+       id="fb_hide_1"
+       inkscape:label="Hide {f: 13-18}"
+       d="M 0,0 L 0,0" />
+    <path
+       id="fb_hide_2"
+       inkscape:label="Hide {f: 31-36}"
+       d="M 0,0 L 0,0" />
+    <path
+       id="fb_hide_3"
+       inkscape:label="Hide {f: 48-53}"
+       d="M 0,0 L 0,0" />
+  </g>
+  <!-- Center Planet with Stylized Ring: starts on right at x=256 (half off-screen), moves across to x=0 (Dist factor 0.8) -->
+  <g
+     id="group_planet"
+     inkscape:groupmode="layer"
+     inkscape:label="Center Planet">
+    <!-- Midground Parallax factor 0.8 sweeps planet left across scene -->
+    <path
+       id="planet_dist"
+       inkscape:label="Dist {factor: 0.8}"
+       d="M 0,0 L 0,0" />
+    <!-- Tilted Planetary Ring (cx=256, cy=128): Back arc rendered behind planet -->
+    <g
+       id="group_ring_back"
+       inkscape:label="Planetary Ring Back">
+      <rect
+         id="ring_sweep_back"
+         x="190"
+         y="60"
+         width="132"
+         height="136"
+         opacity="0"
+         fill="url(#ring_shimmer)"
+         inkscape:label="Color { f: 1-60; angle: -45; r: 4; target: stroke }" />
+      <path
+         id="ring_back"
+         d="M 198,128 A 58,16 0 0,1 314,128"
+         fill="none"
+         stroke="#a78bfa"
+         stroke-width="3"
+         transform="rotate(-45 256 128)"
+         opacity="0.75" />
+    </g>
+    <!-- Planet Sphere (Enlarged to r=38, placed at 256, 128) -->
+    <circle
+       cx="256"
+       cy="128"
+       r="38"
+       fill="#7c3aed"
+       stroke="#6d28d9"
+       stroke-width="2.5"
+       id="circle20" />
+    <circle
+       cx="246"
+       cy="118"
+       r="28"
+       fill="#8b5cf6"
+       opacity="0.65"
+       id="circle21" />
+    <circle
+       cx="240"
+       cy="110"
+       r="6"
+       fill="#c4b5fd"
+       opacity="0.85"
+       id="circle22" />
+    <!-- Planetary Ring: Front arc rendered over planet -->
+    <g
+       id="group_ring_front"
+       inkscape:label="Planetary Ring Front">
+      <rect
+         id="ring_sweep_front"
+         x="190"
+         y="60"
+         width="132"
+         height="136"
+         opacity="0"
+         fill="url(#ring_shimmer)"
+         inkscape:label="Color { f: 1-60; angle: -45; r: 4; target: stroke }" />
+      <path
+         id="ring_front"
+         d="M 314,128 A 58,16 0 0,1 198,128"
+         fill="none"
+         stroke="#a78bfa"
+         stroke-width="3"
+         transform="rotate(-45 256 128)"
+         opacity="0.75" />
+    </g>
+  </g>
+  <!-- Moon in 45-degree Elliptical Orbit: starts at (213.6, 85.6), tracks planet transit via Dist factor 0.8 -->
+  <g
+     id="group_moon"
+     inkscape:groupmode="layer"
+     inkscape:label="Orbiting Moon">
+    <!-- Tracks planet drift via Dist factor 0.8 -->
+    <path
+       id="moon_dist"
+       inkscape:label="Dist {factor: 0.8}"
+       d="M 0,0 L 0,0" />
+    <!-- Moon Artwork placed at start point (213.6, 85.6) -->
+    <circle
+       cx="213.6"
+       cy="85.6"
+       r="6"
+       fill="#f1f5f9"
+       stroke="#94a3b8"
+       stroke-width="1.2"
+       id="circle23" />
+    <circle
+       cx="212.3"
+       cy="84.3"
+       r="1.6"
+       fill="#cbd5e1"
+       id="circle24" />
+    <!-- 60-frame 45-degree Elliptical Orbit Path (thin dotted purple with direction arrow) -->
+    <path
+       id="moon_orbit_path"
+       inkscape:label="Move {f: 1-60; ease: linear}"
+       d="M 213.6,85.6 C 223.0,76.2 249.6,87.6 273.0,111.0 C 296.4,134.4 307.8,161.0 298.4,170.4 C 289.0,179.8 262.4,168.4 239.0,145.0 C 215.6,121.6 204.2,95.0 213.6,85.6"
+       fill="none"
+       stroke="#c084fc"
+       stroke-width="1.2"
+       stroke-dasharray="3 3"
+       marker-end="url(#arrow_purple)" />
+    <!-- Dynamic Depth: renders behind planet during back half, in front during front half -->
+    <path
+       id="moon_depth_back"
+       inkscape:label="Depth {f: 1-30; z: -1}"
+       d="M 0,0 L 0,0" />
+    <path
+       id="moon_depth_front"
+       inkscape:label="Depth {f: 31-60; z: +1}"
+       d="M 0,0 L 0,0" />
+    <!-- Perspective Scaling: shrinks as it moves away behind planet, swells as it orbits toward us in foreground -->
+    <path
+       id="moon_scale_p1"
+       inkscape:label="Scale {f: 1-15; ease: in-out; from: 1.0; to: 0.65; pivot: center}"
+       d="M 0,0 L 0,0" />
+    <path
+       id="moon_scale_p2"
+       inkscape:label="Scale {f: 16-30; ease: in-out; from: 0.65; to: 1.0; pivot: center}"
+       d="M 0,0 L 0,0" />
+    <path
+       id="moon_scale_p3"
+       inkscape:label="Scale {f: 31-45; ease: in-out; from: 1.0; to: 1.45; pivot: center}"
+       d="M 0,0 L 0,0" />
+    <path
+       id="moon_scale_p4"
+       inkscape:label="Scale {f: 46-60; ease: in-out; from: 1.45; to: 1.0; pivot: center}"
+       d="M 0,0 L 0,0" />
+  </g>
+  <!-- Shuttle Group: 2x scaled spaceship moving across scene from left to right on its flight path (Dist factor 0.0) -->
   <g
      inkscape:groupmode="layer"
      id="group_shuttle"
      inkscape:label="Space Shuttle">
-    <!-- Spaceship Artwork facing right (+X) -->
-    <polygon points="45,128 18,118 24,128 18,138" fill="#38bdf8" stroke="#0284c7" stroke-width="2" />
-    <polygon points="22,126 12,128 22,130" fill="#f97316" />
-    <circle cx="34" cy="128" r="3" fill="#f8fafc" />
-
-    <!-- Motion 1: 20-frame flight across S-curve with auto-orientation -->
+    <!-- Factor 0.0 ensures flight path translates purely left-to-right without being cancelled by camera pan -->
+    <path
+       id="shuttle_dist"
+       inkscape:label="Dist {factor: 0.0}"
+       d="M 0,0 L 0,0" />
+    <!-- Spaceship Artwork facing right (+X), enlarged 2x, green body for high contrast -->
+    <polygon
+       points="60,128 6,108 18,128 6,148"
+       fill="#22c55e"
+       stroke="#15803d"
+       stroke-width="3"
+       id="polygon24" />
+    <!-- Pulsing Exhaust Flame (grows/shrinks and fades in/out repeatedly, enlarged 2x) -->
+    <g
+       id="engine_trail"
+       inkscape:label="Engine Flame">
+      <!-- Color Modifier: exhaust flames pulse between Yellow, Orange, Cyan in sync with scale pulses -->
+      <rect
+         id="mod_flame_color"
+         x="0"
+         y="0"
+         width="1"
+         height="1"
+         fill="url(#flame_pulse_grad)"
+         inkscape:label="Color { f: 1-60; pingpong: true; r: 4; target: fill }" />
+      <polygon
+         points="18,122 -6,128 18,134"
+         fill="#f97316"
+         id="polygon25" />
+      <polygon
+         points="18,124 4,128 18,132"
+         fill="#fef08a"
+         id="polygon26" />
+      <path
+         id="flame_p1_up"
+         inkscape:label="Scale {f: 1-15; ease: in-out; from-x: 0.7; to-x: 1.6; from-y: 0.8; to-y: 1.3; pivot: 90}"
+         d="M 0,0 L 0,0" />
+      <path
+         id="flame_p1_fade_up"
+         inkscape:label="Fade {f: 1-15; ease: in-out; from: 50; to: 100}"
+         d="M 0,0 L 0,0" />
+      <path
+         id="flame_p1_down"
+         inkscape:label="Scale {f: 16-30; ease: in-out; from-x: 1.6; to-x: 0.7; from-y: 1.3; to-y: 0.8; pivot: 90}"
+         d="M 0,0 L 0,0" />
+      <path
+         id="flame_p1_fade_down"
+         inkscape:label="Fade {f: 16-30; ease: in-out; from: 100; to: 50}"
+         d="M 0,0 L 0,0" />
+      <path
+         id="flame_p2_up"
+         inkscape:label="Scale {f: 31-45; ease: in-out; from-x: 0.7; to-x: 1.6; from-y: 0.8; to-y: 1.3; pivot: 90}"
+         d="M 0,0 L 0,0" />
+      <path
+         id="flame_p2_fade_up"
+         inkscape:label="Fade {f: 31-45; ease: in-out; from: 50; to: 100}"
+         d="M 0,0 L 0,0" />
+      <path
+         id="flame_p2_down"
+         inkscape:label="Scale {f: 46-60; ease: in-out; from-x: 1.6; to-x: 0.7; from-y: 1.3; to-y: 0.8; pivot: 90}"
+         d="M 0,0 L 0,0" />
+      <path
+         id="flame_p2_fade_down"
+         inkscape:label="Fade {f: 46-60; ease: in-out; from: 100; to: 50}"
+         d="M 0,0 L 0,0" />
+    </g>
+    <!-- Cockpit Window enlarged 2x -->
+    <circle
+       cx="38"
+       cy="128"
+       r="6"
+       fill="#f8fafc"
+       id="circle26" />
+    <!-- Motion 1: 60-frame flight across S-curve with auto-orientation (thin dotted cyan with direction arrow) -->
     <path
        id="flight_path"
-       inkscape:label="Move {f: 1-20; ease: in-out; orient: true}"
-       d="M 30,128 C 70,40 110,40 128,128 C 146,216 186,216 226,128" />
-
-    <!-- Motion 2: Mid-flight 360 degree barrel roll during frames 5 to 15 -->
+       inkscape:label="Move {f: 1-60; ease: in-out; orient: true}"
+       d="M 30,128 C 70,40 110,40 128,128 C 146,216 186,216 226,128"
+       fill="none"
+       stroke="#38bdf8"
+       stroke-width="1.2"
+       stroke-dasharray="3 3"
+       marker-end="url(#arrow_cyan)" />
+    <!-- Motion 2: 180 degree roll at top arc, hold inverted, 180 degree roll back at bottom arc -->
     <path
-       id="barrel_roll"
-       inkscape:label="Rot {f: 5-15; ease: in-out; angle: 360; dir: cw; pivot: center}"
+       id="roll_top"
+       inkscape:label="Rot {f: 13-24; ease: in-out; from: 0; to: 180; pivot: center}"
        d="M 0,0 L 0,0" />
-
+    <path
+       id="roll_hold"
+       inkscape:label="Rot {f: 25-36; from: 180; to: 180; pivot: center}"
+       d="M 0,0 L 0,0" />
+    <path
+       id="roll_bottom"
+       inkscape:label="Rot {f: 37-48; ease: in-out; from: 180; to: 0; pivot: center}"
+       d="M 0,0 L 0,0" />
     <!-- Motion 3: Scale from distance into foreground (0.6x to 1.4x) -->
     <path
        id="zoom_scale"
-       inkscape:label="Scale {f: 1-20; ease: in-out; from: 0.6; to: 1.4; pivot: center}"
+       inkscape:label="Scale {f: 1-60; ease: in-out; from: 0.6; to: 1.4; pivot: center}"
        d="M 0,0 L 0,0" />
+  </g>
+  <!-- Document Color Swatches & Gradients (Off-canvas, does not cover scene artwork) -->
+  <g
+     id="color_swatches"
+     inkscape:label="Color Swatches">
+    <text
+       x="10"
+       y="276"
+       font-family="DejaVu Sans, sans-serif"
+       font-size="9"
+       font-weight="bold"
+       fill="#94a3b8">Color Swatches &amp; Shift Gradients:</text>
+    <rect
+       x="10"
+       y="282"
+       width="28"
+       height="16"
+       rx="3"
+       fill="url(#ring_shimmer)"
+       stroke="#64748b"
+       stroke-width="0.8" />
+    <text
+       x="44"
+       y="294"
+       font-family="DejaVu Sans, sans-serif"
+       font-size="8"
+       fill="#cbd5e1">Ring Shimmer</text>
+    <rect
+       x="130"
+       y="282"
+       width="28"
+       height="16"
+       rx="3"
+       fill="url(#flame_pulse_grad)"
+       stroke="#64748b"
+       stroke-width="0.8" />
+    <text
+       x="164"
+       y="294"
+       font-family="DejaVu Sans, sans-serif"
+       font-size="8"
+       fill="#cbd5e1">Flame Pulse</text>
+    <rect
+       x="240"
+       y="282"
+       width="28"
+       height="16"
+       rx="3"
+       fill="url(#stars_twinkle_grad)"
+       stroke="#64748b"
+       stroke-width="0.8" />
+    <text
+       x="274"
+       y="294"
+       font-family="DejaVu Sans, sans-serif"
+       font-size="8"
+       fill="#cbd5e1">Star Twinkle</text>
   </g>
 </svg>
