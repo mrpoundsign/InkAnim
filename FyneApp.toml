@@ -4,8 +4,8 @@ Website = "https://github.com/mrpoundsign/InkAnim"
   Icon = "assets/icon.png"
   Name = "InkAnim"
   ID = "com.inkanim.studio"
-  Version = "0.2.0"
-  Build = 8
+  Version = "0.3.0"
+  Build = 9
 
 [Migrations]
   fyneDo = true

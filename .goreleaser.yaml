@@ -52,7 +52,7 @@ release:
   mode: keep-existing
 
 snapshot:
-  version_template: "{{ incpatch .Version }}-next"
+  version_template: "{{ incpatch .Version }}-snapshot"
 
 changelog:
   sort: asc
@@ -61,3 +61,4 @@ changelog:
       - "^docs:"
       - "^test:"
       - "^ci:"
+      - "^chore:"
