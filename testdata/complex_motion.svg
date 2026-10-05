@@ -9,11 +9,36 @@
    xmlns="http://www.w3.org/2000/svg">
   <!-- Space Background with Stars -->
   <rect width="256" height="256" fill="#0f172a" id="space_bg" />
-  <circle cx="40" cy="60" r="1.5" fill="#fef08a" opacity="0.8" />
-  <circle cx="180" cy="50" r="2" fill="#fef08a" opacity="0.9" />
-  <circle cx="90" cy="200" r="1" fill="#fef08a" opacity="0.6" />
-  <circle cx="210" cy="190" r="1.5" fill="#fef08a" opacity="0.7" />
-  <circle cx="130" cy="30" r="1" fill="#ffffff" opacity="0.5" />
+
+  <!-- Twinkling Stars (smooth opacity cycle across 20 frames) -->
+  <g id="stars_twinkle" inkscape:groupmode="layer" inkscape:label="Twinkling Stars">
+    <circle cx="40" cy="60" r="1.5" fill="#fef08a" />
+    <circle cx="210" cy="190" r="1.5" fill="#fef08a" />
+    <circle cx="130" cy="30" r="1" fill="#ffffff" />
+    <!-- Twinkle: fade down then back up -->
+    <path id="twinkle_fade_down" inkscape:label="Fade {f: 1-10; ease: in-out; from: 100; to: 20}" d="M 0,0 L 0,0" />
+    <path id="twinkle_fade_up" inkscape:label="Fade {f: 11-20; ease: in-out; from: 20; to: 100}" d="M 0,0 L 0,0" />
+  </g>
+
+  <!-- Rapid Blinking Star (5 Show bursts) -->
+  <g id="star_blink" inkscape:groupmode="layer" inkscape:label="Blinking Star">
+    <circle cx="180" cy="50" r="2.5" fill="#fef08a" />
+    <path id="strobe_1" inkscape:label="Show {f: 1-2}" d="M 0,0 L 0,0" />
+    <path id="strobe_2" inkscape:label="Show {f: 5-6}" d="M 0,0 L 0,0" />
+    <path id="strobe_3" inkscape:label="Show {f: 9-10}" d="M 0,0 L 0,0" />
+    <path id="strobe_4" inkscape:label="Show {f: 13-14}" d="M 0,0 L 0,0" />
+    <path id="strobe_5" inkscape:label="Show {f: 17-18}" d="M 0,0 L 0,0" />
+  </g>
+
+  <!-- Star that both Fades AND Blinks -->
+  <g id="star_fade_blink" inkscape:groupmode="layer" inkscape:label="Fade and Blink Star">
+    <circle cx="90" cy="200" r="1.5" fill="#fef08a" />
+    <!-- Smooth fade-in over 20 frames combined with intermittent blinks -->
+    <path id="fb_fade" inkscape:label="Fade {f: 1-20; ease: in-out; from: 15; to: 100}" d="M 0,0 L 0,0" />
+    <path id="fb_hide_1" inkscape:label="Hide {f: 5-6}" d="M 0,0 L 0,0" />
+    <path id="fb_hide_2" inkscape:label="Hide {f: 11-12}" d="M 0,0 L 0,0" />
+    <path id="fb_hide_3" inkscape:label="Hide {f: 16-17}" d="M 0,0 L 0,0" />
+  </g>
 
   <!-- Shuttle Group with overlapping 20-frame flight path and mid-flight 360 roll -->
   <g
@@ -22,7 +47,19 @@
      inkscape:label="Space Shuttle">
     <!-- Spaceship Artwork facing right (+X) -->
     <polygon points="45,128 18,118 24,128 18,138" fill="#38bdf8" stroke="#0284c7" stroke-width="2" />
-    <polygon points="22,126 12,128 22,130" fill="#f97316" />
+    <!-- Pulsing Exhaust Flame (grows/shrinks and fades in/out repeatedly) -->
+    <g id="engine_trail" inkscape:label="Engine Flame">
+      <polygon points="22,125 10,128 22,131" fill="#f97316" />
+      <polygon points="22,126 15,128 22,130" fill="#fef08a" />
+      <path id="flame_p1_up" inkscape:label="Scale {f: 1-5; ease: in-out; from-x: 0.7; to-x: 1.6; from-y: 0.8; to-y: 1.3; pivot: 90}" d="M 0,0 L 0,0" />
+      <path id="flame_p1_fade_up" inkscape:label="Fade {f: 1-5; ease: in-out; from: 50; to: 100}" d="M 0,0 L 0,0" />
+      <path id="flame_p1_down" inkscape:label="Scale {f: 6-10; ease: in-out; from-x: 1.6; to-x: 0.7; from-y: 1.3; to-y: 0.8; pivot: 90}" d="M 0,0 L 0,0" />
+      <path id="flame_p1_fade_down" inkscape:label="Fade {f: 6-10; ease: in-out; from: 100; to: 50}" d="M 0,0 L 0,0" />
+      <path id="flame_p2_up" inkscape:label="Scale {f: 11-15; ease: in-out; from-x: 0.7; to-x: 1.6; from-y: 0.8; to-y: 1.3; pivot: 90}" d="M 0,0 L 0,0" />
+      <path id="flame_p2_fade_up" inkscape:label="Fade {f: 11-15; ease: in-out; from: 50; to: 100}" d="M 0,0 L 0,0" />
+      <path id="flame_p2_down" inkscape:label="Scale {f: 16-20; ease: in-out; from-x: 1.6; to-x: 0.7; from-y: 1.3; to-y: 0.8; pivot: 90}" d="M 0,0 L 0,0" />
+      <path id="flame_p2_fade_down" inkscape:label="Fade {f: 16-20; ease: in-out; from: 100; to: 50}" d="M 0,0 L 0,0" />
+    </g>
     <circle cx="34" cy="128" r="3" fill="#f8fafc" />
 
     <!-- Motion 1: 20-frame flight across S-curve with auto-orientation -->

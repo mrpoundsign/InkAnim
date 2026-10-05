@@ -60,8 +60,8 @@ func TestExtractPathClipIDs(t *testing.T) {
 func TestApplyAlphaMask(t *testing.T) {
 	dst := image.NewRGBA(image.Rect(0, 0, 2, 2))
 	// Set dst to opaque red
-	for y := 0; y < 2; y++ {
-		for x := 0; x < 2; x++ {
+	for y := range 2 {
+		for x := range 2 {
 			dst.SetRGBA(x, y, color.RGBA{R: 255, G: 0, B: 0, A: 255})
 		}
 	}

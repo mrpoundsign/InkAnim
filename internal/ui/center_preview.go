@@ -102,11 +102,11 @@ func createCheckerboardImage(w, h int) image.Image {
 
 	pix := img.Pix
 	stride := img.Stride
-	for y := 0; y < h; y++ {
-		rowEven := (y / squareSize) % 2 == 0
+	for y := range h {
+		rowEven := (y/squareSize)%2 == 0
 		rowOffset := y * stride
-		for x := 0; x < w; x++ {
-			colEven := (x / squareSize) % 2 == 0
+		for x := range w {
+			colEven := (x/squareSize)%2 == 0
 			c := &c1
 			if rowEven != colEven {
 				c = &c2
@@ -139,10 +139,10 @@ func createVibrantGradientImage(w, h int) image.Image {
 	invW := 1.0 / float64(max(w-1, 1))
 	invH := 1.0 / float64(max(h-1, 1))
 
-	for y := 0; y < h; y++ {
+	for y := range h {
 		normY := float64(y) * invH
 		rowOffset := y * stride
-		for x := 0; x < w; x++ {
+		for x := range w {
 			normX := float64(x) * invW
 			t := (normX + normY) * 0.5
 			if t < 0 {
@@ -932,37 +932,31 @@ func drawCropGuides(src *image.RGBA, contentRect image.Rectangle) *image.RGBA {
 	// 2. Solid corner brackets (length = min(14, min(w, h)/4))
 	w := x1 - x0
 	h := y1 - y0
-	cornerLen := min(w/4, 14)
-	if h/4 < cornerLen {
-		cornerLen = h / 4
-	}
-	if cornerLen < 4 {
-		cornerLen = 4
-	}
+	cornerLen := max(min(h/4, min(w/4, 14)), 4)
 
 	// Top-Left corner
-	for i := 0; i < cornerLen; i++ {
+	for i := range cornerLen {
 		blendPixel(x0+i, y0, cornerCol)
 		blendPixel(x0+i, y0+1, cornerCol)
 		blendPixel(x0, y0+i, cornerCol)
 		blendPixel(x0+1, y0+i, cornerCol)
 	}
 	// Top-Right corner
-	for i := 0; i < cornerLen; i++ {
+	for i := range cornerLen {
 		blendPixel(x1-i, y0, cornerCol)
 		blendPixel(x1-i, y0+1, cornerCol)
 		blendPixel(x1, y0+i, cornerCol)
 		blendPixel(x1-1, y0+i, cornerCol)
 	}
 	// Bottom-Left corner
-	for i := 0; i < cornerLen; i++ {
+	for i := range cornerLen {
 		blendPixel(x0+i, y1, cornerCol)
 		blendPixel(x0+i, y1-1, cornerCol)
 		blendPixel(x0, y1-i, cornerCol)
 		blendPixel(x0+1, y1-i, cornerCol)
 	}
 	// Bottom-Right corner
-	for i := 0; i < cornerLen; i++ {
+	for i := range cornerLen {
 		blendPixel(x1-i, y1, cornerCol)
 		blendPixel(x1-i, y1-1, cornerCol)
 		blendPixel(x1, y1-i, cornerCol)

@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -131,7 +132,7 @@ func runLint(args []string) {
 			revStr = ", Rev: true"
 		}
 		fmt.Printf("      Config: f:%d-%d (Ease: %s%s)\n", mp.Config.StartFrame, mp.Config.EndFrame, mp.Config.Ease, revStr)
-		
+
 		if mp.Config.StartFrame == 0 && mp.Config.EndFrame == 0 {
 			fmt.Printf("      ❌ ERROR: Invalid or missing frame range.\n")
 			hasErrors = true
@@ -343,7 +344,7 @@ func generateGoldenWithInkscape(svgPath, goldenPath string, w, h int) error {
 	cmd := exec.Command(inkscapeBin,
 		svgPath,
 		"--export-type=png",
-		"--export-filename=" + goldenPath,
+		"--export-filename="+goldenPath,
 		"-w", strconv.Itoa(w),
 		"-h", strconv.Itoa(h),
 	)
@@ -376,8 +377,8 @@ func diffImages(actual, golden image.Image, tolerance uint8) (diffStats, *image.
 	stats.MinX, stats.MinY = w, h
 	stats.MaxX, stats.MaxY = 0, 0
 
-	for y := 0; y < h; y++ {
-		for x := 0; x < w; x++ {
+	for y := range h {
+		for x := range w {
 			actPt := image.Pt(b.Min.X+x, b.Min.Y+y)
 			goldPt := image.Pt(golden.Bounds().Min.X+x, golden.Bounds().Min.Y+y)
 
@@ -388,7 +389,7 @@ func diffImages(actual, golden image.Image, tolerance uint8) (diffStats, *image.
 			g8 := [4]uint8{uint8(gr >> 8), uint8(gg >> 8), uint8(gb >> 8), uint8(ga >> 8)}
 
 			var maxDiff uint8
-			for c := 0; c < 4; c++ {
+			for c := range 4 {
 				diff := uint8(math.Abs(float64(int(a8[c]) - int(g8[c]))))
 				if diff > maxDiff {
 					maxDiff = diff
@@ -514,8 +515,8 @@ func runInspect(args []string) {
 		totalMinX, totalMinY := w, h
 		totalMaxX, totalMaxY := 0, 0
 
-		for y := 0; y < h; y++ {
-			for x := 0; x < w; x++ {
+		for y := range h {
+			for x := range w {
 				if !matchGrid[y][x] || visited[y][x] {
 					continue
 				}
@@ -1024,12 +1025,7 @@ func resolveScanDimensions(data []byte, maxDim int) (int, int) {
 }
 
 func sliceContains(slice []string, val string) bool {
-	for _, s := range slice {
-		if s == val {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(slice, val)
 }
 
 func truncateMiddle(s string, maxLen int) string {
@@ -1039,5 +1035,3 @@ func truncateMiddle(s string, maxLen int) string {
 	half := (maxLen - 3) / 2
 	return s[:half] + "..." + s[len(s)-half:]
 }
-
-

@@ -2,6 +2,7 @@ package inksvg
 
 import (
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode"
@@ -32,7 +33,7 @@ func (sp *Subpath) SignedArea() float64 {
 		return 0
 	}
 	var area float64
-	for i := 0; i < n; i++ {
+	for i := range n {
 		j := (i + 1) % n
 		area += pts[i].X * pts[j].Y
 		area -= pts[j].X * pts[i].Y
@@ -426,9 +427,9 @@ func ReverseSubpath(sp Subpath) Subpath {
 
 	// Compute start and end points of each command
 	type segInfo struct {
-		cmd        PathCommand
-		startPt    Point2D
-		endPt      Point2D
+		cmd     PathCommand
+		startPt Point2D
+		endPt   Point2D
 	}
 
 	var segs []segInfo
@@ -479,8 +480,8 @@ func ReverseSubpath(sp Subpath) Subpath {
 	var revCmds []PathCommand
 	revCmds = append(revCmds, PathCommand{Type: 'M', Args: []float64{newStart.X, newStart.Y}})
 
-	for k := len(segs) - 1; k >= 0; k-- {
-		s := segs[k]
+	for _, s := range slices.Backward(segs) {
+
 		switch s.cmd.Type {
 		case 'L':
 			revCmds = append(revCmds, PathCommand{
@@ -529,7 +530,7 @@ func ReverseSubpath(sp Subpath) Subpath {
 		Points:   revPts,
 		Closed:   sp.Closed,
 		MinX:     sp.MinX, MaxX: sp.MaxX,
-		MinY:     sp.MinY, MaxY: sp.MaxY,
+		MinY: sp.MinY, MaxY: sp.MaxY,
 	}
 }
 

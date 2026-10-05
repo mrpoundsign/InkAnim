@@ -7,6 +7,7 @@ import (
 	"image"
 	"io"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode"
@@ -381,11 +382,11 @@ finishScan:
 		}
 	}
 
-	for i := len(ancestorStack) - 1; i >= 0; i-- {
-		if ancestorStack[i].Name.Local == "svg" {
+	for _, a := range slices.Backward(ancestorStack) {
+		if a.Name.Local == "svg" {
 			continue
 		}
-		if err := enc.EncodeToken(ancestorStack[i].End()); err != nil {
+		if err := enc.EncodeToken(a.End()); err != nil {
 			return Rect{}, false
 		}
 	}
@@ -606,6 +607,33 @@ func parseMotionConfig(label string) (MotionConfig, bool) {
 		}
 	}
 	if configType == "" {
+		if idx := strings.Index(lower, "fade"); idx != -1 {
+			rest := strings.TrimLeft(label[idx+4:], " \t")
+			if strings.HasPrefix(rest, "{") {
+				configType = "fade"
+				contentStart = idx + 4 + (len(label[idx+4:]) - len(rest)) + 1
+			}
+		}
+	}
+	if configType == "" {
+		if idx := strings.Index(lower, "show"); idx != -1 {
+			rest := strings.TrimLeft(label[idx+4:], " \t")
+			if strings.HasPrefix(rest, "{") {
+				configType = "show"
+				contentStart = idx + 4 + (len(label[idx+4:]) - len(rest)) + 1
+			}
+		}
+	}
+	if configType == "" {
+		if idx := strings.Index(lower, "hide"); idx != -1 {
+			rest := strings.TrimLeft(label[idx+4:], " \t")
+			if strings.HasPrefix(rest, "{") {
+				configType = "hide"
+				contentStart = idx + 4 + (len(label[idx+4:]) - len(rest)) + 1
+			}
+		}
+	}
+	if configType == "" {
 		return MotionConfig{}, false
 	}
 
@@ -641,6 +669,7 @@ func parseMotionConfig(label string) (MotionConfig, bool) {
 	config := DefaultMotionConfig(configType)
 
 	var foundF bool
+	var hasExplicitFrom bool
 
 	for _, part := range parts {
 		part = strings.TrimSpace(part)
@@ -664,6 +693,28 @@ func parseMotionConfig(label string) (MotionConfig, bool) {
 			config.Type = v
 		case "rev", "reverse":
 			config.Reverse = (v == "true" || v == "1" || v == "yes")
+		case "opacity":
+			if vFloat, err := strconv.ParseFloat(strings.TrimSuffix(v, "%"), 64); err == nil {
+				if vFloat > 1.0 {
+					vFloat /= 100.0
+				}
+				if vFloat < 0.0 {
+					vFloat = 0.0
+				} else if vFloat > 1.0 {
+					vFloat = 1.0
+				}
+				config.OpacityTo = vFloat
+				if !hasExplicitFrom {
+					config.OpacityFrom = vFloat
+				}
+				config.HasOpacity = true
+			}
+		case "visibility", "state":
+			vLower := strings.ToLower(v)
+			if vLower == "show" || vLower == "hide" {
+				config.VisibilityState = vLower
+				config.HasVisibility = true
+			}
 		case "scale":
 			if vFloat, err := strconv.ParseFloat(v, 64); err == nil {
 				config.ScaleToX = vFloat
@@ -678,9 +729,25 @@ func parseMotionConfig(label string) (MotionConfig, bool) {
 				config.ScaleToY = vFloat
 			}
 		case "from":
-			if vFloat, err := strconv.ParseFloat(v, 64); err == nil {
-				config.ScaleFromX = vFloat
-				config.ScaleFromY = vFloat
+			if configType == "fade" {
+				if vFloat, err := strconv.ParseFloat(strings.TrimSuffix(v, "%"), 64); err == nil {
+					if vFloat > 1.0 {
+						vFloat /= 100.0
+					}
+					if vFloat < 0.0 {
+						vFloat = 0.0
+					} else if vFloat > 1.0 {
+						vFloat = 1.0
+					}
+					config.OpacityFrom = vFloat
+					hasExplicitFrom = true
+					config.HasOpacity = true
+				}
+			} else {
+				if vFloat, err := strconv.ParseFloat(v, 64); err == nil {
+					config.ScaleFromX = vFloat
+					config.ScaleFromY = vFloat
+				}
 			}
 		case "from-x":
 			if vFloat, err := strconv.ParseFloat(v, 64); err == nil {
@@ -691,9 +758,24 @@ func parseMotionConfig(label string) (MotionConfig, bool) {
 				config.ScaleFromY = vFloat
 			}
 		case "to":
-			if vFloat, err := strconv.ParseFloat(v, 64); err == nil {
-				config.ScaleToX = vFloat
-				config.ScaleToY = vFloat
+			if configType == "fade" {
+				if vFloat, err := strconv.ParseFloat(strings.TrimSuffix(v, "%"), 64); err == nil {
+					if vFloat > 1.0 {
+						vFloat /= 100.0
+					}
+					if vFloat < 0.0 {
+						vFloat = 0.0
+					} else if vFloat > 1.0 {
+						vFloat = 1.0
+					}
+					config.OpacityTo = vFloat
+					config.HasOpacity = true
+				}
+			} else {
+				if vFloat, err := strconv.ParseFloat(v, 64); err == nil {
+					config.ScaleToX = vFloat
+					config.ScaleToY = vFloat
+				}
 			}
 		case "to-x":
 			if vFloat, err := strconv.ParseFloat(v, 64); err == nil {

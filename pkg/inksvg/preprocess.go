@@ -909,7 +909,7 @@ func extractDocumentMetadata(data []byte) DocumentMetadata {
 // expandUseElements recursively inlines <use> element clones into <g> groups up to 10 iterations.
 func expandUseElements(data []byte, elementsByID map[string][]xml.Token) ([]byte, error) {
 	current := data
-	for iter := 0; iter < 10; iter++ {
+	for range 10 {
 		expanded, changed, err := expandUseElementsOnce(current, elementsByID)
 		if err != nil {
 			return nil, err
@@ -1462,7 +1462,7 @@ func normalizeStopAttrs(attrs []xml.Attr) []xml.Attr {
 	}
 
 	var extractedColor, extractedOpacity string
-	for _, part := range strings.Split(styleVal, ";") {
+	for part := range strings.SplitSeq(styleVal, ";") {
 		part = strings.TrimSpace(part)
 		if part == "" {
 			continue
@@ -1620,7 +1620,7 @@ func tokenizeArcParams(s string) []string {
 	runes := []rune(s)
 	n := len(runes)
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		r := runes[i]
 		if r == ',' || unicode.IsSpace(r) {
 			flush()

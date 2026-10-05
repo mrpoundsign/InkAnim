@@ -101,15 +101,20 @@ type MotionConfig struct {
 	PivotType      string  // "center", "edge", "node", "path-start"
 	PivotEdgeAngle float64 // clock degrees (0 = top, 90 = right, 180 = bottom, 270 = left)
 	PivotNodeID    string  // element ID for node pivot (without '#')
-	ScaleFromX     float64 // starting horizontal scale multiplier (default 1.0)
-	ScaleFromY     float64 // starting vertical scale multiplier (default 1.0)
-	ScaleToX       float64 // target horizontal scale multiplier (default 1.0)
-	ScaleToY       float64 // target vertical scale multiplier (default 1.0)
+	ScaleFromX      float64 // starting horizontal scale multiplier (default 1.0)
+	ScaleFromY      float64 // starting vertical scale multiplier (default 1.0)
+	ScaleToX        float64 // target horizontal scale multiplier (default 1.0)
+	ScaleToY        float64 // target vertical scale multiplier (default 1.0)
+	OpacityFrom     float64 // starting opacity (0.0 - 1.0, default 1.0)
+	OpacityTo       float64 // target opacity (0.0 - 1.0, default 0.0 for fade out)
+	HasOpacity      bool    // true if Fade directive parsed
+	VisibilityState string  // "show" or "hide"
+	HasVisibility   bool    // true if Show or Hide directive parsed
 }
 
-// DefaultMotionConfig returns a MotionConfig with standard defaults (1.0 scale multipliers, center pivot, linear ease).
+// DefaultMotionConfig returns a MotionConfig with standard defaults.
 func DefaultMotionConfig(configType string) MotionConfig {
-	return MotionConfig{
+	cfg := MotionConfig{
 		Type:        configType,
 		Ease:        "linear",
 		RotationDir: "cw",
@@ -118,7 +123,22 @@ func DefaultMotionConfig(configType string) MotionConfig {
 		ScaleFromY:  1.0,
 		ScaleToX:    1.0,
 		ScaleToY:    1.0,
+		OpacityFrom: 1.0,
+		OpacityTo:   1.0,
 	}
+	switch configType {
+	case "fade":
+		cfg.OpacityFrom = 1.0
+		cfg.OpacityTo = 0.0
+		cfg.HasOpacity = true
+	case "show":
+		cfg.VisibilityState = "show"
+		cfg.HasVisibility = true
+	case "hide":
+		cfg.VisibilityState = "hide"
+		cfg.HasVisibility = true
+	}
+	return cfg
 }
 
 // MotionPath represents a movement spline and its config found inside a group.

@@ -293,6 +293,82 @@ func removeStyleProp(style, prop string) string {
 	return strings.Join(kept, ";")
 }
 
+func setElementHidden(elem *xml.StartElement) {
+	var foundStyle bool
+	var filtered []xml.Attr
+	for _, attr := range elem.Attr {
+		if attr.Name.Local == "groupmode" && attr.Value == "layer" {
+			continue
+		}
+		switch attr.Name.Local {
+		case "style":
+			foundStyle = true
+			cleaned := removeStyleProp(attr.Value, "display")
+			if cleaned != "" {
+				attr.Value = cleaned + ";display:none"
+			} else {
+				attr.Value = "display:none"
+			}
+		case "display":
+			attr.Value = "none"
+		}
+		filtered = append(filtered, attr)
+	}
+	if !foundStyle {
+		filtered = append(filtered, xml.Attr{
+			Name:  xml.Name{Local: "style"},
+			Value: "display:none",
+		})
+	}
+	elem.Attr = filtered
+}
+
+func setElementVisible(elem *xml.StartElement) {
+	for i, attr := range elem.Attr {
+		if attr.Name.Local == "style" {
+			cleaned := removeStyleProp(attr.Value, "display")
+			elem.Attr[i].Value = cleaned
+		} else if attr.Name.Local == "display" && attr.Value == "none" {
+			elem.Attr[i].Value = "inline"
+		}
+	}
+}
+
+func setElementOpacity(elem *xml.StartElement, opacity float64) {
+	for i, attr := range elem.Attr {
+		if attr.Name.Local == "style" {
+			elem.Attr[i].Value = removeStyleProp(attr.Value, "opacity")
+		}
+	}
+
+	if math.Abs(opacity-1.0) < 1e-4 {
+		var filtered []xml.Attr
+		for _, attr := range elem.Attr {
+			if attr.Name.Local != "opacity" {
+				filtered = append(filtered, attr)
+			}
+		}
+		elem.Attr = filtered
+		return
+	}
+
+	opacityStr := fmt.Sprintf("%.4f", opacity)
+	var found bool
+	for i, attr := range elem.Attr {
+		if attr.Name.Local == "opacity" {
+			elem.Attr[i].Value = opacityStr
+			found = true
+			break
+		}
+	}
+	if !found {
+		elem.Attr = append(elem.Attr, xml.Attr{
+			Name:  xml.Name{Local: "opacity"},
+			Value: opacityStr,
+		})
+	}
+}
+
 // BuildTimelineFrameSVG generates an SVG frame for a timeline animation.
 // It hides any path with a "Movement" label and injects translate transforms into animated groups.
 func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]byte, error) {
@@ -364,6 +440,11 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 					maxF := len(doc.Layers)
 
 					var activePaths []MotionPath
+					var hasShowRules bool
+					var isShown bool
+					var hasHideRules bool
+					var isHidden bool
+
 					for _, mp := range paths {
 						startF := mp.Config.StartFrame
 						endF := mp.Config.EndFrame
@@ -371,17 +452,55 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 							startF = 1
 							endF = maxF
 						}
-						if frame1Idx >= startF && frame1Idx <= endF {
+						inRange := frame1Idx >= startF && frame1Idx <= endF
+						if inRange {
 							activePaths = append(activePaths, mp)
+						}
+
+						switch mp.Config.VisibilityState {
+						case "show":
+							hasShowRules = true
+							if inRange {
+								isShown = true
+							}
+						case "hide":
+							hasHideRules = true
+							if inRange {
+								isHidden = true
+							}
 						}
 					}
 
-					// Hide if outside active range of all defined motion paths
-					if len(activePaths) == 0 {
+					groupHidden := false
+					switch {
+					case hasShowRules && !isShown:
+						groupHidden = true
+					case isHidden:
+						groupHidden = true
+					case !hasShowRules && !hasHideRules:
+						// Group has no explicit Show/Hide rules:
+						// Hide if outside active range of all defined motion paths
+						if len(activePaths) == 0 {
+							groupHidden = true
+						}
+					}
+
+					if groupHidden {
+						setElementHidden(&elem)
+						if err := encoder.EncodeToken(elem); err != nil {
+							return nil, err
+						}
 						if err := decoder.Skip(); err != nil {
 							return nil, err
 						}
+						if err := encoder.EncodeToken(elem.End()); err != nil {
+							return nil, err
+						}
 						continue
+					}
+
+					if hasShowRules || hasHideRules {
+						setElementVisible(&elem)
 					}
 
 					var totalDx, totalDy, totalRot float64
@@ -392,6 +511,9 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 					totalSy := 1.0
 					var scalePivotX, scalePivotY float64
 					var scalePivotDetermined bool
+
+					totalOpacity := 1.0
+					var hasActiveFade bool
 
 					for _, mp := range activePaths {
 						startF := mp.Config.StartFrame
@@ -467,6 +589,19 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 								scalePivotX, scalePivotY = resolvePivot(doc, id, mp.Config, mp.PathData)
 							}
 						}
+
+						// Evaluate opacity (Fade)
+						if mp.Config.Type == "fade" || mp.Config.HasOpacity {
+							currOpacity := mp.Config.OpacityFrom + t*(mp.Config.OpacityTo-mp.Config.OpacityFrom)
+							currOpacity = math.Max(0.0, math.Min(1.0, currOpacity))
+							totalOpacity *= currOpacity
+							hasActiveFade = true
+						}
+					}
+
+					if hasActiveFade {
+						totalOpacity = math.Max(0.0, math.Min(1.0, totalOpacity))
+						setElementOpacity(&elem, totalOpacity)
 					}
 
 					var transformParts []string
