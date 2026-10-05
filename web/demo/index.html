@@ -1026,6 +1026,81 @@
       wasmBuild = false;
     }
 
+    // Native browser SVG-to-RGBA batch rasterizer (GPU/Skia accelerated)
+    window.inkanimRasterizeBatchNative = function(svgList, targetW, targetH) {
+      targetW = targetW || 512;
+      targetH = targetH || 512;
+
+      return new Promise(function(resolve, reject) {
+        if (!svgList || svgList.length === 0) {
+          resolve([]);
+          return;
+        }
+
+        var total = svgList.length;
+        var completed = 0;
+        var hasError = false;
+        var results = new Array(total);
+
+        for (var i = 0; i < total; i++) {
+          (function(idx) {
+            var svgStr = svgList[idx];
+            var blob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
+            var url = URL.createObjectURL(blob);
+            var img = new Image();
+
+            img.onload = function() {
+              URL.revokeObjectURL(url);
+              if (hasError) return;
+
+              try {
+                var canvas;
+                if (typeof OffscreenCanvas !== 'undefined') {
+                  canvas = new OffscreenCanvas(targetW, targetH);
+                } else {
+                  canvas = document.createElement('canvas');
+                  canvas.width = targetW;
+                  canvas.height = targetH;
+                }
+
+                var ctx = canvas.getContext('2d', { willReadFrequently: true });
+                ctx.clearRect(0, 0, targetW, targetH);
+                ctx.drawImage(img, 0, 0, targetW, targetH);
+                var imgData = ctx.getImageData(0, 0, targetW, targetH);
+                results[idx] = new Uint8Array(imgData.data.buffer.slice(0));
+                completed++;
+
+                if (completed === total) {
+                  resolve(results);
+                }
+              } catch(e) {
+                if (!hasError) {
+                  hasError = true;
+                  reject(e);
+                }
+              }
+            };
+
+            img.onerror = function(err) {
+              URL.revokeObjectURL(url);
+              if (!hasError) {
+                hasError = true;
+                reject(new Error("Failed to rasterize SVG frame " + idx));
+              }
+            };
+
+            img.src = url;
+          })(i);
+        }
+      });
+    };
+
+    window.inkanimRasterizeNative = function(svgStr, targetW, targetH) {
+      return window.inkanimRasterizeBatchNative([svgStr], targetW, targetH).then(function(res) {
+        return res[0];
+      });
+    };
+
     function async_load(file, cb) {
       var d = document, t = 'script',
           o = d.createElement(t),
