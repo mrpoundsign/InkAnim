@@ -138,11 +138,71 @@ func ParseSVG(data []byte) (*SVGDocument, error) {
 							}
 						}
 					}
+					var bounds Rect
+					switch name {
+					case "rect":
+						xVal := parseDimension(extractAttr(elem.Attr, "x"))
+						yVal := parseDimension(extractAttr(elem.Attr, "y"))
+						wVal := parseDimension(extractAttr(elem.Attr, "width"))
+						hVal := parseDimension(extractAttr(elem.Attr, "height"))
+						bounds = Rect{X: xVal, Y: yVal, Width: wVal, Height: hVal}
+					case "circle":
+						cxVal := parseDimension(extractAttr(elem.Attr, "cx"))
+						cyVal := parseDimension(extractAttr(elem.Attr, "cy"))
+						rVal := parseDimension(extractAttr(elem.Attr, "r"))
+						bounds = Rect{X: cxVal - rVal, Y: cyVal - rVal, Width: 2 * rVal, Height: 2 * rVal}
+					case "ellipse":
+						cxVal := parseDimension(extractAttr(elem.Attr, "cx"))
+						cyVal := parseDimension(extractAttr(elem.Attr, "cy"))
+						rxVal := parseDimension(extractAttr(elem.Attr, "rx"))
+						ryVal := parseDimension(extractAttr(elem.Attr, "ry"))
+						bounds = Rect{X: cxVal - rxVal, Y: cyVal - ryVal, Width: 2 * rxVal, Height: 2 * ryVal}
+					case "line":
+						x1Val := parseDimension(extractAttr(elem.Attr, "x1"))
+						y1Val := parseDimension(extractAttr(elem.Attr, "y1"))
+						x2Val := parseDimension(extractAttr(elem.Attr, "x2"))
+						y2Val := parseDimension(extractAttr(elem.Attr, "y2"))
+						bounds = Rect{X: math.Min(x1Val, x2Val), Y: math.Min(y1Val, y2Val), Width: math.Abs(x2Val - x1Val), Height: math.Abs(y2Val - y1Val)}
+					}
+					if trStr := extractAttr(elem.Attr, "transform"); trStr != "" && (bounds.Width > 0 || bounds.Height > 0) {
+						m := parseTransform(trStr)
+						if m != IdentityMatrix() {
+							pts := [4][2]float64{
+								{bounds.X, bounds.Y},
+								{bounds.X + bounds.Width, bounds.Y},
+								{bounds.X + bounds.Width, bounds.Y + bounds.Height},
+								{bounds.X, bounds.Y + bounds.Height},
+							}
+							x0, y0 := m.Transform(pts[0][0], pts[0][1])
+							minX, maxX := x0, x0
+							minY, maxY := y0, y0
+							for i := 1; i < 4; i++ {
+								xi, yi := m.Transform(pts[i][0], pts[i][1])
+								if xi < minX {
+									minX = xi
+								}
+								if xi > maxX {
+									maxX = xi
+								}
+								if yi < minY {
+									minY = yi
+								}
+								if yi > maxY {
+									maxY = yi
+								}
+							}
+							bounds = Rect{X: minX, Y: minY, Width: maxX - minX, Height: maxY - minY}
+						}
+					}
+					if id == "" && cfg.IsColor {
+						id = fmt.Sprintf("color_mp_%d", len(doc.MotionPaths)+1)
+					}
 					mp := MotionPath{
 						ID:       id,
 						PathData: d,
 						Config:   cfg,
 						FillURL:  fillURL,
+						Bounds:   bounds,
 					}
 					if len(activeGroups) > 0 {
 						mp.GroupID = activeGroups[len(activeGroups)-1]

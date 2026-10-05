@@ -84,6 +84,12 @@
       <stop offset="50%" stop-color="#93c5fd" />
       <stop offset="100%" stop-color="#fef08a" />
     </linearGradient>
+    <!-- Planetary Ring Specular Shimmer Gradient (Purple -> Bright Cyan Highlight -> Purple) -->
+    <linearGradient id="ring_shimmer">
+      <stop offset="0%" stop-color="#a78bfa" />
+      <stop offset="50%" stop-color="#22d3ee" />
+      <stop offset="100%" stop-color="#a78bfa" />
+    </linearGradient>
   </defs>
   <!-- Global Camera Trajectory: 320px right pan across top of scene (f: 1-60, ease: in-out) -->
   <path
@@ -298,18 +304,27 @@
        id="planet_dist"
        inkscape:label="Dist {factor: 0.8}"
        d="M 0,0 L 0,0" />
-    <!-- Tilted Planetary Ring behind/around (cx=256, cy=128) -->
-    <ellipse
-       cx="256"
-       cy="128"
-       rx="58"
-       ry="16"
-       fill="none"
-       stroke="#a78bfa"
-       stroke-width="3"
-       transform="rotate(-45 256 128)"
-       opacity="0.75"
-       id="ellipse19" />
+    <!-- Tilted Planetary Ring (cx=256, cy=128): Back arc rendered behind planet -->
+    <g
+       id="group_ring_back"
+       inkscape:label="Planetary Ring Back">
+      <rect
+         id="ring_sweep_back"
+         x="190"
+         y="60"
+         width="132"
+         height="136"
+         fill="url(#ring_shimmer)"
+         inkscape:label="Color { f: 1-60; angle: -45; r: 4; target: stroke }" />
+      <path
+         id="ring_back"
+         d="M 198,128 A 58,16 0 0,1 314,128"
+         fill="none"
+         stroke="#a78bfa"
+         stroke-width="3"
+         transform="rotate(-45 256 128)"
+         opacity="0.75" />
+    </g>
     <!-- Planet Sphere (Enlarged to r=38, placed at 256, 128) -->
     <circle
        cx="256"
@@ -333,6 +348,27 @@
        fill="#c4b5fd"
        opacity="0.85"
        id="circle22" />
+    <!-- Planetary Ring: Front arc rendered over planet -->
+    <g
+       id="group_ring_front"
+       inkscape:label="Planetary Ring Front">
+      <rect
+         id="ring_sweep_front"
+         x="190"
+         y="60"
+         width="132"
+         height="136"
+         fill="url(#ring_shimmer)"
+         inkscape:label="Color { f: 1-60; angle: -45; r: 4; target: stroke }" />
+      <path
+         id="ring_front"
+         d="M 314,128 A 58,16 0 0,1 198,128"
+         fill="none"
+         stroke="#a78bfa"
+         stroke-width="3"
+         transform="rotate(-45 256 128)"
+         opacity="0.75" />
+    </g>
   </g>
   <!-- Moon in 45-degree Elliptical Orbit: starts at (213.6, 85.6), tracks planet transit via Dist factor 0.8 -->
   <g
