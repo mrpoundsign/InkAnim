@@ -5,9 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.2.0] - Unreleased
+## [0.3.0] - Unreleased
 
 ### Added
+- **Cross-Platform Native Desktop & Web Release Builds**: Added native macOS, Linux, and Windows desktop GUI packaging to the automated release workflow using pure MinGW and macOS runners without container overhead. Added offline self-contained WebAssembly Studio archives (`InkAnim_*_web.zip`) to release artifacts alongside desktop binaries.
+- **InkAnim Motion Syntax (IAMS) Color Shifting**: Introduced `Color` (and `Col`) layer modifiers for dynamic solid color shifting, gradient sweep angle rotation (`Mode 2`), and multi-stop gradient color transitions across animation frames ([#92](https://github.com/mrpoundsign/InkAnim/issues/92)).
+- **InkAnim Motion Syntax (IAMS) Camera & Parallax**: Introduced `Camera` and `Dist` syntax for multi-plane parallax depth simulation, allowing layers to move with natural perspective scaling and depth offsetting ([#86](https://github.com/mrpoundsign/InkAnim/issues/86)).
+- **Dynamic Layer Depth Ordering (IAMS)**: Introduced `Depth` syntax for shifting visual Z-index and layer compositing order dynamically across frame ranges ([#85](https://github.com/mrpoundsign/InkAnim/issues/85)).
+- **Layer Visibility & Fade Transitions (IAMS)**: Added `Fade`, `Show`, and `Hide` modifiers for smooth opacity interpolation and discrete frame visibility toggling ([#84](https://github.com/mrpoundsign/InkAnim/issues/84)).
 - **Scale Animations & Scale Syntax (IAMS)**: Introduced `Scale` (and `Scal`) syntax into the InkAnim Motion Syntax (IAMS) system. Parent groups (`<g>`) can scale dynamically over configured frame ranges with uniform scaling (`scale: <multiplier>`), independent horizontal/vertical multipliers (`scale-x: <val>`, `scale-y: <val>`), and range interpolation (`from: <val>`, `to: <val>`). Scaling operations anchor to visual center, clock edge angles (`pivot: 0|90|180|270`), node targets (`pivot: #<id>`), or trajectory start (`pivot: path-start`) via conjugated affine matrices, compositing seamlessly alongside active `Move` and `Rot` directives ([#83](https://github.com/mrpoundsign/InkAnim/issues/83)).
 - **Rotation Animations & V2 Move/Rot Syntax (IAMS)**: Introduced dedicated `Rot` and `Move` syntax into the InkAnim Motion Syntax (IAMS) system. Groups can now rotate across specified frame ranges with explicit degrees (`angle: <deg>`), direction (`dir: cw|ccw`), and flexible pivot point anchors (`pivot: center`, clock edge degrees `0|90|180|270`, element ID `#<id>`, and `path-start`). Added `orient: true` for automatic tangent curve orientation along spline trajectories, and support for multiple simultaneous/overlapping translations and rotations evaluated independently and summed additively per frame ([#82](https://github.com/mrpoundsign/InkAnim/issues/82)).
 

@@ -23,13 +23,30 @@ jobs:
           go-version: '1.27'
           cache: true
 
-      - name: Install Linux GUI Dependencies for Tests
+      - name: Install Linux GUI & Font Dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq libgl1-mesa-dev xorg-dev libxcursor-dev libxrandr-dev libxinerama-dev libxi-dev libxxf86vm-dev libwayland-dev libxkbcommon-dev
+          sudo apt-get install -y -qq \
+            libgl1-mesa-dev xorg-dev libxcursor-dev libxrandr-dev \
+            libxinerama-dev libxi-dev libxxf86vm-dev libwayland-dev \
+            libxkbcommon-dev fonts-dejavu-core
 
       - name: Run Full Test Suite
-        run: go test -v ./internal/...
+        run: go test -v ./...
+
+      - name: Check Go Modernization
+        run: |
+          diff=$(go fix -diff ./...)
+          if [ -n "$diff" ]; then
+            echo "Go modernization diff found:"
+            echo "$diff"
+            exit 1
+          fi
+
+      - name: Run golangci-lint (v2)
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.13.2
 
       - name: Validate GoReleaser Config
         uses: goreleaser/goreleaser-action@v6
@@ -38,20 +55,13 @@ jobs:
           version: '~> v2'
           args: check
 
-  build-gui:
-    name: Build Desktop GUI (${{ matrix.target }})
-    needs: test
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: windows
-            os: ubuntu-latest
-          - target: linux
-            os: ubuntu-latest
-          - target: macos
-            os: macos-latest
+      - name: Verify WebAssembly Compilation
+        run: |
+          GOOS=js GOARCH=wasm go build -tags migrated_fynedo -o /dev/null ./cmd/inkanim
+
+  build-gui-linux-windows:
+    name: Build Desktop GUI (Linux & Windows)
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -62,67 +72,114 @@ jobs:
           go-version: '1.27'
           cache: true
 
-      - name: Cache fyne-cross binary
-        if: matrix.target != 'macos'
-        id: cache-fyne-cross
-        uses: actions/cache@v4
-        with:
-          path: ~/go/bin/fyne-cross
-          key: ${{ runner.os }}-fyne-cross-bin-v2
-
-      - name: Install fyne-cross
-        if: matrix.target != 'macos' && steps.cache-fyne-cross.outputs.cache-hit != 'true'
-        run: go install github.com/fyne-io/fyne-cross@latest
-
-      - name: Cache fyne-cross build cache
-        if: matrix.target != 'macos'
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/fyne-cross
-          key: ${{ runner.os }}-fyne-cross-build-${{ matrix.target }}-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-fyne-cross-build-${{ matrix.target }}-
-
-      - name: Cross-Compile Desktop GUI for ${{ matrix.target }}
-        if: matrix.target != 'macos'
+      - name: Install Linux GUI & MinGW Toolchain
         run: |
-          ~/go/bin/fyne-cross ${{ matrix.target }} -arch=amd64,arm64 -app-id=com.inkanim.studio ./cmd/inkanim
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            gcc-mingw-w64 gcc libgl1-mesa-dev xorg-dev \
+            libxcursor-dev libxrandr-dev libxinerama-dev libxi-dev \
+            libxxf86vm-dev libwayland-dev libxkbcommon-dev fonts-dejavu-core
 
-      - name: Install fyne (macOS)
-        if: matrix.target == 'macos'
-        run: go install fyne.io/fyne/v2/cmd/fyne@latest
+      - name: Install Fyne CLI
+        run: go install fyne.io/tools/cmd/fyne@v1.7.3
 
-      - name: Build macOS GUI
-        if: matrix.target == 'macos'
+      - name: Compile Linux and Windows GUI
         run: |
-          ~/go/bin/fyne package -os darwin -appID com.inkanim.studio -sourceDir ./cmd/inkanim -icon ./assets/icon.png
-
-      - name: Prepare GUI Packages
-        run: |
+          export PATH="$(go env GOPATH)/bin:$PATH"
           mkdir -p gui-dist
           TAG="${{ github.ref_name }}"
           if [ -z "$TAG" ] || [[ ! "$TAG" =~ ^v ]]; then
-            TAG="latest"
+            TAG="snapshot"
           fi
-          if [ "${{ matrix.target }}" = "windows" ]; then
-            cp fyne-cross/dist/windows-amd64/InkAnim.exe.zip "gui-dist/InkAnim_${TAG}_windows_amd64.zip"
-            cp fyne-cross/dist/windows-arm64/InkAnim.exe.zip "gui-dist/InkAnim_${TAG}_windows_arm64.zip"
-          elif [ "${{ matrix.target }}" = "linux" ]; then
-            cp fyne-cross/dist/linux-amd64/InkAnim.tar.xz "gui-dist/InkAnim_${TAG}_linux_amd64.tar.xz"
-            cp fyne-cross/dist/linux-arm64/InkAnim.tar.xz "gui-dist/InkAnim_${TAG}_linux_arm64.tar.xz"
-          elif [ "${{ matrix.target }}" = "macos" ]; then
-            zip -r "gui-dist/InkAnim_${TAG}_darwin_all.zip" InkAnim.app
-          fi
+
+          echo "Building Linux amd64 GUI package..."
+          fyne package -os linux -app-id com.inkanim.studio -name InkAnim -icon "$PWD/assets/icon.png" -src ./cmd/inkanim
+          LINUX_PKG=$(find . -name "InkAnim.tar.xz" | head -n 1)
+          test -n "$LINUX_PKG" || (echo "Linux package not found" && exit 1)
+          mv "$LINUX_PKG" "gui-dist/InkAnim_${TAG}_linux_amd64.tar.xz"
+
+          echo "Cross-compiling Windows amd64 GUI binary..."
+          CC=x86_64-w64-mingw32-gcc CGO_ENABLED=1 GOOS=windows GOARCH=amd64 fyne package -os windows -app-id com.inkanim.studio -name InkAnim -icon "$PWD/assets/icon.png" -src ./cmd/inkanim
+          WIN_EXE=$(find . -name "InkAnim.exe" | head -n 1)
+          test -n "$WIN_EXE" || (echo "Windows exe not found" && exit 1)
+          mv "$WIN_EXE" "gui-dist/InkAnim_${TAG}_windows_amd64.exe"
 
       - name: Upload GUI Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: gui-dist-${{ matrix.target }}
+          name: gui-dist-linux-windows
+          path: gui-dist/
+
+  build-gui-macos:
+    name: Build Desktop GUI (macOS)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.27'
+          cache: true
+
+      - name: Install Fyne CLI
+        run: go install fyne.io/tools/cmd/fyne@v1.7.3
+
+      - name: Build macOS GUI
+        run: |
+          export PATH="$(go env GOPATH)/bin:$PATH"
+          mkdir -p gui-dist
+          TAG="${{ github.ref_name }}"
+          if [ -z "$TAG" ] || [[ ! "$TAG" =~ ^v ]]; then
+            TAG="snapshot"
+          fi
+
+          fyne package -os darwin -app-id com.inkanim.studio -name InkAnim -icon "$PWD/assets/icon.png" -src ./cmd/inkanim
+          zip -r "gui-dist/InkAnim_${TAG}_darwin_all.zip" InkAnim.app
+
+      - name: Upload GUI Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: gui-dist-macos
+          path: gui-dist/
+
+  build-wasm:
+    name: Build WebAssembly Studio
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.27'
+          cache: true
+
+      - name: Package WebAssembly Studio
+        run: |
+          mkdir -p gui-dist
+          TAG="${{ github.ref_name }}"
+          if [ -z "$TAG" ] || [[ ! "$TAG" =~ ^v ]]; then
+            TAG="snapshot"
+          fi
+
+          chmod +x ./build.sh
+          ./build.sh wasm
+
+          cd build/gh-pages/demo
+          zip -r "../../../gui-dist/InkAnim_${TAG}_web.zip" .
+
+      - name: Upload WASM Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gui-dist-wasm
           path: gui-dist/
 
   release:
-    name: Release Binaries (GoReleaser + Unified Checksums)
-    needs: [test, build-gui]
+    name: Release Binaries (GoReleaser + Client)
+    needs: [test, build-gui-linux-windows, build-gui-macos, build-wasm]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -136,12 +193,10 @@ jobs:
           go-version: '1.27'
           cache: true
 
-      - name: Download GUI Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: gui-dist-*
-          path: gui-dist
-          merge-multiple: true
+      - name: Verify Clean Git State
+        run: |
+          git status --porcelain
+          test -z "$(git status --porcelain)" || (echo "Dirty git state detected:" && git status && exit 1)
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
@@ -152,13 +207,25 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Update Checksums and Attach GUI to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download GUI Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: gui-dist-*
+          path: gui-dist
+          merge-multiple: true
+
+      - name: Update and Consolidate Checksums
         run: |
           cd gui-dist
           sha256sum * >> ../dist/checksums.txt
           cd ..
           sort -k2 -o dist/checksums.txt dist/checksums.txt
+          echo "=== Final Consolidated dist/checksums.txt ==="
+          cat dist/checksums.txt
+
+      - name: Attach GUI to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
           gh release upload ${{ github.ref_name }} gui-dist/* dist/checksums.txt --clobber
