@@ -68,9 +68,13 @@ func TestParseMotionConfig_MoveAndRot(t *testing.T) {
 		wantAngle  float64
 		wantDir    string
 		wantOrient bool
-		wantPivot  string
-		wantEdge   float64
-		wantNode   string
+		wantPivot      string
+		wantEdge       float64
+		wantNode       string
+		wantScaleFromX float64
+		wantScaleFromY float64
+		wantScaleToX   float64
+		wantScaleToY   float64
 	}{
 		{
 			label:     "Move {f:1-15}",
@@ -148,6 +152,62 @@ func TestParseMotionConfig_MoveAndRot(t *testing.T) {
 			wantPivot: "path-start",
 		},
 		{
+			label:          "Scale {f:1-30 scale:1.5}",
+			wantOK:         true,
+			wantType:       "scale",
+			wantStart:      1,
+			wantEnd:        30,
+			wantEase:       "linear",
+			wantDir:        "cw",
+			wantPivot:      "center",
+			wantScaleFromX: 1.0,
+			wantScaleFromY: 1.0,
+			wantScaleToX:   1.5,
+			wantScaleToY:   1.5,
+		},
+		{
+			label:          "Scal {f:1-30 ease:in-out from:0.5 to:1.5 pivot:180}",
+			wantOK:         true,
+			wantType:       "scale",
+			wantStart:      1,
+			wantEnd:        30,
+			wantEase:       "in-out",
+			wantDir:        "cw",
+			wantPivot:      "edge",
+			wantEdge:       180,
+			wantScaleFromX: 0.5,
+			wantScaleFromY: 0.5,
+			wantScaleToX:   1.5,
+			wantScaleToY:   1.5,
+		},
+		{
+			label:          "Scale {scale-x:1.2 scale-y:0.8 pivot:center}",
+			wantOK:         true,
+			wantType:       "scale",
+			wantAll:        true,
+			wantEase:       "linear",
+			wantDir:        "cw",
+			wantPivot:      "center",
+			wantScaleFromX: 1.0,
+			wantScaleFromY: 1.0,
+			wantScaleToX:   1.2,
+			wantScaleToY:   0.8,
+		},
+		{
+			label:          "Scale {from-x:0.8 to-x:1.4 from-y:1.2 to-y:0.6 pivot:#pin}",
+			wantOK:         true,
+			wantType:       "scale",
+			wantAll:        true,
+			wantEase:       "linear",
+			wantDir:        "cw",
+			wantPivot:      "node",
+			wantNode:       "pin",
+			wantScaleFromX: 0.8,
+			wantScaleFromY: 1.2,
+			wantScaleToX:   1.4,
+			wantScaleToY:   0.6,
+		},
+		{
 			label:  "Regular Label",
 			wantOK: false,
 		},
@@ -194,6 +254,28 @@ func TestParseMotionConfig_MoveAndRot(t *testing.T) {
 		}
 		if cfg.PivotNodeID != tt.wantNode {
 			t.Errorf("[%s] pivotNode = %s, want %s", tt.label, cfg.PivotNodeID, tt.wantNode)
+		}
+		expectedFromX := tt.wantScaleFromX
+		if expectedFromX == 0 {
+			expectedFromX = 1.0
+		}
+		expectedFromY := tt.wantScaleFromY
+		if expectedFromY == 0 {
+			expectedFromY = 1.0
+		}
+		expectedToX := tt.wantScaleToX
+		if expectedToX == 0 {
+			expectedToX = 1.0
+		}
+		expectedToY := tt.wantScaleToY
+		if expectedToY == 0 {
+			expectedToY = 1.0
+		}
+		if cfg.ScaleFromX != expectedFromX || cfg.ScaleFromY != expectedFromY ||
+			cfg.ScaleToX != expectedToX || cfg.ScaleToY != expectedToY {
+			t.Errorf("[%s] scale (from: %f,%f to: %f,%f), want (from: %f,%f to: %f,%f)",
+				tt.label, cfg.ScaleFromX, cfg.ScaleFromY, cfg.ScaleToX, cfg.ScaleToY,
+				expectedFromX, expectedFromY, expectedToX, expectedToY)
 		}
 	}
 }
@@ -452,11 +534,15 @@ func TestIntegration_PendulumAndComplexMotion(t *testing.T) {
 	if len(doc2.Layers) != 20 {
 		t.Errorf("complex_motion.svg frame layers count = %d, want 20", len(doc2.Layers))
 	}
-	if len(doc2.MotionPaths) != 2 {
-		t.Fatalf("complex_motion.svg motion paths count = %d, want 2", len(doc2.MotionPaths))
+	if len(doc2.MotionPaths) != 3 {
+		t.Fatalf("complex_motion.svg motion paths count = %d, want 3", len(doc2.MotionPaths))
+	}
+	mpScale := doc2.MotionPaths[2]
+	if mpScale.Config.Type != "scale" || mpScale.Config.ScaleFromX != 0.6 || mpScale.Config.ScaleToX != 1.4 {
+		t.Errorf("complex_motion.svg scale path config = %+v, want scale from 0.6 to 1.4", mpScale.Config)
 	}
 
-	// Render all 20 frames to verify compositing across overlapping Move and Rot
+	// Render all 20 frames to verify compositing across overlapping Move, Rot, and Scale
 	for i := 0; i < len(doc2.Layers); i++ {
 		frameBytes, err := BuildTimelineFrameSVG(doc2, i, doc2.GetDrawingRect())
 		if err != nil {
@@ -464,6 +550,169 @@ func TestIntegration_PendulumAndComplexMotion(t *testing.T) {
 		}
 		if len(frameBytes) == 0 {
 			t.Fatalf("BuildTimelineFrameSVG(complex_motion, frame %d) returned empty bytes", i)
+		}
+	}
+}
+
+func TestScaleAnimation_FrameTransforms(t *testing.T) {
+	svgContent := `<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape">
+  <g id="boxGroup" inkscape:groupmode="layer" inkscape:label="Box">
+    <rect id="rect" x="50" y="50" width="100" height="60" fill="blue"/>
+    <path id="scale_ctrl" inkscape:label="Scale {f:1-3 scale:2.0 pivot:center}" d="M 0,0 L 0,0"/>
+  </g>
+</svg>`
+
+	doc, err := ParseSVG([]byte(svgContent))
+	if err != nil {
+		t.Fatalf("ParseSVG failed: %v", err)
+	}
+
+	// Group bounding box center is (50 + 50, 50 + 30) = (100, 80)
+	// Frame 0 (t=0.0): scale is 1.0 -> identity -> no scale transform injected
+	f0, err := BuildTimelineFrameSVG(doc, 0, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("f0 failed: %v", err)
+	}
+	f0Str := string(f0)
+	if strings.Contains(f0Str, "scale(") {
+		t.Errorf("f0 expected no scale transform for identity scale 1.0, got:\n%s", f0Str)
+	}
+
+	// Frame 1 (t=0.5): scale is 1.0 + 0.5*(2.0 - 1.0) = 1.5
+	f1, err := BuildTimelineFrameSVG(doc, 1, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("f1 failed: %v", err)
+	}
+	f1Str := string(f1)
+	expectedF1 := "translate(100.000000, 80.000000) scale(1.500000, 1.500000) translate(-100.000000, -80.000000)"
+	if !strings.Contains(f1Str, expectedF1) {
+		t.Errorf("f1 expected %s, got:\n%s", expectedF1, f1Str)
+	}
+
+	// Frame 2 (t=1.0): scale is 2.0
+	f2, err := BuildTimelineFrameSVG(doc, 2, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("f2 failed: %v", err)
+	}
+	f2Str := string(f2)
+	expectedF2 := "translate(100.000000, 80.000000) scale(2.000000, 2.000000) translate(-100.000000, -80.000000)"
+	if !strings.Contains(f2Str, expectedF2) {
+		t.Errorf("f2 expected %s, got:\n%s", expectedF2, f2Str)
+	}
+}
+
+func TestScaleAnimation_EdgePivot(t *testing.T) {
+	// pivot: 180 (bottom edge: cx = 100, cy = 50 + 60 = 110)
+	svgContent := `<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape">
+  <g id="boxGroup" inkscape:groupmode="layer" inkscape:label="Box">
+    <rect id="rect" x="50" y="50" width="100" height="60" fill="blue"/>
+    <path id="scale_ctrl" inkscape:label="Scale {f:1-3 from-x:0.5 to-x:1.5 from-y:2.0 to-y:0.5 pivot:180}" d="M 0,0 L 0,0"/>
+  </g>
+</svg>`
+
+	doc, err := ParseSVG([]byte(svgContent))
+	if err != nil {
+		t.Fatalf("ParseSVG failed: %v", err)
+	}
+
+	// Frame 2 (t=1.0): sx=1.5, sy=0.5, pivot=(100, 110)
+	f2, err := BuildTimelineFrameSVG(doc, 2, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("f2 failed: %v", err)
+	}
+	f2Str := string(f2)
+	expected := "translate(100.000000, 110.000000) scale(1.500000, 0.500000) translate(-100.000000, -110.000000)"
+	if !strings.Contains(f2Str, expected) {
+		t.Errorf("f2 expected %s, got:\n%s", expected, f2Str)
+	}
+}
+
+func TestScaleAnimation_MultiMotionComposition(t *testing.T) {
+	svgContent := `<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape">
+  <g id="boxGroup" inkscape:groupmode="layer" inkscape:label="Box">
+    <rect id="rect" x="50" y="50" width="100" height="60" fill="blue"/>
+    <path id="m1" inkscape:label="Move {f:1-3}" d="M 0,0 L 40,20"/>
+    <path id="m2" inkscape:label="Rot {f:1-3 angle:90 pivot:center}" d="M 0,0 L 0,0"/>
+    <path id="m3" inkscape:label="Scale {f:1-3 scale:2.0 pivot:center}" d="M 0,0 L 0,0"/>
+  </g>
+</svg>`
+
+	doc, err := ParseSVG([]byte(svgContent))
+	if err != nil {
+		t.Fatalf("ParseSVG failed: %v", err)
+	}
+
+	// Frame 2 (t=1.0):
+	// translate(40, 20)
+	// rotate(90, 100, 80)
+	// translate(100, 80) scale(2, 2) translate(-100, -80)
+	f2, err := BuildTimelineFrameSVG(doc, 2, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("f2 failed: %v", err)
+	}
+	f2Str := string(f2)
+	expected := "translate(40.000000, 20.000000) rotate(90.000000, 100.000000, 80.000000) translate(100.000000, 80.000000) scale(2.000000, 2.000000) translate(-100.000000, -80.000000)"
+	if !strings.Contains(f2Str, expected) {
+		t.Errorf("f2 expected composed transform:\n%s\ngot:\n%s", expected, f2Str)
+	}
+}
+
+func TestScaleAnimation_MultiplicativeScale(t *testing.T) {
+	svgContent := `<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape">
+  <g id="boxGroup" inkscape:groupmode="layer" inkscape:label="Box">
+    <rect id="rect" x="50" y="50" width="100" height="60" fill="blue"/>
+    <path id="s1" inkscape:label="Scale {f:1-3 scale:2.0 pivot:center}" d="M 0,0 L 0,0"/>
+    <path id="s2" inkscape:label="Scale {f:1-3 scale-x:1.5 scale-y:0.5 pivot:center}" d="M 0,0 L 0,0"/>
+  </g>
+</svg>`
+
+	doc, err := ParseSVG([]byte(svgContent))
+	if err != nil {
+		t.Fatalf("ParseSVG failed: %v", err)
+	}
+
+	// Frame 2 (t=1.0):
+	// s1: sx=2.0, sy=2.0
+	// s2: sx=1.5, sy=0.5
+	// combined: totalSx = 2.0 * 1.5 = 3.0, totalSy = 2.0 * 0.5 = 1.0
+	f2, err := BuildTimelineFrameSVG(doc, 2, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("f2 failed: %v", err)
+	}
+	f2Str := string(f2)
+	expected := "scale(3.000000, 1.000000)"
+	if !strings.Contains(f2Str, expected) {
+		t.Errorf("f2 expected scale(3.0, 1.0), got:\n%s", f2Str)
+	}
+}
+
+func TestIntegration_ScaleTestSVG(t *testing.T) {
+	data, err := os.ReadFile("../../testdata/scale_test.svg")
+	if err != nil {
+		t.Fatalf("failed to read scale_test.svg: %v", err)
+	}
+	doc, err := ParseSVG(data)
+	if err != nil {
+		t.Fatalf("ParseSVG(scale_test.svg) failed: %v", err)
+	}
+	if doc.DefaultMode != ModeTimeline {
+		t.Errorf("scale_test.svg DefaultMode = %s, want %s", doc.DefaultMode, ModeTimeline)
+	}
+	if len(doc.Layers) != 15 {
+		t.Errorf("scale_test.svg frame count = %d, want 15", len(doc.Layers))
+	}
+	if len(doc.MotionPaths) != 2 {
+		t.Fatalf("scale_test.svg motion paths count = %d, want 2", len(doc.MotionPaths))
+	}
+
+	// Render all 15 frames
+	for i := 0; i < len(doc.Layers); i++ {
+		frameBytes, err := BuildTimelineFrameSVG(doc, i, doc.GetDrawingRect())
+		if err != nil {
+			t.Fatalf("BuildTimelineFrameSVG(frame %d) failed: %v", i, err)
+		}
+		if len(frameBytes) == 0 {
+			t.Fatalf("BuildTimelineFrameSVG(frame %d) returned empty bytes", i)
 		}
 	}
 }

@@ -101,6 +101,24 @@ type MotionConfig struct {
 	PivotType      string  // "center", "edge", "node", "path-start"
 	PivotEdgeAngle float64 // clock degrees (0 = top, 90 = right, 180 = bottom, 270 = left)
 	PivotNodeID    string  // element ID for node pivot (without '#')
+	ScaleFromX     float64 // starting horizontal scale multiplier (default 1.0)
+	ScaleFromY     float64 // starting vertical scale multiplier (default 1.0)
+	ScaleToX       float64 // target horizontal scale multiplier (default 1.0)
+	ScaleToY       float64 // target vertical scale multiplier (default 1.0)
+}
+
+// DefaultMotionConfig returns a MotionConfig with standard defaults (1.0 scale multipliers, center pivot, linear ease).
+func DefaultMotionConfig(configType string) MotionConfig {
+	return MotionConfig{
+		Type:        configType,
+		Ease:        "linear",
+		RotationDir: "cw",
+		PivotType:   "center",
+		ScaleFromX:  1.0,
+		ScaleFromY:  1.0,
+		ScaleToX:    1.0,
+		ScaleToY:    1.0,
+	}
 }
 
 // MotionPath represents a movement spline and its config found inside a group.

@@ -331,8 +331,8 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 				continue
 			}
 
-			// Hide the motion paths themselves
-			if elem.Name.Local == "path" {
+			// Hide the motion paths or markers themselves
+			if elem.Name.Local == "path" || elem.Name.Local == "circle" || elem.Name.Local == "rect" || elem.Name.Local == "ellipse" || elem.Name.Local == "line" {
 				var isMotionPath bool
 				for _, attr := range elem.Attr {
 					if attr.Name.Local == "label" {
@@ -350,7 +350,7 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 				}
 			}
 
-			// Apply translation, rotation, and visibility to animated groups
+			// Apply translation, rotation, scaling, and visibility to animated groups
 			if elem.Name.Local == "g" {
 				var id string
 				for _, attr := range elem.Attr {
@@ -385,8 +385,13 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 					}
 
 					var totalDx, totalDy, totalRot float64
-					var pivotX, pivotY float64
-					var pivotDetermined bool
+					var rotPivotX, rotPivotY float64
+					var rotPivotDetermined bool
+
+					totalSx := 1.0
+					totalSy := 1.0
+					var scalePivotX, scalePivotY float64
+					var scalePivotDetermined bool
 
 					for _, mp := range activePaths {
 						startF := mp.Config.StartFrame
@@ -407,7 +412,7 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 							t = 1.0 - easedProgress
 						}
 
-						// Evaluate translation (only for Move, not Rot)
+						// Evaluate translation (only for Move, not Rot or Scale)
 						if mp.Config.Type == "move" && mp.PathData != "" {
 							dx, dy, err := EvaluatePathAt(mp.PathData, t)
 							if err == nil {
@@ -439,36 +444,27 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 							}
 						}
 
-						// Pivot point determined by first evaluated active configuration with a rotational effect
+						// Rotation pivot point determined by first evaluated active configuration with a rotational effect
 						hasRotEffect := mp.Config.Type == "rot" || mp.Config.RotationAngle != 0 || mp.Config.OrientPath
-						if !pivotDetermined && hasRotEffect {
-							pivotDetermined = true
-							switch mp.Config.PivotType {
-							case "node":
-								if mp.Config.PivotNodeID != "" {
-									nodeRect := doc.GetElementRect(mp.Config.PivotNodeID)
-									pivotX = nodeRect.X + nodeRect.Width/2.0
-									pivotY = nodeRect.Y + nodeRect.Height/2.0
-								} else {
-									groupRect := doc.GetElementRect(id)
-									pivotX = groupRect.X + groupRect.Width/2.0
-									pivotY = groupRect.Y + groupRect.Height/2.0
-								}
-							case "edge":
-								groupRect := doc.GetElementRect(id)
-								pivotX, pivotY = CalculateEdgePivot(groupRect, mp.Config.PivotEdgeAngle)
-							case "path-start":
-								if sx, sy, err := GetPathStartPoint(mp.PathData); err == nil {
-									pivotX, pivotY = sx, sy
-								} else {
-									groupRect := doc.GetElementRect(id)
-									pivotX = groupRect.X + groupRect.Width/2.0
-									pivotY = groupRect.Y + groupRect.Height/2.0
-								}
-							default: // "center"
-								groupRect := doc.GetElementRect(id)
-								pivotX = groupRect.X + groupRect.Width/2.0
-								pivotY = groupRect.Y + groupRect.Height/2.0
+						if !rotPivotDetermined && hasRotEffect {
+							rotPivotDetermined = true
+							rotPivotX, rotPivotY = resolvePivot(doc, id, mp.Config, mp.PathData)
+						}
+
+						// Evaluate scale effect
+						hasScaleEffect := mp.Config.Type == "scale" ||
+							mp.Config.ScaleFromX != 1.0 || mp.Config.ScaleToX != 1.0 ||
+							mp.Config.ScaleFromY != 1.0 || mp.Config.ScaleToY != 1.0
+
+						if hasScaleEffect {
+							currSx := mp.Config.ScaleFromX + t*(mp.Config.ScaleToX-mp.Config.ScaleFromX)
+							currSy := mp.Config.ScaleFromY + t*(mp.Config.ScaleToY-mp.Config.ScaleFromY)
+							totalSx *= currSx
+							totalSy *= currSy
+
+							if !scalePivotDetermined {
+								scalePivotDetermined = true
+								scalePivotX, scalePivotY = resolvePivot(doc, id, mp.Config, mp.PathData)
 							}
 						}
 					}
@@ -478,7 +474,10 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 						transformParts = append(transformParts, fmt.Sprintf("translate(%f, %f)", totalDx, totalDy))
 					}
 					if totalRot != 0 {
-						transformParts = append(transformParts, fmt.Sprintf("rotate(%f, %f, %f)", totalRot, pivotX, pivotY))
+						transformParts = append(transformParts, fmt.Sprintf("rotate(%f, %f, %f)", totalRot, rotPivotX, rotPivotY))
+					}
+					if math.Abs(totalSx-1.0) > 1e-4 || math.Abs(totalSy-1.0) > 1e-4 {
+						transformParts = append(transformParts, fmt.Sprintf("translate(%f, %f) scale(%f, %f) translate(%f, %f)", scalePivotX, scalePivotY, totalSx, totalSy, -scalePivotX, -scalePivotY))
 					}
 
 					if len(transformParts) > 0 {
@@ -517,6 +516,30 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 	}
 
 	return buf.Bytes(), nil
+}
+
+func resolvePivot(doc *SVGDocument, groupID string, config MotionConfig, pathData string) (float64, float64) {
+	switch config.PivotType {
+	case "node":
+		if config.PivotNodeID != "" {
+			nodeRect := doc.GetElementRect(config.PivotNodeID)
+			return nodeRect.X + nodeRect.Width/2.0, nodeRect.Y + nodeRect.Height/2.0
+		}
+		groupRect := doc.GetElementRect(groupID)
+		return groupRect.X + groupRect.Width/2.0, groupRect.Y + groupRect.Height/2.0
+	case "edge":
+		groupRect := doc.GetElementRect(groupID)
+		return CalculateEdgePivot(groupRect, config.PivotEdgeAngle)
+	case "path-start":
+		if sx, sy, err := GetPathStartPoint(pathData); err == nil {
+			return sx, sy
+		}
+		groupRect := doc.GetElementRect(groupID)
+		return groupRect.X + groupRect.Width/2.0, groupRect.Y + groupRect.Height/2.0
+	default: // "center"
+		groupRect := doc.GetElementRect(groupID)
+		return groupRect.X + groupRect.Width/2.0, groupRect.Y + groupRect.Height/2.0
+	}
 }
 
 

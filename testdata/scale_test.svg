@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="256"
+   height="256"
+   viewBox="0 0 256 256"
+   version="1.1"
+   id="svg_scale_bounce_demo"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns="http://www.w3.org/2000/svg">
+  <!-- Ground and Backdrop -->
+  <rect width="256" height="256" fill="#1e1b4b" id="bg" />
+  <rect x="0" y="210" width="256" height="46" fill="#312e81" id="ground" />
+  <line x1="0" y1="210" x2="256" y2="210" stroke="#6366f1" stroke-width="2" />
+
+  <!-- Bouncing Slime Group with Squash and Stretch Anchor at Bottom Edge -->
+  <g
+     inkscape:groupmode="layer"
+     id="group_slime"
+     inkscape:label="Bouncing Slime">
+    <!-- Slime vector shape resting at (128, 210) base -->
+    <path
+       id="slime_body"
+       d="M 98,210 C 98,170 110,150 128,150 C 146,150 158,170 158,210 Z"
+       fill="#10b981"
+       stroke="#059669"
+       stroke-width="3" />
+    <circle cx="120" cy="180" r="4" fill="#ffffff" />
+    <circle cx="121" cy="180" r="2" fill="#0f172a" />
+    <circle cx="136" cy="180" r="4" fill="#ffffff" />
+    <circle cx="137" cy="180" r="2" fill="#0f172a" />
+
+    <!-- Motion 1: Bounce lift upwards -->
+    <path
+       id="jump_trajectory"
+       inkscape:label="Move {f: 1-15; ease: out}"
+       d="M 128,210 L 128,150" />
+
+    <!-- Motion 2: Squash and stretch from ground anchor (pivot: 180 = bottom edge) -->
+    <path
+       id="squash_stretch"
+       inkscape:label="Scale {f: 1-15; ease: in-out; from-x: 1.4; to-x: 0.8; from-y: 0.6; to-y: 1.25; pivot: 180}"
+       d="M 0,0 L 0,0" />
+  </g>
+</svg>

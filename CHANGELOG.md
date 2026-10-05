@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.0] - Unreleased
 
 ### Added
+- **Scale Animations & Scale Syntax (IAMS)**: Introduced `Scale` (and `Scal`) syntax into the InkAnim Motion Syntax (IAMS) system. Parent groups (`<g>`) can scale dynamically over configured frame ranges with uniform scaling (`scale: <multiplier>`), independent horizontal/vertical multipliers (`scale-x: <val>`, `scale-y: <val>`), and range interpolation (`from: <val>`, `to: <val>`). Scaling operations anchor to visual center, clock edge angles (`pivot: 0|90|180|270`), node targets (`pivot: #<id>`), or trajectory start (`pivot: path-start`) via conjugated affine matrices, compositing seamlessly alongside active `Move` and `Rot` directives ([#83](https://github.com/mrpoundsign/InkAnim/issues/83)).
 - **Rotation Animations & V2 Move/Rot Syntax (IAMS)**: Introduced dedicated `Rot` and `Move` syntax into the InkAnim Motion Syntax (IAMS) system. Groups can now rotate across specified frame ranges with explicit degrees (`angle: <deg>`), direction (`dir: cw|ccw`), and flexible pivot point anchors (`pivot: center`, clock edge degrees `0|90|180|270`, element ID `#<id>`, and `path-start`). Added `orient: true` for automatic tangent curve orientation along spline trajectories, and support for multiple simultaneous/overlapping translations and rotations evaluated independently and summed additively per frame ([#82](https://github.com/mrpoundsign/InkAnim/issues/82)).
 
 ### Fixed
