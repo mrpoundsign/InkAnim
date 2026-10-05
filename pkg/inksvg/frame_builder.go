@@ -487,8 +487,41 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 			}
 		}
 	}
+	if doc.CameraPath != nil && doc.CameraPath.Config.EndFrame > maxF {
+		maxF = doc.CameraPath.Config.EndFrame
+	}
 	if maxF == 0 {
 		maxF = 15
+	}
+
+	var camX, camY float64
+	var cameraActive bool
+	if doc.CameraPath != nil && doc.CameraPath.PathData != "" {
+		cameraActive = true
+		cStartF := doc.CameraPath.Config.StartFrame
+		cEndF := doc.CameraPath.Config.EndFrame
+		if doc.CameraPath.Config.IsAll {
+			cStartF = 1
+			cEndF = maxF
+		}
+		duration := cEndF - cStartF
+		var progress float64
+		switch {
+		case frame1Idx <= cStartF:
+			progress = 0.0
+		case frame1Idx >= cEndF:
+			progress = 1.0
+		case duration > 0:
+			progress = float64(frame1Idx-cStartF) / float64(duration)
+		}
+		t := ApplyEasing(progress, doc.CameraPath.Config.Ease)
+		if doc.CameraPath.Config.Reverse {
+			t = 1.0 - t
+		}
+		if x, y, err := EvaluatePathAt(doc.CameraPath.PathData, t); err == nil {
+			camX = x
+			camY = y
+		}
 	}
 
 	// Map GroupID to slice of MotionPaths
@@ -554,7 +587,7 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 	}
 
 	for _, node := range nodes {
-		if err := serializeNodeTokens(encoder, node.tokens, doc, frame1Idx, maxF, motionMap); err != nil {
+		if err := serializeNodeTokens(encoder, node.tokens, doc, frame1Idx, maxF, motionMap, cameraActive, camX, camY); err != nil {
 			return nil, err
 		}
 	}
@@ -575,7 +608,10 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 	return buf.Bytes(), nil
 }
 
-func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocument, frame1Idx, maxF int, motionMap map[string][]MotionPath) error {
+func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocument, frame1Idx, maxF int, motionMap map[string][]MotionPath, cameraActive bool, camX, camY float64) error {
+	var currentGDepth int
+	var parallaxActiveDepth int
+
 	for i := 0; i < len(tokens); i++ {
 		token := tokens[i]
 		switch elem := token.(type) {
@@ -608,6 +644,7 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 
 			// Apply translation, rotation, scaling, and visibility to animated groups
 			if elem.Name.Local == "g" {
+				currentGDepth++
 				var id string
 				for _, attr := range elem.Attr {
 					if attr.Name.Local == "id" {
@@ -615,7 +652,26 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 						break
 					}
 				}
-				if paths, ok := motionMap[id]; ok && len(paths) > 0 {
+				paths := motionMap[id]
+				hasPaths := len(paths) > 0
+				applyCamera := cameraActive && parallaxActiveDepth == 0
+
+				if hasPaths || applyCamera {
+					factor := 1.0
+					for _, mp := range paths {
+						if mp.Config.HasParallax {
+							factor = mp.Config.ParallaxFactor
+							break
+						}
+					}
+
+					var totalDx, totalDy float64
+					if applyCamera {
+						parallaxActiveDepth = currentGDepth
+						totalDx = -camX * factor
+						totalDy = -camY * factor
+					}
+
 					var activePaths []MotionPath
 					var hasShowRules bool
 					var isShown bool
@@ -661,13 +717,17 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 					case !hasShowRules && !hasHideRules:
 						// Group has no explicit Show/Hide rules:
 						// Hide if outside active range of defined spatial/fade motion paths.
-						// If group only has Depth rules, it remains visible across all frames.
+						// If group only has Depth/Dist rules or camera, it remains visible across all frames.
 						if hasSpatialOrFadeRules && len(activePaths) == 0 {
 							groupHidden = true
 						}
 					}
 
 					if groupHidden {
+						if parallaxActiveDepth == currentGDepth {
+							parallaxActiveDepth = 0
+						}
+						currentGDepth--
 						setElementHidden(&elem)
 						if err := encoder.EncodeToken(elem); err != nil {
 							return err
@@ -692,7 +752,7 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 						setElementVisible(&elem)
 					}
 
-					var totalDx, totalDy, totalRot float64
+					var totalRot float64
 					var rotPivotX, rotPivotY float64
 					var rotPivotDetermined bool
 
@@ -733,7 +793,13 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 						}
 
 						// Evaluate explicit rotation
-						if mp.Config.RotationAngle != 0 {
+						if mp.Config.HasRotationRange {
+							rot := mp.Config.RotationFrom + t*(mp.Config.RotationTo-mp.Config.RotationFrom)
+							if mp.Config.RotationDir == "ccw" {
+								rot = -rot
+							}
+							totalRot += rot
+						} else if mp.Config.RotationAngle != 0 {
 							rot := mp.Config.RotationAngle * t
 							if mp.Config.RotationDir == "ccw" {
 								rot = -rot
@@ -756,7 +822,7 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 						}
 
 						// Rotation pivot point determined by first evaluated active configuration with a rotational effect
-						hasRotEffect := mp.Config.Type == "rot" || mp.Config.RotationAngle != 0 || mp.Config.OrientPath
+						hasRotEffect := mp.Config.Type == "rot" || mp.Config.RotationAngle != 0 || mp.Config.HasRotationRange || mp.Config.OrientPath
 						if !rotPivotDetermined && hasRotEffect {
 							rotPivotDetermined = true
 							rotPivotX, rotPivotY = resolvePivot(doc, id, mp.Config, mp.PathData)
@@ -794,7 +860,7 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 					}
 
 					var transformParts []string
-					if totalDx != 0 || totalDy != 0 {
+					if math.Abs(totalDx) > 1e-6 || math.Abs(totalDy) > 1e-6 {
 						transformParts = append(transformParts, fmt.Sprintf("translate(%f, %f)", totalDx, totalDy))
 					}
 					if totalRot != 0 {
@@ -824,6 +890,17 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 				}
 			}
 
+			if err := encoder.EncodeToken(elem); err != nil {
+				return err
+			}
+
+		case xml.EndElement:
+			if elem.Name.Local == "g" {
+				if parallaxActiveDepth == currentGDepth {
+					parallaxActiveDepth = 0
+				}
+				currentGDepth--
+			}
 			if err := encoder.EncodeToken(elem); err != nil {
 				return err
 			}

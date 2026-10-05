@@ -323,27 +323,18 @@ func TestCropBoundaryUIAndGuides(t *testing.T) {
 	mw.loadFilePath(multiPagePath)
 	mw.centerPanel.Pause()
 
-	// Initially in Drawing boundary mode
-	if mw.session.CropBoundaryMode != "drawing" {
-		t.Errorf("expected drawing crop boundary, got %s", mw.session.CropBoundaryMode)
-	}
-	if mw.leftPanel.cropBoundaryRadio.Selected != "Drawing" {
-		t.Errorf("expected cropBoundaryRadio selected 'Drawing', got %s", mw.leftPanel.cropBoundaryRadio.Selected)
-	}
-	if !mw.leftPanel.cropPageSelect.Disabled() {
-		t.Errorf("expected cropPageSelect to be disabled in Drawing mode")
-	}
-
-	// Switch to Page boundary via radio group
-	mw.leftPanel.cropBoundaryRadio.SetSelected("Page")
+	// Initially in Page boundary mode
 	if mw.session.CropBoundaryMode != "page" {
 		t.Errorf("expected page crop boundary, got %s", mw.session.CropBoundaryMode)
+	}
+	if mw.leftPanel.cropBoundaryRadio.Selected != "Page" {
+		t.Errorf("expected cropBoundaryRadio selected 'Page', got %s", mw.leftPanel.cropBoundaryRadio.Selected)
 	}
 	if mw.leftPanel.cropPageSelect.Disabled() {
 		t.Errorf("expected cropPageSelect to be enabled in Page mode")
 	}
 
-	// Switch back to Drawing boundary
+	// Switch to Drawing boundary via radio group
 	mw.leftPanel.cropBoundaryRadio.SetSelected("Drawing")
 	if mw.session.CropBoundaryMode != "drawing" {
 		t.Errorf("expected drawing crop boundary, got %s", mw.session.CropBoundaryMode)
