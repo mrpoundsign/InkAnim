@@ -120,11 +120,11 @@ func TestGradientStopInliningAndTransform(t *testing.T) {
 		t.Fatalf("linGrad not found in result")
 	}
 	subAfterLinGrad := result[linGradPos:]
-	endLinGradPos := strings.Index(subAfterLinGrad, `</linearGradient>`)
-	if endLinGradPos == -1 {
+	before, _, ok := strings.Cut(subAfterLinGrad, `</linearGradient>`)
+	if !ok {
 		t.Fatalf("end of linGrad not found in result")
 	}
-	linGradBody := subAfterLinGrad[:endLinGradPos]
+	linGradBody := before
 	if !strings.Contains(linGradBody, `<stop`) || !strings.Contains(linGradBody, `#3b82f6`) {
 		t.Errorf("expected inlined stops inside linGrad, got:\n%s", linGradBody)
 	}
@@ -230,6 +230,3 @@ func TestPreprocess_GroupPaintOrderInheritance(t *testing.T) {
 		t.Errorf("expected inherited stroke-width 16 on stroke element")
 	}
 }
-
-
-

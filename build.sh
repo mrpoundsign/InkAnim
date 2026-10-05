@@ -30,6 +30,13 @@ if [ -d "$HOME/go/bin" ]; then
 fi
 
 run_lint() {
+    echo "==> Verifying code modernizations (go fix -diff)..."
+    if ! go fix -diff ./...; then
+        echo "Error: Unfixed code modernization diffs found. Run 'go fix ./...' to apply them."
+        exit 1
+    fi
+    echo "✓ Code modernizations verified!"
+
     echo "==> Running golangci-lint-v2..."
     if command -v golangci-lint-v2 &>/dev/null; then
         golangci-lint-v2 run ./...

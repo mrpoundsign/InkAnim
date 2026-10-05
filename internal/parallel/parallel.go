@@ -17,10 +17,7 @@ func Run(count int, fn func(i int) error) error {
 		return fn(0)
 	}
 
-	workers := min(runtime.GOMAXPROCS(0), count)
-	if workers < 1 {
-		workers = 1
-	}
+	workers := max(min(runtime.GOMAXPROCS(0), count), 1)
 
 	tasks := make(chan int, count)
 	for i := range count {
@@ -32,7 +29,7 @@ func Run(count int, fn func(i int) error) error {
 	var errMu sync.Mutex
 	var firstErr error
 
-	for w := 0; w < workers; w++ {
+	for range workers {
 		wg.Go(func() {
 			for idx := range tasks {
 				errMu.Lock()

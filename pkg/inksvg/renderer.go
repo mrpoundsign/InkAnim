@@ -387,19 +387,19 @@ func initPathOffsets() {
 
 func getPathMatrix(p *oksvg.SvgPath) rasterx.Matrix2D {
 	initPathOffsets()
-	ptr := (*rasterx.MatrixAdder)(unsafe.Pointer(uintptr(unsafe.Pointer(p)) + mAdderOffset))
+	ptr := (*rasterx.MatrixAdder)(unsafe.Add(unsafe.Pointer(p), mAdderOffset))
 	return ptr.M
 }
 
-func getPathLinerColor(p *oksvg.SvgPath) interface{} {
+func getPathLinerColor(p *oksvg.SvgPath) any {
 	initPathOffsets()
-	ptr := (*interface{})(unsafe.Pointer(uintptr(unsafe.Pointer(p)) + linerColorOffset))
+	ptr := (*any)(unsafe.Add(unsafe.Pointer(p), linerColorOffset))
 	return *ptr
 }
 
-func setPathLinerColor(p *oksvg.SvgPath, c interface{}) {
+func setPathLinerColor(p *oksvg.SvgPath, c any) {
 	initPathOffsets()
-	ptr := (*interface{})(unsafe.Pointer(uintptr(unsafe.Pointer(p)) + linerColorOffset))
+	ptr := (*any)(unsafe.Add(unsafe.Pointer(p), linerColorOffset))
 	*ptr = c
 }
 
@@ -448,8 +448,8 @@ func drawPathTransformed(r *rasterx.Dasher, svgp oksvg.SvgPath, t rasterx.Matrix
 		localLineWidth = svgp.LineWidth / scaleFactor
 	}
 	localDasher.SetStroke(
-		fixed.Int26_6(localLineWidth * 64),
-		fixed.Int26_6(svgp.MiterLimit * 64),
+		fixed.Int26_6(localLineWidth*64),
+		fixed.Int26_6(svgp.MiterLimit*64),
 		leadLineCap, lineCap, lineGap, svgp.LineJoin,
 		svgp.Dash, svgp.DashOffset,
 	)
@@ -470,5 +470,3 @@ func drawPathTransformed(r *rasterx.Dasher, svgp oksvg.SvgPath, t rasterx.Matrix
 	}
 	r.Draw()
 }
-
-

@@ -534,10 +534,26 @@ func TestIntegration_PendulumAndComplexMotion(t *testing.T) {
 	if len(doc2.Layers) != 20 {
 		t.Errorf("complex_motion.svg frame layers count = %d, want 20", len(doc2.Layers))
 	}
-	if len(doc2.MotionPaths) != 3 {
-		t.Fatalf("complex_motion.svg motion paths count = %d, want 3", len(doc2.MotionPaths))
+	if len(doc2.MotionPaths) != 22 {
+		t.Fatalf("complex_motion.svg motion paths count = %d, want 22", len(doc2.MotionPaths))
 	}
-	mpScale := doc2.MotionPaths[2]
+	mpFadeDown := doc2.MotionPaths[0]
+	if mpFadeDown.Config.Type != "fade" || mpFadeDown.Config.OpacityFrom != 1.0 || mpFadeDown.Config.OpacityTo != 0.2 {
+		t.Errorf("complex_motion.svg twinkle fade down = %+v, want fade 1.0 to 0.2", mpFadeDown.Config)
+	}
+	mpStrobe1 := doc2.MotionPaths[2]
+	if mpStrobe1.Config.Type != "show" || mpStrobe1.Config.StartFrame != 1 || mpStrobe1.Config.EndFrame != 2 {
+		t.Errorf("complex_motion.svg strobe 1 = %+v, want show 1-2", mpStrobe1.Config)
+	}
+	mpFadeBlink := doc2.MotionPaths[7]
+	if mpFadeBlink.Config.Type != "fade" || mpFadeBlink.Config.OpacityFrom != 0.15 || mpFadeBlink.Config.OpacityTo != 1.0 {
+		t.Errorf("complex_motion.svg fade blink = %+v, want fade 0.15 to 1.0", mpFadeBlink.Config)
+	}
+	mpFlameUp := doc2.MotionPaths[11]
+	if mpFlameUp.Config.Type != "scale" || mpFlameUp.Config.ScaleFromX != 0.7 || mpFlameUp.Config.ScaleToX != 1.6 {
+		t.Errorf("complex_motion.svg flame up = %+v, want scale from-x: 0.7 to-x: 1.6", mpFlameUp.Config)
+	}
+	mpScale := doc2.MotionPaths[21]
 	if mpScale.Config.Type != "scale" || mpScale.Config.ScaleFromX != 0.6 || mpScale.Config.ScaleToX != 1.4 {
 		t.Errorf("complex_motion.svg scale path config = %+v, want scale from 0.6 to 1.4", mpScale.Config)
 	}
@@ -803,6 +819,318 @@ func TestGetPathStartPoint(t *testing.T) {
 	_, _, err = GetPathStartPoint("invalid path")
 	if err == nil {
 		t.Errorf("expected error on invalid path, got nil")
+	}
+}
+
+func TestParseMotionConfig_FadeAndVisibility(t *testing.T) {
+	tests := []struct {
+		label             string
+		wantOK            bool
+		wantType          string
+		wantStart         int
+		wantEnd           int
+		wantAll           bool
+		wantEase          string
+		wantOpacityFrom   float64
+		wantOpacityTo     float64
+		wantHasOpacity    bool
+		wantVisibility    string
+		wantHasVisibility bool
+	}{
+		{
+			label:             "Fade {f: 1-30; ease: in-out; from: 0; to: 100}",
+			wantOK:            true,
+			wantType:          "fade",
+			wantStart:         1,
+			wantEnd:           30,
+			wantEase:          "in-out",
+			wantOpacityFrom:   0.0,
+			wantOpacityTo:     1.0,
+			wantHasOpacity:    true,
+		},
+		{
+			label:             "Fade {f: 1-15; from: 1.0; to: 0.0}",
+			wantOK:            true,
+			wantType:          "fade",
+			wantStart:         1,
+			wantEnd:           15,
+			wantEase:          "linear",
+			wantOpacityFrom:   1.0,
+			wantOpacityTo:     0.0,
+			wantHasOpacity:    true,
+		},
+		{
+			label:             "Fade {f: 1-20; opacity: 50}",
+			wantOK:            true,
+			wantType:          "fade",
+			wantStart:         1,
+			wantEnd:           20,
+			wantEase:          "linear",
+			wantOpacityFrom:   0.5,
+			wantOpacityTo:     0.5,
+			wantHasOpacity:    true,
+		},
+		{
+			label:             "Fade {opacity: 0.5}",
+			wantOK:            true,
+			wantType:          "fade",
+			wantAll:           true,
+			wantEase:          "linear",
+			wantOpacityFrom:   0.5,
+			wantOpacityTo:     0.5,
+			wantHasOpacity:    true,
+		},
+		{
+			label:             "Fade {from: 0; to: 80%}",
+			wantOK:            true,
+			wantType:          "fade",
+			wantAll:           true,
+			wantEase:          "linear",
+			wantOpacityFrom:   0.0,
+			wantOpacityTo:     0.8,
+			wantHasOpacity:    true,
+		},
+		{
+			label:             "Show {f: 10-50}",
+			wantOK:            true,
+			wantType:          "show",
+			wantStart:         10,
+			wantEnd:           50,
+			wantEase:          "linear",
+			wantVisibility:    "show",
+			wantHasVisibility: true,
+		},
+		{
+			label:             "Hide {f: 1-10}",
+			wantOK:            true,
+			wantType:          "hide",
+			wantStart:         1,
+			wantEnd:           10,
+			wantEase:          "linear",
+			wantVisibility:    "hide",
+			wantHasVisibility: true,
+		},
+	}
+
+	for _, tt := range tests {
+		cfg, ok := parseMotionConfig(tt.label)
+		if ok != tt.wantOK {
+			t.Errorf("[%s] ok = %v, want %v", tt.label, ok, tt.wantOK)
+			continue
+		}
+		if !tt.wantOK {
+			continue
+		}
+		if cfg.Type != tt.wantType {
+			t.Errorf("[%s] type = %s, want %s", tt.label, cfg.Type, tt.wantType)
+		}
+		if cfg.StartFrame != tt.wantStart || cfg.EndFrame != tt.wantEnd {
+			t.Errorf("[%s] range = %d-%d, want %d-%d", tt.label, cfg.StartFrame, cfg.EndFrame, tt.wantStart, tt.wantEnd)
+		}
+		if cfg.IsAll != tt.wantAll {
+			t.Errorf("[%s] isAll = %v, want %v", tt.label, cfg.IsAll, tt.wantAll)
+		}
+		if cfg.Ease != tt.wantEase {
+			t.Errorf("[%s] ease = %s, want %s", tt.label, cfg.Ease, tt.wantEase)
+		}
+		if tt.wantHasOpacity {
+			if math.Abs(cfg.OpacityFrom-tt.wantOpacityFrom) > 1e-4 {
+				t.Errorf("[%s] opacityFrom = %f, want %f", tt.label, cfg.OpacityFrom, tt.wantOpacityFrom)
+			}
+			if math.Abs(cfg.OpacityTo-tt.wantOpacityTo) > 1e-4 {
+				t.Errorf("[%s] opacityTo = %f, want %f", tt.label, cfg.OpacityTo, tt.wantOpacityTo)
+			}
+		}
+		if cfg.HasOpacity != tt.wantHasOpacity {
+			t.Errorf("[%s] hasOpacity = %v, want %v", tt.label, cfg.HasOpacity, tt.wantHasOpacity)
+		}
+		if cfg.VisibilityState != tt.wantVisibility {
+			t.Errorf("[%s] visibility = %s, want %s", tt.label, cfg.VisibilityState, tt.wantVisibility)
+		}
+		if cfg.HasVisibility != tt.wantHasVisibility {
+			t.Errorf("[%s] hasVisibility = %v, want %v", tt.label, cfg.HasVisibility, tt.wantHasVisibility)
+		}
+	}
+}
+
+func groupHasDisplayNone(svgStr, groupID string) bool {
+	idx := strings.Index(svgStr, `id="`+groupID+`"`)
+	if idx == -1 {
+		return false
+	}
+	start := strings.LastIndex(svgStr[:idx], "<g")
+	if start == -1 {
+		return false
+	}
+	end := strings.Index(svgStr[idx:], ">")
+	if end == -1 {
+		return false
+	}
+	tag := svgStr[start : idx+end+1]
+	return strings.Contains(tag, `display:none`) || strings.Contains(tag, `display="none"`)
+}
+
+func TestFadeAnimation_FrameOpacity(t *testing.T) {
+	svgContent := `<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape">
+  <g id="boxGroup" inkscape:groupmode="layer" inkscape:label="Box">
+    <rect id="rect" x="50" y="50" width="100" height="60" fill="blue"/>
+    <path id="fade_ctrl" inkscape:label="Fade {f:1-3 from:0 to:100}" d="M 0,0 L 0,0"/>
+  </g>
+</svg>`
+
+	doc, err := ParseSVG([]byte(svgContent))
+	if err != nil {
+		t.Fatalf("ParseSVG failed: %v", err)
+	}
+
+	// Frame 0 (t=0.0): opacity = 0.0 -> opacity="0.0000"
+	f0, err := BuildTimelineFrameSVG(doc, 0, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("f0 failed: %v", err)
+	}
+	f0Str := string(f0)
+	if !strings.Contains(f0Str, `opacity="0.0000"`) {
+		t.Errorf("f0 expected opacity=\"0.0000\", got:\n%s", f0Str)
+	}
+
+	// Frame 1 (t=0.5): opacity = 0.5 -> opacity="0.5000"
+	f1, err := BuildTimelineFrameSVG(doc, 1, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("f1 failed: %v", err)
+	}
+	f1Str := string(f1)
+	if !strings.Contains(f1Str, `opacity="0.5000"`) {
+		t.Errorf("f1 expected opacity=\"0.5000\", got:\n%s", f1Str)
+	}
+
+	// Frame 2 (t=1.0): opacity = 1.0 -> omitted per PRD 4.1
+	f2, err := BuildTimelineFrameSVG(doc, 2, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("f2 failed: %v", err)
+	}
+	f2Str := string(f2)
+	if strings.Contains(f2Str, `opacity=`) {
+		t.Errorf("f2 expected opacity attribute to be omitted for 1.0, got:\n%s", f2Str)
+	}
+}
+
+func TestFadeAnimation_MultiplicativeFade(t *testing.T) {
+	svgContent := `<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape">
+  <g id="boxGroup" inkscape:groupmode="layer" inkscape:label="Box">
+    <rect id="rect" x="50" y="50" width="100" height="60" fill="blue"/>
+    <path id="f1" inkscape:label="Fade {f:1-3 opacity:50}" d="M 0,0 L 0,0"/>
+    <path id="f2" inkscape:label="Fade {f:1-3 opacity:50}" d="M 0,0 L 0,0"/>
+  </g>
+</svg>`
+
+	doc, err := ParseSVG([]byte(svgContent))
+	if err != nil {
+		t.Fatalf("ParseSVG failed: %v", err)
+	}
+
+	// 0.5 * 0.5 = 0.25 -> opacity="0.2500"
+	f1, err := BuildTimelineFrameSVG(doc, 1, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("f1 failed: %v", err)
+	}
+	f1Str := string(f1)
+	if !strings.Contains(f1Str, `opacity="0.2500"`) {
+		t.Errorf("f1 expected opacity=\"0.2500\", got:\n%s", f1Str)
+	}
+}
+
+func TestVisibility_ShowAndHide(t *testing.T) {
+	svgContent := `<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape">
+  <g id="showBox" inkscape:groupmode="layer" inkscape:label="Show Box">
+    <rect id="rect1" x="10" y="10" width="20" height="20" fill="red"/>
+    <path id="ctrl_show" inkscape:label="Show {f:2-3}" d="M 0,0 L 0,0"/>
+  </g>
+  <g id="hideBox" inkscape:groupmode="layer" inkscape:label="Hide Box">
+    <rect id="rect2" x="50" y="50" width="20" height="20" fill="green"/>
+    <path id="ctrl_hide" inkscape:label="Hide {f:1-2}" d="M 0,0 L 0,0"/>
+  </g>
+</svg>`
+
+	doc, err := ParseSVG([]byte(svgContent))
+	if err != nil {
+		t.Fatalf("ParseSVG failed: %v", err)
+	}
+
+	// Frame 0 (frame 1):
+	// showBox: hidden (Show 2-3) -> style="display:none"
+	// hideBox: hidden (Hide 1-2) -> style="display:none"
+	f0, err := BuildTimelineFrameSVG(doc, 0, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("f0 failed: %v", err)
+	}
+	f0Str := string(f0)
+	if !groupHasDisplayNone(f0Str, "showBox") {
+		t.Errorf("f0 expected showBox to be hidden with display:none, got:\n%s", f0Str)
+	}
+	if !groupHasDisplayNone(f0Str, "hideBox") {
+		t.Errorf("f0 expected hideBox to be hidden with display:none, got:\n%s", f0Str)
+	}
+
+	// Frame 1 (frame 2):
+	// showBox: visible (within 2-3) -> visible
+	// hideBox: hidden (within 1-2) -> style="display:none"
+	f1, err := BuildTimelineFrameSVG(doc, 1, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("f1 failed: %v", err)
+	}
+	f1Str := string(f1)
+	if groupHasDisplayNone(f1Str, "showBox") {
+		t.Errorf("f1 expected showBox to be visible, got:\n%s", f1Str)
+	}
+	if !groupHasDisplayNone(f1Str, "hideBox") {
+		t.Errorf("f1 expected hideBox to be hidden with display:none, got:\n%s", f1Str)
+	}
+
+	// Frame 2 (frame 3):
+	// showBox: visible (within 2-3) -> visible
+	// hideBox: visible (outside 1-2) -> visible
+	f2, err := BuildTimelineFrameSVG(doc, 2, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("f2 failed: %v", err)
+	}
+	f2Str := string(f2)
+	if groupHasDisplayNone(f2Str, "showBox") {
+		t.Errorf("f2 expected showBox to be visible, got:\n%s", f2Str)
+	}
+	if groupHasDisplayNone(f2Str, "hideBox") {
+		t.Errorf("f2 expected hideBox to be visible, got:\n%s", f2Str)
+	}
+}
+
+func TestFadeAndVisibility_MultiMotionCompositing(t *testing.T) {
+	svgContent := `<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape">
+  <g id="hero" inkscape:groupmode="layer" inkscape:label="Hero">
+    <rect id="rect" x="10" y="10" width="30" height="30" fill="gold"/>
+    <path id="m1" inkscape:label="Move {f:1-3}" d="M 0,0 L 20,10"/>
+    <path id="m2" inkscape:label="Rot {f:1-3 angle:45 pivot:center}" d="M 0,0 L 0,0"/>
+    <path id="m3" inkscape:label="Scale {f:1-3 scale:2.0 pivot:center}" d="M 0,0 L 0,0"/>
+    <path id="m4" inkscape:label="Fade {f:1-3 from:20 to:80}" d="M 0,0 L 0,0"/>
+  </g>
+</svg>`
+
+	doc, err := ParseSVG([]byte(svgContent))
+	if err != nil {
+		t.Fatalf("ParseSVG failed: %v", err)
+	}
+
+	// Frame 1 (t=0.5):
+	// opacity: 0.2 + 0.5*(0.8 - 0.2) = 0.5000
+	// transform contains translate, rotate, and scale!
+	f1, err := BuildTimelineFrameSVG(doc, 1, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("f1 failed: %v", err)
+	}
+	f1Str := string(f1)
+	if !strings.Contains(f1Str, `opacity="0.5000"`) {
+		t.Errorf("f1 expected opacity=\"0.5000\", got:\n%s", f1Str)
+	}
+	if !strings.Contains(f1Str, "translate(") || !strings.Contains(f1Str, "rotate(") || !strings.Contains(f1Str, "scale(") {
+		t.Errorf("f1 expected composed translate, rotate, scale transforms, got:\n%s", f1Str)
 	}
 }
 

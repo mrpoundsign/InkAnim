@@ -178,13 +178,16 @@
       <section id="syntax" class="docs-section">
         <h2>⚙️ Syntax Reference</h2>
         <p>
-          The syntax is compact and space-separated. Three primary commands are available:
+          The syntax is compact and space-separated. Available commands include:
         </p>
         <div class="code-card">
           <div class="code-header"><span>IAMS Syntax Format</span><span>Format</span></div>
           <pre class="code-content"><code>Move  {f:&lt;range&gt; [ease:&lt;curve&gt;] [rev] [orient:true] [angle:&lt;deg&gt;] [dir:cw|ccw] [pivot:&lt;origin&gt;]}
 Rot   {f:&lt;range&gt; [ease:&lt;curve&gt;] [rev] angle:&lt;deg&gt; [dir:cw|ccw] [pivot:&lt;origin&gt;]}
-Scale {f:&lt;range&gt; [ease:&lt;curve&gt;] [rev] [scale:&lt;multiplier&gt;] [scale-x:&lt;val&gt;] [scale-y:&lt;val&gt;] [from:&lt;val&gt;] [to:&lt;val&gt;] [pivot:&lt;origin&gt;]}</code></pre>
+Scale {f:&lt;range&gt; [ease:&lt;curve&gt;] [rev] [scale:&lt;multiplier&gt;] [scale-x:&lt;val&gt;] [scale-y:&lt;val&gt;] [from:&lt;val&gt;] [to:&lt;val&gt;] [pivot:&lt;origin&gt;]}
+Fade  {f:&lt;range&gt; [ease:&lt;curve&gt;] [from:&lt;val&gt;] [to:&lt;val&gt;] [opacity:&lt;val&gt;]}
+Show  {f:&lt;range&gt;}
+Hide  {f:&lt;range&gt;}</code></pre>
         </div>
 
         <div class="docs-table-wrapper">
@@ -200,7 +203,7 @@ Scale {f:&lt;range&gt; [ease:&lt;curve&gt;] [rev] [scale:&lt;multiplier&gt;] [sc
               <tr>
                 <td><code>f:&lt;start&gt;-&lt;end&gt;</code></td>
                 <td><span class="badge badge-purple">f:1-15</span></td>
-                <td>Defines active frame window (1-based index). The object is hidden outside this range.</td>
+                <td>Defines active frame window (1-based index). The object is hidden outside this range (unless Show/Hide rules specify otherwise).</td>
               </tr>
               <tr>
                 <td><code>f:all</code></td>
@@ -225,7 +228,12 @@ Scale {f:&lt;range&gt; [ease:&lt;curve&gt;] [rev] [scale:&lt;multiplier&gt;] [sc
               <tr>
                 <td><code>from:&lt;val&gt;</code>, <code>to:&lt;val&gt;</code></td>
                 <td><span class="badge badge-cyan">from:0.5 to:1.5</span></td>
-                <td>Scale range interpolation (also supports independent axes: <code>from-x</code>, <code>to-x</code>, <code>from-y</code>, <code>to-y</code>). Defaults start at 1.0.</td>
+                <td>Scale or opacity range interpolation (supports percentages <code>0-100%</code> or fractions <code>0.0-1.0</code> for Fade).</td>
+              </tr>
+              <tr>
+                <td><code>opacity:&lt;val&gt;</code></td>
+                <td><span class="badge badge-cyan">opacity:50%</span></td>
+                <td>Target or constant opacity for <code>Fade</code> (accepts <code>0-100%</code> or <code>0.0-1.0</code> alpha).</td>
               </tr>
               <tr>
                 <td><code>angle:&lt;deg&gt;</code></td>
@@ -251,6 +259,16 @@ Scale {f:&lt;range&gt; [ease:&lt;curve&gt;] [rev] [scale:&lt;multiplier&gt;] [sc
                 <td><code>rev</code> / <code>reverse</code></td>
                 <td><span class="badge badge-amber">rev</span></td>
                 <td>Reverses motion direction. Starts offset at trajectory end and arrives at the resting artwork position.</td>
+              </tr>
+              <tr>
+                <td><code>Show {f:...}</code></td>
+                <td><span class="badge badge-purple">Show {f:10-50}</span></td>
+                <td>Visibility window: group is strictly visible during specified frames and hidden during all other frames.</td>
+              </tr>
+              <tr>
+                <td><code>Hide {f:...}</code></td>
+                <td><span class="badge badge-purple">Hide {f:1-10}</span></td>
+                <td>Inverted visibility: group is strictly hidden during specified frames and visible during all other frames.</td>
               </tr>
             </tbody>
           </table>
@@ -357,6 +375,16 @@ Scale {f:&lt;range&gt; [ease:&lt;curve&gt;] [rev] [scale:&lt;multiplier&gt;] [sc
         <div class="code-card">
           <div class="code-header"><span>Squash-and-Stretch Recipe</span><span>Label</span></div>
           <pre class="code-content"><code>Scale {f:1-15 ease:in-out from-x:1.4 to-x:0.8 from-y:0.6 to-y:1.25 pivot:180}</code></pre>
+        </div>
+
+        <h3>5. Twinkling & Blinking Stars</h3>
+        <p>
+          Create smooth pulsating fades and visibility pop-ins by combining <code>Fade</code>, <code>Show</code>, and <code>Hide</code>:
+        </p>
+        <div class="code-card">
+          <div class="code-header"><span>Twinkle & Blink Recipes</span><span>Label</span></div>
+          <pre class="code-content"><code>Fade {f:1-10 ease:in-out from:100 to:20}
+Hide {f:9-13}</code></pre>
         </div>
       </section>
 
