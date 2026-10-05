@@ -5,7 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.0] - Unreleased
+
+### Added
+- **Rotation Animations & V2 Move/Rot Syntax (IAMS)**: Introduced dedicated `Rot` and `Move` syntax into the InkAnim Motion Syntax (IAMS) system. Groups can now rotate across specified frame ranges with explicit degrees (`angle: <deg>`), direction (`dir: cw|ccw`), and flexible pivot point anchors (`pivot: center`, clock edge degrees `0|90|180|270`, element ID `#<id>`, and `path-start`). Added `orient: true` for automatic tangent curve orientation along spline trajectories, and support for multiple simultaneous/overlapping translations and rotations evaluated independently and summed additively per frame ([#82](https://github.com/mrpoundsign/InkAnim/issues/82)).
 
 ### Fixed
 - **Multi-Page Crop Resolution & Page Pre-Rendering**: Re-renders preview animation frames directly to the selected page/crop region rather than the uncropped document drawing bounds, ensuring small artboards scale to the full 512px preview texture with pristine vector sharpness. Added thread-safe page frame caching and background pre-rendering for instantaneous, zero-latency switching between pages in multi-page documents ([#74](https://github.com/mrpoundsign/InkAnim/issues/74)).

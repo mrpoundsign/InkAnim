@@ -145,6 +145,23 @@ function Run-Lint {
     }
 }
 
+function Verify-WASM {
+    Write-Host "`n==> Verifying WebAssembly compilation..." -ForegroundColor Cyan
+    $env:GOOS = "js"
+    $env:GOARCH = "wasm"
+    try {
+        & $GoExe build -tags migrated_fynedo -o (Join-Path $env:TEMP "inkanim.wasm") ./cmd/inkanim
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "[OK] WebAssembly compilation verified!" -ForegroundColor Green
+        } else {
+            Write-Error "WebAssembly compilation failed."
+        }
+    } finally {
+        $env:GOOS = ""
+        $env:GOARCH = ""
+    }
+}
+
 function Build-WASM {
     Write-Host "`n==> Packaging WebAssembly studio & assembling GitHub Pages site..." -ForegroundColor Cyan
     $pagesDir = Join-Path $BuildDir "gh-pages"
@@ -160,7 +177,7 @@ function Build-WASM {
     try {
         & $GoExe run fyne.io/tools/cmd/fyne@latest package -os web --release `
             --tags migrated_fynedo `
-            --sourceDir (Join-Path $PSScriptRoot "cmd\inkanim") `
+            --source-dir (Join-Path $PSScriptRoot "cmd\inkanim") `
             --icon (Join-Path $PSScriptRoot "assets\icon.png") `
             --name InkAnim
     } finally {
@@ -207,10 +224,11 @@ function Clean-Artifacts {
 }
 
 switch ($Target) {
-    "all"                 { Run-Lint; Run-Tests; Build-CLI; Build-GUI }
+    "all"                 { Run-Lint; Run-Tests; Verify-WASM; Build-CLI; Build-GUI }
     "gui"                 { Build-GUI }
     "cli"                 { Build-CLI }
     "wasm"                { Build-WASM }
+    "wasm-check"          { Verify-WASM }
     "serve"               { Serve-Web }
     "test"                { Run-Tests }
     "test-update-golden"  { Run-Tests -UpdateGolden }

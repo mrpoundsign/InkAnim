@@ -178,11 +178,12 @@
       <section id="syntax" class="docs-section">
         <h2>⚙️ Syntax Reference</h2>
         <p>
-          The syntax is compact and space-separated. All parameters reside within curly braces:
+          The syntax is compact and space-separated. Two primary commands are available:
         </p>
         <div class="code-card">
           <div class="code-header"><span>IAMS Syntax Format</span><span>Format</span></div>
-          <pre class="code-content"><code>Motion {f:&lt;range&gt; [ease:&lt;curve&gt;] [rev] [t:none]}</code></pre>
+          <pre class="code-content"><code>Move {f:&lt;range&gt; [ease:&lt;curve&gt;] [rev] [orient:true] [angle:&lt;deg&gt;] [dir:cw|ccw] [pivot:&lt;origin&gt;]}
+Rot  {f:&lt;range&gt; [ease:&lt;curve&gt;] [rev] angle:&lt;deg&gt; [dir:cw|ccw] [pivot:&lt;origin&gt;]}</code></pre>
         </div>
 
         <div class="docs-table-wrapper">
@@ -203,22 +204,37 @@
               <tr>
                 <td><code>f:all</code></td>
                 <td><span class="badge badge-purple">f:all</span></td>
-                <td>Active across the entire timeline duration (from frame 1 to the max detected frame).</td>
+                <td>Active across the entire timeline duration (defaults to 15 frames if all motions omit frame counts).</td>
               </tr>
               <tr>
                 <td><code>ease:&lt;curve&gt;</code></td>
                 <td><span class="badge badge-cyan">ease:out</span></td>
-                <td>Acceleration/deceleration curve. Options: <code>linear</code>, <code>in</code>, <code>out</code>, <code>in-out</code>. Defaults to <code>linear</code>.</td>
+                <td>Acceleration/deceleration curve: <code>linear</code>, <code>in</code>, <code>out</code>, <code>in-out</code>. Defaults to <code>linear</code>.</td>
+              </tr>
+              <tr>
+                <td><code>angle:&lt;deg&gt;</code></td>
+                <td><span class="badge badge-cyan">angle:360</span></td>
+                <td>Degrees of rotation to complete over the frame range.</td>
+              </tr>
+              <tr>
+                <td><code>dir:&lt;cw|ccw&gt;</code></td>
+                <td><span class="badge badge-cyan">dir:ccw</span></td>
+                <td>Direction of rotation: clockwise (<code>cw</code>, default) or counter-clockwise (<code>ccw</code>).</td>
+              </tr>
+              <tr>
+                <td><code>orient:true</code></td>
+                <td><span class="badge badge-cyan">orient:true</span></td>
+                <td>Auto-orients object along the curve of the motion path using the path's tangent angle.</td>
+              </tr>
+              <tr>
+                <td><code>pivot:&lt;origin&gt;</code></td>
+                <td><span class="badge badge-amber">pivot:0</span></td>
+                <td>Rotation origin: <code>center</code> (bounding box center), clock degrees (<code>0</code>=top, <code>90</code>=right, <code>180</code>=bottom, <code>270</code>=left), element ID (<code>#pin</code>), or <code>path-start</code>.</td>
               </tr>
               <tr>
                 <td><code>rev</code> / <code>reverse</code></td>
                 <td><span class="badge badge-amber">rev</span></td>
-                <td>Reverses motion direction. Starts offset at the trajectory end and arrives at the drawn artwork position.</td>
-              </tr>
-              <tr>
-                <td><code>t:none</code></td>
-                <td><span class="badge badge-purple">t:none</span></td>
-                <td>Disables movement while keeping the frame visibility window active (static appearance/hold).</td>
+                <td>Reverses motion direction. Starts offset at trajectory end and arrives at the resting artwork position.</td>
               </tr>
             </tbody>
           </table>

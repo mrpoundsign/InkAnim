@@ -11,6 +11,7 @@ import (
 type PathSegment interface {
 	Length() float64
 	EvaluateAt(u float64) (x, y float64)
+	TangentAt(u float64) (dx, dy float64)
 }
 
 type LineSegment struct {
@@ -27,6 +28,9 @@ func NewLineSegment(sx, sy, ex, ey float64) *LineSegment {
 func (s *LineSegment) Length() float64 { return s.len }
 func (s *LineSegment) EvaluateAt(u float64) (float64, float64) {
 	return s.startX + (s.endX-s.startX)*u, s.startY + (s.endY-s.startY)*u
+}
+func (s *LineSegment) TangentAt(u float64) (float64, float64) {
+	return s.endX - s.startX, s.endY - s.startY
 }
 
 type CubicBezierSegment struct {
@@ -67,6 +71,15 @@ func (s *CubicBezierSegment) EvaluateAt(u float64) (float64, float64) {
 	y := inv3*s.sy + 3*inv2*u*s.cy1 + 3*inv*u2*s.cy2 + u3*s.ey
 	return x, y
 }
+func (s *CubicBezierSegment) TangentAt(u float64) (float64, float64) {
+	inv := 1.0 - u
+	dx := 3.0*inv*inv*(s.cx1-s.sx) + 6.0*inv*u*(s.cx2-s.cx1) + 3.0*u*u*(s.ex-s.cx2)
+	dy := 3.0*inv*inv*(s.cy1-s.sy) + 6.0*inv*u*(s.cy2-s.cy1) + 3.0*u*u*(s.ey-s.cy2)
+	if dx == 0 && dy == 0 {
+		return s.ex - s.sx, s.ey - s.sy
+	}
+	return dx, dy
+}
 
 type QuadraticBezierSegment struct {
 	sx, sy float64
@@ -102,6 +115,14 @@ func (s *QuadraticBezierSegment) EvaluateAt(u float64) (float64, float64) {
 	x := inv2*s.sx + 2*inv*u*s.cx + u2*s.ex
 	y := inv2*s.sy + 2*inv*u*s.cy + u2*s.ey
 	return x, y
+}
+func (s *QuadraticBezierSegment) TangentAt(u float64) (float64, float64) {
+	dx := 2.0*(1.0-u)*(s.cx-s.sx) + 2.0*u*(s.ex-s.cx)
+	dy := 2.0*(1.0-u)*(s.cy-s.sy) + 2.0*u*(s.ey-s.cy)
+	if dx == 0 && dy == 0 {
+		return s.ex - s.sx, s.ey - s.sy
+	}
+	return dx, dy
 }
 
 func tokenizePath(pathData string) []string {
@@ -353,4 +374,96 @@ func ApplyEasing(t float64, easeType string) float64 {
 	default:
 		return t
 	}
+}
+
+// GetPathStartPoint returns the initial starting point (startX, startY) of the path.
+func GetPathStartPoint(pathData string) (float64, float64, error) {
+	_, startX, startY, err := parsePathSegments(pathData)
+	return startX, startY, err
+}
+
+// EvaluatePathTangentAngle returns the tangent angle in degrees at progress t (0.0 to 1.0).
+func EvaluatePathTangentAngle(pathData string, t float64) (float64, error) {
+	if t <= 0.0 {
+		t = 0.0
+	}
+	if t >= 1.0 {
+		t = 1.0
+	}
+
+	segments, _, _, err := parsePathSegments(pathData)
+	if err != nil {
+		return 0, err
+	}
+	if len(segments) == 0 {
+		return 0, nil
+	}
+
+	var totalLen float64
+	for _, seg := range segments {
+		totalLen += seg.Length()
+	}
+
+	if totalLen == 0 {
+		return 0, nil
+	}
+
+	targetLen := t * totalLen
+	var currentLen float64
+
+	for _, seg := range segments {
+		segLen := seg.Length()
+		if currentLen+segLen >= targetLen || segLen == 0 {
+			u := 0.0
+			if segLen > 0 {
+				u = (targetLen - currentLen) / segLen
+			}
+			dx, dy := seg.TangentAt(u)
+			return math.Atan2(dy, dx) * 180.0 / math.Pi, nil
+		}
+		currentLen += segLen
+	}
+
+	dx, dy := segments[len(segments)-1].TangentAt(1.0)
+	return math.Atan2(dy, dx) * 180.0 / math.Pi, nil
+}
+
+// CalculateEdgePivot computes the (x, y) coordinates on the boundary of rect
+// for a given clock angle in degrees (0 = top, 90 = right, 180 = bottom, 270 = left).
+func CalculateEdgePivot(rect Rect, clockDeg float64) (float64, float64) {
+	cx := rect.X + rect.Width/2.0
+	cy := rect.Y + rect.Height/2.0
+
+	if rect.Width <= 0 || rect.Height <= 0 {
+		return cx, cy
+	}
+
+	hw := rect.Width / 2.0
+	hh := rect.Height / 2.0
+
+	rad := clockDeg * math.Pi / 180.0
+	dx := math.Sin(rad)
+	dy := -math.Cos(rad)
+
+	tx := math.MaxFloat64
+	ty := math.MaxFloat64
+
+	if dx > 1e-9 {
+		tx = hw / dx
+	} else if dx < -1e-9 {
+		tx = -hw / dx
+	}
+
+	if dy > 1e-9 {
+		ty = hh / dy
+	} else if dy < -1e-9 {
+		ty = -hh / dy
+	}
+
+	t := math.Min(tx, ty)
+	if math.IsInf(t, 0) || math.IsNaN(t) {
+		return cx, cy
+	}
+
+	return cx + t*dx, cy + t*dy
 }

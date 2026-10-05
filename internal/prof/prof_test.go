@@ -58,3 +58,13 @@ func TestSetupProfiler_NoArgs(t *testing.T) {
 	}
 	cleanup()
 }
+
+func TestSetupProfiler_WithPProfServer(t *testing.T) {
+	cleanup, err := SetupProfiler("", "", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("SetupProfiler with pprof server failed: %v", err)
+	}
+	time.Sleep(10 * time.Millisecond)
+	cleanup()
+}
+

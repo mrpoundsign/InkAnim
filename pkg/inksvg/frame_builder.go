@@ -5,6 +5,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"math"
 	"strings"
 )
 
@@ -304,10 +305,10 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 	encoder := xml.NewEncoder(&buf)
 	var processedRoot bool
 
-	// Map GroupID to MotionPath for quick lookup
-	motionMap := make(map[string]MotionPath)
+	// Map GroupID to slice of MotionPaths for multi-motion support
+	motionMap := make(map[string][]MotionPath)
 	for _, mp := range doc.MotionPaths {
-		motionMap[mp.GroupID] = mp
+		motionMap[mp.GroupID] = append(motionMap[mp.GroupID], mp)
 	}
 
 	for {
@@ -334,9 +335,11 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 			if elem.Name.Local == "path" {
 				var isMotionPath bool
 				for _, attr := range elem.Attr {
-					if attr.Name.Local == "label" && strings.HasPrefix(attr.Value, "Motion {") {
-						isMotionPath = true
-						break
+					if attr.Name.Local == "label" {
+						if _, ok := parseMotionConfig(attr.Value); ok {
+							isMotionPath = true
+							break
+						}
 					}
 				}
 				if isMotionPath {
@@ -347,7 +350,7 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 				}
 			}
 
-			// Apply translation and visibility to animated groups
+			// Apply translation, rotation, and visibility to animated groups
 			if elem.Name.Local == "g" {
 				var id string
 				for _, attr := range elem.Attr {
@@ -356,24 +359,43 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 						break
 					}
 				}
-				if mp, ok := motionMap[id]; ok {
-					startF := mp.Config.StartFrame
-					endF := mp.Config.EndFrame
+				if paths, ok := motionMap[id]; ok && len(paths) > 0 {
+					frame1Idx := frameIndex + 1 // 1-based index for logic
 					maxF := len(doc.Layers)
-					if mp.Config.IsAll {
-						startF = 1
-						endF = maxF
+
+					var activePaths []MotionPath
+					for _, mp := range paths {
+						startF := mp.Config.StartFrame
+						endF := mp.Config.EndFrame
+						if mp.Config.IsAll {
+							startF = 1
+							endF = maxF
+						}
+						if frame1Idx >= startF && frame1Idx <= endF {
+							activePaths = append(activePaths, mp)
+						}
 					}
 
-					// Hide if outside range
-					frame1Idx := frameIndex + 1 // 1-based index for logic
-					if frame1Idx < startF || frame1Idx > endF {
+					// Hide if outside active range of all defined motion paths
+					if len(activePaths) == 0 {
 						if err := decoder.Skip(); err != nil {
 							return nil, err
 						}
 						continue
-					} else {
-						// Calculate t
+					}
+
+					var totalDx, totalDy, totalRot float64
+					var pivotX, pivotY float64
+					var pivotDetermined bool
+
+					for _, mp := range activePaths {
+						startF := mp.Config.StartFrame
+						endF := mp.Config.EndFrame
+						if mp.Config.IsAll {
+							startF = 1
+							endF = maxF
+						}
+
 						duration := endF - startF
 						progress := 0.0
 						if duration > 0 {
@@ -385,28 +407,95 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 							t = 1.0 - easedProgress
 						}
 
-						dx, dy, err := EvaluatePathAt(mp.PathData, t)
-						if mp.Config.Type == "none" {
-							dx, dy = 0, 0
-							err = nil
+						// Evaluate translation (only for Move, not Rot)
+						if mp.Config.Type == "move" && mp.PathData != "" {
+							dx, dy, err := EvaluatePathAt(mp.PathData, t)
+							if err == nil {
+								totalDx += dx
+								totalDy += dy
+							}
 						}
-						if err == nil && (dx != 0 || dy != 0) {
-							// Inject transform
-							transformFound := false
-							newTransform := fmt.Sprintf("translate(%f, %f)", dx, dy)
-							for i, attr := range elem.Attr {
-								if attr.Name.Local == "transform" {
-									elem.Attr[i].Value = newTransform + " " + attr.Value
-									transformFound = true
-									break
+
+						// Evaluate explicit rotation
+						if mp.Config.RotationAngle != 0 {
+							rot := mp.Config.RotationAngle * t
+							if mp.Config.RotationDir == "ccw" {
+								rot = -rot
+							}
+							totalRot += rot
+						}
+
+						// Evaluate orient: true (relative delta from path tangent at t=0)
+						if mp.Config.OrientPath && mp.PathData != "" {
+							thetaT, errT := EvaluatePathTangentAngle(mp.PathData, t)
+							theta0, err0 := EvaluatePathTangentAngle(mp.PathData, 0.0)
+							if errT == nil && err0 == nil {
+								diff := math.Mod(thetaT-theta0+180.0, 360.0)
+								if diff < 0 {
+									diff += 360.0
 								}
+								orientRot := diff - 180.0
+								totalRot += orientRot
 							}
-							if !transformFound {
-								elem.Attr = append(elem.Attr, xml.Attr{
-									Name:  xml.Name{Local: "transform"},
-									Value: newTransform,
-								})
+						}
+
+						// Pivot point determined by first evaluated active configuration with a rotational effect
+						hasRotEffect := mp.Config.Type == "rot" || mp.Config.RotationAngle != 0 || mp.Config.OrientPath
+						if !pivotDetermined && hasRotEffect {
+							pivotDetermined = true
+							switch mp.Config.PivotType {
+							case "node":
+								if mp.Config.PivotNodeID != "" {
+									nodeRect := doc.GetElementRect(mp.Config.PivotNodeID)
+									pivotX = nodeRect.X + nodeRect.Width/2.0
+									pivotY = nodeRect.Y + nodeRect.Height/2.0
+								} else {
+									groupRect := doc.GetElementRect(id)
+									pivotX = groupRect.X + groupRect.Width/2.0
+									pivotY = groupRect.Y + groupRect.Height/2.0
+								}
+							case "edge":
+								groupRect := doc.GetElementRect(id)
+								pivotX, pivotY = CalculateEdgePivot(groupRect, mp.Config.PivotEdgeAngle)
+							case "path-start":
+								if sx, sy, err := GetPathStartPoint(mp.PathData); err == nil {
+									pivotX, pivotY = sx, sy
+								} else {
+									groupRect := doc.GetElementRect(id)
+									pivotX = groupRect.X + groupRect.Width/2.0
+									pivotY = groupRect.Y + groupRect.Height/2.0
+								}
+							default: // "center"
+								groupRect := doc.GetElementRect(id)
+								pivotX = groupRect.X + groupRect.Width/2.0
+								pivotY = groupRect.Y + groupRect.Height/2.0
 							}
+						}
+					}
+
+					var transformParts []string
+					if totalDx != 0 || totalDy != 0 {
+						transformParts = append(transformParts, fmt.Sprintf("translate(%f, %f)", totalDx, totalDy))
+					}
+					if totalRot != 0 {
+						transformParts = append(transformParts, fmt.Sprintf("rotate(%f, %f, %f)", totalRot, pivotX, pivotY))
+					}
+
+					if len(transformParts) > 0 {
+						newTransform := strings.Join(transformParts, " ")
+						transformFound := false
+						for i, attr := range elem.Attr {
+							if attr.Name.Local == "transform" {
+								elem.Attr[i].Value = newTransform + " " + attr.Value
+								transformFound = true
+								break
+							}
+						}
+						if !transformFound {
+							elem.Attr = append(elem.Attr, xml.Attr{
+								Name:  xml.Name{Local: "transform"},
+								Value: newTransform,
+							})
 						}
 					}
 				}

@@ -101,15 +101,16 @@ Active issues and feature requests are tracked exclusively via **[GitHub Issues]
 
 ## 6. Testing & Quality Requirements
 
-1. **Mandatory Pre-Push Checks**:
-   - Install and keep `.git/hooks/pre-push` active.
-   - Run linter (`golangci-lint-v2`) and tests before pushing:
+1. **Mandatory Pre-Commit, Pre-Push & WASM Build Checks**:
+   - Install and keep `.git/hooks/pre-commit` and `.git/hooks/pre-push` active.
+   - **WASM Build on Every Commit**: WebAssembly compilation (`GOOS=js GOARCH=wasm go build -tags migrated_fynedo -o /dev/null ./cmd/inkanim` or `./build.sh wasm-check`) must pass on every commit and is enforced in `.git/hooks/pre-commit`, `.git/hooks/pre-push`, `./build.sh all`, and `.github/workflows/ci.yml`.
+   - Run linter (`golangci-lint-v2`), tests, and WASM check before pushing:
      ```bash
-     ./build.sh lint && ./build.sh test
+     ./build.sh lint && ./build.sh test && ./build.sh wasm-check
      # or
      .git/hooks/pre-push
      # or on Windows PowerShell:
-     .\build.ps1 -Target lint; .\build.ps1 -Target test
+     .\build.ps1 -Target lint; .\build.ps1 -Target test; .\build.ps1 -Target wasm-check
      ```
 2. **Mandatory GUI Verification**:
    - Never commit code until the user has tested and confirmed the GUI works as expected.

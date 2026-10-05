@@ -75,3 +75,8 @@ jobs:
 
       - name: Run Full Test Suite (Unit & Integration Fixtures)
         run: go test -v ./...
+
+      - name: Verify WebAssembly Compilation
+        run: |
+          GOOS=js GOARCH=wasm go build -tags migrated_fynedo -o /dev/null ./cmd/inkanim
+
