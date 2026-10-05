@@ -95,9 +95,12 @@ type MotionConfig struct {
 	Ease           string
 	Type           string  // "move" or "rot"
 	Reverse        bool
-	RotationAngle  float64 // degrees
-	RotationDir    string  // "cw" or "ccw"
-	OrientPath     bool    // true if orient: true
+	RotationAngle    float64 // degrees
+	RotationFrom     float64 // degrees start for range interpolation
+	RotationTo       float64 // degrees end for range interpolation
+	HasRotationRange bool    // true if from/to specified for Rot
+	RotationDir      string  // "cw" or "ccw"
+	OrientPath       bool    // true if orient: true
 	PivotType      string  // "center", "edge", "node", "path-start"
 	PivotEdgeAngle float64 // clock degrees (0 = top, 90 = right, 180 = bottom, 270 = left)
 	PivotNodeID    string  // element ID for node pivot (without '#')
@@ -112,6 +115,9 @@ type MotionConfig struct {
 	HasVisibility   bool    // true if Show or Hide directive parsed
 	DepthOffset     int     // signed integer modifier applied to base Z-index (e.g. -1, +1)
 	HasDepth        bool    // true if Depth directive parsed
+	IsCamera        bool    // true if Camera directive parsed
+	ParallaxFactor  float64 // parallax multiplier relative to camera (default 1.0, or 0.0 for fixed)
+	HasParallax     bool    // true if Dist directive parsed
 }
 
 // LayerRenderOrder tracks the document and effective Z-index for frame reordering.
@@ -125,18 +131,24 @@ type LayerRenderOrder struct {
 // DefaultMotionConfig returns a MotionConfig with standard defaults.
 func DefaultMotionConfig(configType string) MotionConfig {
 	cfg := MotionConfig{
-		Type:        configType,
-		Ease:        "linear",
-		RotationDir: "cw",
-		PivotType:   "center",
-		ScaleFromX:  1.0,
-		ScaleFromY:  1.0,
-		ScaleToX:    1.0,
-		ScaleToY:    1.0,
-		OpacityFrom: 1.0,
-		OpacityTo:   1.0,
+		Type:           configType,
+		Ease:           "linear",
+		RotationDir:    "cw",
+		PivotType:      "center",
+		ScaleFromX:     1.0,
+		ScaleFromY:     1.0,
+		ScaleToX:       1.0,
+		ScaleToY:       1.0,
+		OpacityFrom:    1.0,
+		OpacityTo:      1.0,
+		ParallaxFactor: 1.0,
 	}
 	switch configType {
+	case "camera":
+		cfg.IsCamera = true
+	case "dist", "distance":
+		cfg.HasParallax = true
+		cfg.ParallaxFactor = 1.0
 	case "fade":
 		cfg.OpacityFrom = 1.0
 		cfg.OpacityTo = 0.0
@@ -174,6 +186,7 @@ type SVGDocument struct {
 	Layers       []Layer
 	Pages        []Page
 	MotionPaths  []MotionPath
+	CameraPath   *MotionPath
 	DefaultMode  FrameMode
 	ElementRects map[string]Rect
 }

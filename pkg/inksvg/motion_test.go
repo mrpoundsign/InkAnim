@@ -71,6 +71,9 @@ func TestParseMotionConfig_MoveAndRot(t *testing.T) {
 		wantPivot      string
 		wantEdge       float64
 		wantNode       string
+		wantRotFrom    float64
+		wantRotTo      float64
+		wantRotRange   bool
 		wantScaleFromX float64
 		wantScaleFromY float64
 		wantScaleToX   float64
@@ -150,6 +153,45 @@ func TestParseMotionConfig_MoveAndRot(t *testing.T) {
 			wantEase:  "linear",
 			wantDir:   "cw",
 			wantPivot: "path-start",
+		},
+		{
+			label:        "Rot {f:13-24 ease:in-out from:0 to:180 pivot:center}",
+			wantOK:       true,
+			wantType:     "rot",
+			wantStart:    13,
+			wantEnd:      24,
+			wantEase:     "in-out",
+			wantDir:      "cw",
+			wantPivot:    "center",
+			wantRotFrom:  0,
+			wantRotTo:    180,
+			wantRotRange: true,
+		},
+		{
+			label:        "Rot {f:25-36 from:180 to:180 pivot:center}",
+			wantOK:       true,
+			wantType:     "rot",
+			wantStart:    25,
+			wantEnd:      36,
+			wantEase:     "linear",
+			wantDir:      "cw",
+			wantPivot:    "center",
+			wantRotFrom:  180,
+			wantRotTo:    180,
+			wantRotRange: true,
+		},
+		{
+			label:        "Rot {f:37-48 ease:in-out from:180 to:0 pivot:center}",
+			wantOK:       true,
+			wantType:     "rot",
+			wantStart:    37,
+			wantEnd:      48,
+			wantEase:     "in-out",
+			wantDir:      "cw",
+			wantPivot:    "center",
+			wantRotFrom:  180,
+			wantRotTo:    0,
+			wantRotRange: true,
 		},
 		{
 			label:          "Scale {f:1-30 scale:1.5}",
@@ -254,6 +296,12 @@ func TestParseMotionConfig_MoveAndRot(t *testing.T) {
 		}
 		if cfg.PivotNodeID != tt.wantNode {
 			t.Errorf("[%s] pivotNode = %s, want %s", tt.label, cfg.PivotNodeID, tt.wantNode)
+		}
+		if cfg.HasRotationRange != tt.wantRotRange {
+			t.Errorf("[%s] hasRotRange = %v, want %v", tt.label, cfg.HasRotationRange, tt.wantRotRange)
+		}
+		if cfg.RotationFrom != tt.wantRotFrom || cfg.RotationTo != tt.wantRotTo {
+			t.Errorf("[%s] rotRange = (%f to %f), want (%f to %f)", tt.label, cfg.RotationFrom, cfg.RotationTo, tt.wantRotFrom, tt.wantRotTo)
 		}
 		expectedFromX := tt.wantScaleFromX
 		if expectedFromX == 0 {
@@ -531,42 +579,68 @@ func TestIntegration_PendulumAndComplexMotion(t *testing.T) {
 	if doc2.DefaultMode != ModeTimeline {
 		t.Errorf("complex_motion.svg DefaultMode = %s, want %s", doc2.DefaultMode, ModeTimeline)
 	}
-	if len(doc2.Layers) != 20 {
-		t.Errorf("complex_motion.svg frame layers count = %d, want 20", len(doc2.Layers))
+	if len(doc2.Layers) != 60 {
+		t.Errorf("complex_motion.svg frame layers count = %d, want 60", len(doc2.Layers))
 	}
-	if len(doc2.MotionPaths) != 29 {
-		t.Fatalf("complex_motion.svg motion paths count = %d, want 29", len(doc2.MotionPaths))
+	if len(doc2.MotionPaths) != 37 {
+		t.Fatalf("complex_motion.svg motion paths count = %d, want 37", len(doc2.MotionPaths))
 	}
-	mpFadeDown := doc2.MotionPaths[0]
+	if doc2.CameraPath == nil || doc2.CameraPath.Config.Type != "camera" || doc2.CameraPath.Config.StartFrame != 1 || doc2.CameraPath.Config.EndFrame != 60 {
+		t.Fatalf("complex_motion.svg CameraPath = %+v, want camera f: 1-60", doc2.CameraPath)
+	}
+
+	mpMap := make(map[string]MotionPath)
+	for _, mp := range doc2.MotionPaths {
+		mpMap[mp.ID] = mp
+	}
+
+	mpFadeDown := mpMap["twinkle_fade_down"]
 	if mpFadeDown.Config.Type != "fade" || mpFadeDown.Config.OpacityFrom != 1.0 || mpFadeDown.Config.OpacityTo != 0.2 {
 		t.Errorf("complex_motion.svg twinkle fade down = %+v, want fade 1.0 to 0.2", mpFadeDown.Config)
 	}
-	mpStrobe1 := doc2.MotionPaths[2]
-	if mpStrobe1.Config.Type != "show" || mpStrobe1.Config.StartFrame != 1 || mpStrobe1.Config.EndFrame != 2 {
-		t.Errorf("complex_motion.svg strobe 1 = %+v, want show 1-2", mpStrobe1.Config)
+	mpStrobe1 := mpMap["strobe_1"]
+	if mpStrobe1.Config.Type != "show" || mpStrobe1.Config.StartFrame != 1 || mpStrobe1.Config.EndFrame != 6 {
+		t.Errorf("complex_motion.svg strobe 1 = %+v, want show 1-6", mpStrobe1.Config)
 	}
-	mpFadeBlink := doc2.MotionPaths[7]
+	mpFadeBlink := mpMap["fb_fade"]
 	if mpFadeBlink.Config.Type != "fade" || mpFadeBlink.Config.OpacityFrom != 0.15 || mpFadeBlink.Config.OpacityTo != 1.0 {
 		t.Errorf("complex_motion.svg fade blink = %+v, want fade 0.15 to 1.0", mpFadeBlink.Config)
 	}
-	mpMoonDepthBack := doc2.MotionPaths[12]
-	if mpMoonDepthBack.Config.Type != "depth" || mpMoonDepthBack.Config.DepthOffset != -1 || mpMoonDepthBack.Config.StartFrame != 1 || mpMoonDepthBack.Config.EndFrame != 10 {
-		t.Errorf("complex_motion.svg moon depth back = %+v, want depth z: -1 f: 1-10", mpMoonDepthBack.Config)
+	mpPlanetDist := mpMap["planet_dist"]
+	if mpPlanetDist.Config.Type != "dist" || mpPlanetDist.Config.ParallaxFactor != 0.8 {
+		t.Errorf("complex_motion.svg planet dist = %+v, want dist factor 0.8", mpPlanetDist.Config)
 	}
-	mpMoonDepthFront := doc2.MotionPaths[13]
-	if mpMoonDepthFront.Config.Type != "depth" || mpMoonDepthFront.Config.DepthOffset != 1 || mpMoonDepthFront.Config.StartFrame != 11 || mpMoonDepthFront.Config.EndFrame != 20 {
-		t.Errorf("complex_motion.svg moon depth front = %+v, want depth z: +1 f: 11-20", mpMoonDepthFront.Config)
+	mpMoonDepthBack := mpMap["moon_depth_back"]
+	if mpMoonDepthBack.Config.Type != "depth" || mpMoonDepthBack.Config.DepthOffset != -1 || mpMoonDepthBack.Config.StartFrame != 1 || mpMoonDepthBack.Config.EndFrame != 30 {
+		t.Errorf("complex_motion.svg moon depth back = %+v, want depth z: -1 f: 1-30", mpMoonDepthBack.Config)
 	}
-	mpFlameUp := doc2.MotionPaths[18]
+	mpMoonDepthFront := mpMap["moon_depth_front"]
+	if mpMoonDepthFront.Config.Type != "depth" || mpMoonDepthFront.Config.DepthOffset != 1 || mpMoonDepthFront.Config.StartFrame != 31 || mpMoonDepthFront.Config.EndFrame != 60 {
+		t.Errorf("complex_motion.svg moon depth front = %+v, want depth z: +1 f: 31-60", mpMoonDepthFront.Config)
+	}
+	mpFlameUp := mpMap["flame_p1_up"]
 	if mpFlameUp.Config.Type != "scale" || mpFlameUp.Config.ScaleFromX != 0.7 || mpFlameUp.Config.ScaleToX != 1.6 {
 		t.Errorf("complex_motion.svg flame up = %+v, want scale from-x: 0.7 to-x: 1.6", mpFlameUp.Config)
 	}
-	mpScale := doc2.MotionPaths[28]
+	mpScale := mpMap["zoom_scale"]
 	if mpScale.Config.Type != "scale" || mpScale.Config.ScaleFromX != 0.6 || mpScale.Config.ScaleToX != 1.4 {
 		t.Errorf("complex_motion.svg scale path config = %+v, want scale from 0.6 to 1.4", mpScale.Config)
 	}
 
-	// Render all 20 frames to verify compositing across overlapping Move, Rot, Scale, Fade, Show/Hide, and Depth
+	mpRollTop := mpMap["roll_top"]
+	if mpRollTop.Config.Type != "rot" || mpRollTop.Config.RotationFrom != 0 || mpRollTop.Config.RotationTo != 180 {
+		t.Errorf("complex_motion.svg roll top = %+v, want rot from 0 to 180", mpRollTop.Config)
+	}
+	mpRollHold := mpMap["roll_hold"]
+	if mpRollHold.Config.Type != "rot" || mpRollHold.Config.RotationFrom != 180 || mpRollHold.Config.RotationTo != 180 {
+		t.Errorf("complex_motion.svg roll hold = %+v, want rot from 180 to 180", mpRollHold.Config)
+	}
+	mpRollBottom := mpMap["roll_bottom"]
+	if mpRollBottom.Config.Type != "rot" || mpRollBottom.Config.RotationFrom != 180 || mpRollBottom.Config.RotationTo != 0 {
+		t.Errorf("complex_motion.svg roll bottom = %+v, want rot from 180 to 0", mpRollBottom.Config)
+	}
+
+	// Render all 60 frames to verify compositing across overlapping Move, Rot, Scale, Fade, Show/Hide, and Depth
 	for i := 0; i < len(doc2.Layers); i++ {
 		frameBytes, err := BuildTimelineFrameSVG(doc2, i, doc2.GetDrawingRect())
 		if err != nil {
@@ -582,13 +656,13 @@ func TestIntegration_PendulumAndComplexMotion(t *testing.T) {
 		if idxPlanet == -1 || idxMoon == -1 {
 			t.Fatalf("Frame %d missing planet or moon group in serialized frame", i)
 		}
-		if i < 10 {
-			// Frames 1-10 (i=0..9): Moon is behind planet (idxMoon < idxPlanet)
+		if i < 30 {
+			// Frames 1-30 (i=0..29): Moon is behind planet (idxMoon < idxPlanet)
 			if idxMoon >= idxPlanet {
 				t.Errorf("Frame %d: expected Moon to render behind Planet, got Moon idx %d >= Planet idx %d", i+1, idxMoon, idxPlanet)
 			}
 		} else {
-			// Frames 11-20 (i=10..19): Moon is in front of planet (idxPlanet < idxMoon)
+			// Frames 31-60 (i=30..59): Moon is in front of planet (idxPlanet < idxMoon)
 			if idxPlanet >= idxMoon {
 				t.Errorf("Frame %d: expected Moon to render in front of Planet, got Planet idx %d >= Moon idx %d", i+1, idxPlanet, idxMoon)
 			}
@@ -1335,4 +1409,177 @@ func TestDepth_ReorderingAndRasterOcclusion(t *testing.T) {
 		t.Errorf("Frame 4 (25,25) expected Green on top of Red again, got RGBA=(%d, %d, %d)", r4>>8, g4>>8, b4>>8)
 	}
 }
+
+func TestParseMotionConfig_CameraAndDist(t *testing.T) {
+	tests := []struct {
+		label      string
+		wantType   string
+		wantCam    bool
+		wantPar    bool
+		wantFactor float64
+		wantEase   string
+		wantStart  int
+		wantEnd    int
+	}{
+		{
+			label:     "Camera {f: 1-20; ease: in-out}",
+			wantType:  "camera",
+			wantCam:   true,
+			wantEase:  "in-out",
+			wantStart: 1,
+			wantEnd:   20,
+		},
+		{
+			label:      "Dist {factor: 0.2}",
+			wantType:   "dist",
+			wantPar:    true,
+			wantFactor: 0.2,
+		},
+		{
+			label:      "Distance {factor: 1.5}",
+			wantType:   "dist",
+			wantPar:    true,
+			wantFactor: 1.5,
+		},
+		{
+			label:      "Dist {depth: 100}",
+			wantType:   "dist",
+			wantPar:    true,
+			wantFactor: 0.5, // 1.0 / (1.0 + 100*0.01) = 0.5
+		},
+		{
+			label:      "Dist {fixed: true}",
+			wantType:   "dist",
+			wantPar:    true,
+			wantFactor: 0.0,
+		},
+		{
+			label:      "Dist {fixed}",
+			wantType:   "dist",
+			wantPar:    true,
+			wantFactor: 0.0,
+		},
+	}
+
+	for _, tt := range tests {
+		cfg, ok := parseMotionConfig(tt.label)
+		if !ok {
+			t.Errorf("[%s] parseMotionConfig failed", tt.label)
+			continue
+		}
+		if cfg.Type != tt.wantType {
+			t.Errorf("[%s] got Type=%s, want %s", tt.label, cfg.Type, tt.wantType)
+		}
+		if cfg.IsCamera != tt.wantCam {
+			t.Errorf("[%s] got IsCamera=%v, want %v", tt.label, cfg.IsCamera, tt.wantCam)
+		}
+		if cfg.HasParallax != tt.wantPar {
+			t.Errorf("[%s] got HasParallax=%v, want %v", tt.label, cfg.HasParallax, tt.wantPar)
+		}
+		if tt.wantFactor != 0 && math.Abs(cfg.ParallaxFactor-tt.wantFactor) > 1e-4 {
+			t.Errorf("[%s] got ParallaxFactor=%f, want %f", tt.label, cfg.ParallaxFactor, tt.wantFactor)
+		}
+		if tt.wantEase != "" && cfg.Ease != tt.wantEase {
+			t.Errorf("[%s] got Ease=%s, want %s", tt.label, cfg.Ease, tt.wantEase)
+		}
+		if tt.wantStart != 0 && cfg.StartFrame != tt.wantStart {
+			t.Errorf("[%s] got StartFrame=%d, want %d", tt.label, cfg.StartFrame, tt.wantStart)
+		}
+		if tt.wantEnd != 0 && cfg.EndFrame != tt.wantEnd {
+			t.Errorf("[%s] got EndFrame=%d, want %d", tt.label, cfg.EndFrame, tt.wantEnd)
+		}
+	}
+}
+
+func TestBuildTimelineFrameSVG_CameraParallax(t *testing.T) {
+	data, err := os.ReadFile("../../testdata/parallax_test.svg")
+	if err != nil {
+		t.Fatalf("Failed to read parallax_test.svg: %v", err)
+	}
+
+	doc, err := ParseSVG(data)
+	if err != nil {
+		t.Fatalf("ParseSVG failed: %v", err)
+	}
+
+	if doc.CameraPath == nil {
+		t.Fatalf("Expected doc.CameraPath to be populated, got nil")
+	}
+
+	// Frame 0 (frame1Idx = 1, t = 0.0):
+	// Camera translation is (0, 0), so no parallax offsets
+	f0Bytes, err := BuildTimelineFrameSVG(doc, 0, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("BuildTimelineFrameSVG f0 failed: %v", err)
+	}
+	f0Str := string(f0Bytes)
+	if strings.Contains(f0Str, "cam_track") {
+		t.Errorf("Frame 0 expected camera path cam_track to be hidden")
+	}
+
+	// Frame 2 (frame1Idx = 3, t = 1.0):
+	// Camera has moved +40px horizontally: cx = 40, cy = 0
+	// Background (factor 0.1): dx = -40 * 0.1 = -4.0
+	// Midground (depth 100 -> factor 0.5): dx = -40 * 0.5 = -20.0
+	// Focal Character (default factor 1.0): dx = -40 * 1.0 = -40.0
+	// Foreground (factor 1.5): dx = -40 * 1.5 = -60.0
+	// HUD (fixed): dx = 0
+	f2Bytes, err := BuildTimelineFrameSVG(doc, 2, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("BuildTimelineFrameSVG f2 failed: %v", err)
+	}
+	f2Str := string(f2Bytes)
+
+	// Verify Background group translation (-4.0)
+	if !strings.Contains(f2Str, "translate(-4.000000, -0.000000)") && !strings.Contains(f2Str, "translate(-4.000000, 0.000000)") {
+		t.Errorf("Expected layer_bg to have translate(-4, 0), frame SVG:\n%s", f2Str)
+	}
+
+	// Verify Midground group translation (-20.0)
+	if !strings.Contains(f2Str, "translate(-20.000000, -0.000000)") && !strings.Contains(f2Str, "translate(-20.000000, 0.000000)") {
+		t.Errorf("Expected layer_mid to have translate(-20, 0), frame SVG:\n%s", f2Str)
+	}
+
+	// Verify Focal Character translation (-40.0)
+	if !strings.Contains(f2Str, "translate(-40.000000, -0.000000)") && !strings.Contains(f2Str, "translate(-40.000000, 0.000000)") {
+		t.Errorf("Expected layer_focal to have translate(-40, 0), frame SVG:\n%s", f2Str)
+	}
+
+	// Verify Foreground translation (-60.0)
+	if !strings.Contains(f2Str, "translate(-60.000000, -0.000000)") && !strings.Contains(f2Str, "translate(-60.000000, 0.000000)") {
+		t.Errorf("Expected layer_fg to have translate(-60, 0), frame SVG:\n%s", f2Str)
+	}
+
+	// Verify HUD has NO translation
+	idxHud := strings.Index(f2Str, `id="layer_hud"`)
+	if idxHud != -1 {
+		hudSub := f2Str[idxHud : idxHud+strings.Index(f2Str[idxHud:], ">")]
+		if strings.Contains(hudSub, "translate") {
+			t.Errorf("Expected layer_hud to have NO translate, got: %s", hudSub)
+		}
+	}
+
+	// Verify nested child inside focal character does NOT double translate
+	idxChild := strings.Index(f2Str, `id="focal_child"`)
+	if idxChild != -1 {
+		childSub := f2Str[idxChild : idxChild+strings.Index(f2Str[idxChild:], ">")]
+		if strings.Contains(childSub, "translate(-40") || strings.Contains(childSub, "translate(-80") {
+			t.Errorf("Expected focal_child to NOT double translate, got: %s", childSub)
+		}
+		// But child should still have its local scale transform!
+		if !strings.Contains(childSub, "scale(2.000000, 2.000000)") {
+			t.Errorf("Expected focal_child to have scale(2, 2), got: %s", childSub)
+		}
+	}
+
+	// Verify rasterization renders without errors
+	img, err := RenderSVGToRGBA(f2Bytes, 200, 200)
+	if err != nil {
+		t.Fatalf("RenderSVGToRGBA failed on parallax frame: %v", err)
+	}
+	if img == nil || img.Bounds().Dx() != 200 {
+		t.Fatalf("Rendered image bounds unexpected: %v", img.Bounds())
+	}
+}
+
 

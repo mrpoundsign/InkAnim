@@ -48,7 +48,7 @@ func NewLeftFramesPanel(sess *app.Session, onFramesChange func()) *LeftFramesPan
 			p.onFramesChange()
 		}
 	})
-	p.cropBoundaryRadio.Selected = "Drawing"
+	p.cropBoundaryRadio.Selected = "Page"
 
 	p.cropPageSelect = widget.NewSelect([]string{"(No document loaded)"}, func(selected string) {
 		if p.isUpdating || p.session == nil || p.session.Document == nil {

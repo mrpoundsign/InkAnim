@@ -238,12 +238,12 @@ func TestSessionCropBoundaryModes(t *testing.T) {
 	}
 
 	// multipage_walk.svg has 2 pages (each 256x256), doc is 560x256
-	// Default mode is always ModeLayers, CropBoundaryMode is BoundaryDrawing
+	// Default mode is always ModeLayers, CropBoundaryMode is BoundaryPage
 	if sess.CurrentMode != inksvg.ModeLayers {
 		t.Errorf("expected default mode layers, got %s", sess.CurrentMode)
 	}
-	if sess.CropBoundaryMode != inksvg.BoundaryDrawing {
-		t.Errorf("expected default boundary mode drawing, got %s", sess.CropBoundaryMode)
+	if sess.CropBoundaryMode != inksvg.BoundaryPage {
+		t.Errorf("expected default boundary mode page, got %s", sess.CropBoundaryMode)
 	}
 
 	// Switch to Page boundary mode for Page 1 (pageIndex 1 = Page 1)
@@ -286,8 +286,8 @@ func TestSessionCropBoundaryModes(t *testing.T) {
 	if sessLayers.CurrentMode != inksvg.ModeLayers {
 		t.Errorf("expected layers mode, got %s", sessLayers.CurrentMode)
 	}
-	if sessLayers.CropBoundaryMode != inksvg.BoundaryDrawing {
-		t.Errorf("expected drawing boundary for layers, got %s", sessLayers.CropBoundaryMode)
+	if sessLayers.CropBoundaryMode != inksvg.BoundaryPage {
+		t.Errorf("expected page boundary for layers, got %s", sessLayers.CropBoundaryMode)
 	}
 
 	// Test bouncing_walker.svg with Drawing vs Page (Document vs Focus Page)
@@ -299,7 +299,10 @@ func TestSessionCropBoundaryModes(t *testing.T) {
 	if err := sessBounce.LoadSVG(bouncePath); err != nil {
 		t.Fatalf("LoadSVG bouncing_walker failed: %v", err)
 	}
-	// Default mode for bouncing_walker is ModeLayers, CropBoundaryMode is BoundaryDrawing (unclipped, width >= 350)
+	// Test bouncing_walker.svg with Drawing vs Page (Document vs Focus Page)
+	if err := sessBounce.SetCropBoundary(inksvg.BoundaryDrawing, 0); err != nil {
+		t.Fatalf("SetCropBoundary drawing failed: %v", err)
+	}
 	bDrawW, _ := sessBounce.GetActiveBoundaryDimensions()
 	if bDrawW < 350 {
 		t.Errorf("expected drawing width >= 350 in bouncing_walker, got %f", bDrawW)
@@ -335,9 +338,14 @@ func TestHydrateSessionLoadAndPreviewBounds(t *testing.T) {
 		t.Fatalf("LoadSVG hydrate.svg failed: %v", err)
 	}
 
-	// 1. Initial load for layered SVG is in Drawing mode
-	if sess.CropBoundaryMode != inksvg.BoundaryDrawing {
-		t.Errorf("expected BoundaryDrawing on load, got %s", sess.CropBoundaryMode)
+	// 1. Initial load for layered SVG is in Page mode
+	if sess.CropBoundaryMode != inksvg.BoundaryPage {
+		t.Errorf("expected BoundaryPage on load, got %s", sess.CropBoundaryMode)
+	}
+
+	// Switch to Drawing mode to verify stroke inclusion
+	if err := sess.SetCropBoundary(inksvg.BoundaryDrawing, 0); err != nil {
+		t.Fatalf("SetCropBoundary Drawing failed: %v", err)
 	}
 
 	// 2. Active boundary in Drawing mode includes 15px stroke width (maxY >= 270.0)
@@ -369,7 +377,7 @@ func BenchmarkRerenderAllFrames(b *testing.B) {
 	}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		if err := sess.RerenderAllFrames(); err != nil {
 			b.Fatalf("RerenderAllFrames failed: %v", err)
 		}
@@ -388,7 +396,7 @@ func BenchmarkRenderExportFrames(b *testing.B) {
 	}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		frames, err := sess.RenderExportFrames()
 		if err != nil || len(frames) == 0 {
 			b.Fatalf("RenderExportFrames failed: %v", err)
@@ -433,9 +441,9 @@ func TestMultiPageCropResolutionAndPrerender(t *testing.T) {
 		t.Fatalf("expected 2 pages, got %d", len(sess.Pages))
 	}
 
-	// 1. Initial load starts in BoundaryDrawing mode
-	if sess.CropBoundaryMode != inksvg.BoundaryDrawing {
-		t.Errorf("expected initial mode BoundaryDrawing, got %v", sess.CropBoundaryMode)
+	// 1. Initial load starts in BoundaryPage mode
+	if sess.CropBoundaryMode != inksvg.BoundaryPage {
+		t.Errorf("expected initial mode BoundaryPage, got %v", sess.CropBoundaryMode)
 	}
 
 	// Synchronously finish pre-rendering all pages

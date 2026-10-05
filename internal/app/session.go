@@ -37,7 +37,7 @@ type Session struct {
 func NewSession() *Session {
 	return &Session{
 		CurrentMode:      inksvg.ModeLayers,
-		CropBoundaryMode: inksvg.BoundaryDrawing,
+		CropBoundaryMode: inksvg.BoundaryPage,
 		CropPageIndex:    0,
 		ExportOptions:    gif.DefaultOptions(),
 		PinnedLayers:     make(map[string]bool),
@@ -102,7 +102,7 @@ func (s *Session) LoadSVGData(data []byte, filename string) error {
 	copy(s.Pages, doc.Pages)
 
 	s.CurrentMode = inksvg.ModeLayers
-	s.CropBoundaryMode = inksvg.BoundaryDrawing
+	s.CropBoundaryMode = inksvg.BoundaryPage
 	s.CropPageIndex = 0
 	s.PinnedLayers = make(map[string]bool)
 

@@ -90,6 +90,13 @@ func ParseSVG(data []byte) (*SVGDocument, error) {
 					doc.Layers = append(doc.Layers, layer)
 					layerIdx++
 				}
+				if cfg, ok := parseMotionConfig(label); ok && cfg.HasParallax {
+					doc.MotionPaths = append(doc.MotionPaths, MotionPath{
+						ID:      id + "_dist",
+						GroupID: id,
+						Config:  cfg,
+					})
+				}
 				activeGroups = append(activeGroups, id)
 			}
 
@@ -107,13 +114,21 @@ func ParseSVG(data []byte) (*SVGDocument, error) {
 						d = attr.Value
 					}
 				}
-				if cfg, ok := parseMotionConfig(label); ok && len(activeGroups) > 0 {
-					doc.MotionPaths = append(doc.MotionPaths, MotionPath{
+				if cfg, ok := parseMotionConfig(label); ok {
+					mp := MotionPath{
 						ID:       id,
-						GroupID:  activeGroups[len(activeGroups)-1],
 						PathData: d,
 						Config:   cfg,
-					})
+					}
+					if len(activeGroups) > 0 {
+						mp.GroupID = activeGroups[len(activeGroups)-1]
+					}
+					if cfg.IsCamera {
+						doc.CameraPath = &mp
+					}
+					if len(activeGroups) > 0 {
+						doc.MotionPaths = append(doc.MotionPaths, mp)
+					}
 				}
 			}
 
@@ -643,6 +658,33 @@ func parseMotionConfig(label string) (MotionConfig, bool) {
 		}
 	}
 	if configType == "" {
+		if idx := strings.Index(lower, "camera"); idx != -1 {
+			rest := strings.TrimLeft(label[idx+6:], " \t")
+			if strings.HasPrefix(rest, "{") {
+				configType = "camera"
+				contentStart = idx + 6 + (len(label[idx+6:]) - len(rest)) + 1
+			}
+		}
+	}
+	if configType == "" {
+		if idx := strings.Index(lower, "distance"); idx != -1 {
+			rest := strings.TrimLeft(label[idx+8:], " \t")
+			if strings.HasPrefix(rest, "{") {
+				configType = "dist"
+				contentStart = idx + 8 + (len(label[idx+8:]) - len(rest)) + 1
+			}
+		}
+	}
+	if configType == "" {
+		if idx := strings.Index(lower, "dist"); idx != -1 {
+			rest := strings.TrimLeft(label[idx+4:], " \t")
+			if strings.HasPrefix(rest, "{") {
+				configType = "dist"
+				contentStart = idx + 4 + (len(label[idx+4:]) - len(rest)) + 1
+			}
+		}
+	}
+	if configType == "" {
 		return MotionConfig{}, false
 	}
 
@@ -689,6 +731,11 @@ func parseMotionConfig(label string) (MotionConfig, bool) {
 			config.Reverse = true
 			continue
 		}
+		if part == "fixed" {
+			config.ParallaxFactor = 0.0
+			config.HasParallax = true
+			continue
+		}
 		kv := strings.SplitN(part, ":", 2)
 		if len(kv) != 2 {
 			continue
@@ -702,6 +749,17 @@ func parseMotionConfig(label string) (MotionConfig, bool) {
 			config.Type = v
 		case "rev", "reverse":
 			config.Reverse = (v == "true" || v == "1" || v == "yes")
+		case "factor":
+			if vFloat, err := strconv.ParseFloat(v, 64); err == nil {
+				config.ParallaxFactor = vFloat
+				config.HasParallax = true
+			}
+		case "fixed":
+			vLower := strings.ToLower(v)
+			if vLower == "true" || vLower == "yes" || vLower == "1" || vLower == "" {
+				config.ParallaxFactor = 0.0
+				config.HasParallax = true
+			}
 		case "opacity":
 			if vFloat, err := strconv.ParseFloat(strings.TrimSuffix(v, "%"), 64); err == nil {
 				if vFloat > 1.0 {
@@ -725,10 +783,17 @@ func parseMotionConfig(label string) (MotionConfig, bool) {
 				config.HasVisibility = true
 			}
 		case "z", "depth":
-			cleanV := strings.TrimPrefix(v, "+")
-			if zInt, err := strconv.Atoi(cleanV); err == nil {
-				config.DepthOffset = zInt
-				config.HasDepth = true
+			if configType == "dist" {
+				if vFloat, err := strconv.ParseFloat(v, 64); err == nil {
+					config.ParallaxFactor = 1.0 / (1.0 + vFloat*0.01)
+					config.HasParallax = true
+				}
+			} else {
+				cleanV := strings.TrimPrefix(v, "+")
+				if zInt, err := strconv.Atoi(cleanV); err == nil {
+					config.DepthOffset = zInt
+					config.HasDepth = true
+				}
 			}
 		case "scale":
 			if vFloat, err := strconv.ParseFloat(v, 64); err == nil {
@@ -744,7 +809,8 @@ func parseMotionConfig(label string) (MotionConfig, bool) {
 				config.ScaleToY = vFloat
 			}
 		case "from":
-			if configType == "fade" {
+			switch configType {
+			case "fade":
 				if vFloat, err := strconv.ParseFloat(strings.TrimSuffix(v, "%"), 64); err == nil {
 					if vFloat > 1.0 {
 						vFloat /= 100.0
@@ -758,7 +824,12 @@ func parseMotionConfig(label string) (MotionConfig, bool) {
 					hasExplicitFrom = true
 					config.HasOpacity = true
 				}
-			} else {
+			case "rot":
+				if vFloat, err := strconv.ParseFloat(strings.TrimSuffix(v, "deg"), 64); err == nil {
+					config.RotationFrom = vFloat
+					config.HasRotationRange = true
+				}
+			default:
 				if vFloat, err := strconv.ParseFloat(v, 64); err == nil {
 					config.ScaleFromX = vFloat
 					config.ScaleFromY = vFloat
@@ -773,7 +844,8 @@ func parseMotionConfig(label string) (MotionConfig, bool) {
 				config.ScaleFromY = vFloat
 			}
 		case "to":
-			if configType == "fade" {
+			switch configType {
+			case "fade":
 				if vFloat, err := strconv.ParseFloat(strings.TrimSuffix(v, "%"), 64); err == nil {
 					if vFloat > 1.0 {
 						vFloat /= 100.0
@@ -786,7 +858,12 @@ func parseMotionConfig(label string) (MotionConfig, bool) {
 					config.OpacityTo = vFloat
 					config.HasOpacity = true
 				}
-			} else {
+			case "rot":
+				if vFloat, err := strconv.ParseFloat(strings.TrimSuffix(v, "deg"), 64); err == nil {
+					config.RotationTo = vFloat
+					config.HasRotationRange = true
+				}
+			default:
 				if vFloat, err := strconv.ParseFloat(v, 64); err == nil {
 					config.ScaleToX = vFloat
 					config.ScaleToY = vFloat

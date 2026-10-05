@@ -276,6 +276,16 @@ Depth {f:&lt;range&gt; z:&lt;signed-int&gt;}</code></pre>
                 <td><span class="badge badge-purple">Hide {f:1-10}</span></td>
                 <td>Inverted visibility: group is strictly hidden during specified frames and visible during all other frames.</td>
               </tr>
+              <tr>
+                <td><code>Camera {f:... ease:...}</code></td>
+                <td><span class="badge badge-purple">Camera {f:1-20}</span></td>
+                <td>Global viewport camera trajectory path. Camera motion translates scene objects in the inverse direction according to each group's parallax distance factor.</td>
+              </tr>
+              <tr>
+                <td><code>Dist {factor:...}</code>, <code>Dist {depth:...}</code></td>
+                <td><span class="badge badge-cyan">Dist {factor:0.2}</span></td>
+                <td>Multi-plane parallax factor relative to Camera. Defaults to <code>1.0</code> (focal plane). Use <code>factor:0.1</code> for distant stars/mountains, <code>factor:1.5</code> for foreground, or <code>fixed</code> / <code>factor:0</code> for static HUD overlays.</td>
+              </tr>
             </tbody>
           </table>
         </div>
@@ -401,6 +411,25 @@ Hide {f:9-13}</code></pre>
           <div class="code-header"><span>2.5D Orbit Stacking Recipe</span><span>Label</span></div>
           <pre class="code-content"><code>Depth {f:1-10 z:-1}
 Depth {f:11-20 z:+1}</code></pre>
+        </div>
+
+        <h3>7. Multi-Plane Parallax & Camera Pan</h3>
+        <p>
+          Pan the global viewport across a multi-depth landscape or space scene without animating each object manually. Distant layers drift subtly while foreground elements pass swiftly:
+        </p>
+        <div class="code-card">
+          <div class="code-header"><span>Global Camera & Parallax Recipes</span><span>Label</span></div>
+          <pre class="code-content"><code>&lt;!-- Camera Pan (Root or Guide Layer) --&gt;
+Camera {f:1-20 ease:in-out}
+
+&lt;!-- Distant Stars / Clouds Layer --&gt;
+Dist {factor:0.1}
+
+&lt;!-- Midground Planet / Mountains Layer --&gt;
+Dist {factor:0.5}
+
+&lt;!-- Fixed HUD Overlay --&gt;
+Dist {fixed}</code></pre>
         </div>
       </section>
 
