@@ -92,8 +92,8 @@ func ParseSVG(data []byte) (*SVGDocument, error) {
 				activeGroups = append(activeGroups, id)
 			}
 
-			// Check for IAMS Motion Path: <path inkscape:label="Movement {...}" d="...">
-			if name == "path" {
+			// Check for IAMS Motion Path or marker element: <path inkscape:label="..." d="...">
+			if name == "path" || name == "circle" || name == "rect" || name == "ellipse" || name == "line" {
 				var id, label, d string
 				for _, attr := range elem.Attr {
 					if attr.Name.Local == "id" {
@@ -299,7 +299,7 @@ func ComputeElementRect(data []byte, elementID string) (Rect, bool) {
 			if inTarget {
 				targetDepth++
 				// Skip internal motion path guides so they don't expand the element's bounding box
-				if elem.Name.Local == "path" {
+				if elem.Name.Local == "path" || elem.Name.Local == "circle" || elem.Name.Local == "rect" || elem.Name.Local == "ellipse" || elem.Name.Local == "line" {
 					for _, attr := range elem.Attr {
 						if attr.Name.Local == "label" {
 							if _, ok := parseMotionConfig(attr.Value); ok {
@@ -588,6 +588,24 @@ func parseMotionConfig(label string) (MotionConfig, bool) {
 		}
 	}
 	if configType == "" {
+		if idx := strings.Index(lower, "scale"); idx != -1 {
+			rest := strings.TrimLeft(label[idx+5:], " \t")
+			if strings.HasPrefix(rest, "{") {
+				configType = "scale"
+				contentStart = idx + 5 + (len(label[idx+5:]) - len(rest)) + 1
+			}
+		}
+	}
+	if configType == "" {
+		if idx := strings.Index(lower, "scal"); idx != -1 {
+			rest := strings.TrimLeft(label[idx+4:], " \t")
+			if strings.HasPrefix(rest, "{") {
+				configType = "scale"
+				contentStart = idx + 4 + (len(label[idx+4:]) - len(rest)) + 1
+			}
+		}
+	}
+	if configType == "" {
 		return MotionConfig{}, false
 	}
 
@@ -620,12 +638,7 @@ func parseMotionConfig(label string) (MotionConfig, bool) {
 		return r == ';' || r == ',' || unicode.IsSpace(r)
 	})
 
-	config := MotionConfig{
-		Type:        configType,
-		Ease:        "linear",
-		RotationDir: "cw",
-		PivotType:   "center",
-	}
+	config := DefaultMotionConfig(configType)
 
 	var foundF bool
 
@@ -651,6 +664,45 @@ func parseMotionConfig(label string) (MotionConfig, bool) {
 			config.Type = v
 		case "rev", "reverse":
 			config.Reverse = (v == "true" || v == "1" || v == "yes")
+		case "scale":
+			if vFloat, err := strconv.ParseFloat(v, 64); err == nil {
+				config.ScaleToX = vFloat
+				config.ScaleToY = vFloat
+			}
+		case "scale-x", "x":
+			if vFloat, err := strconv.ParseFloat(v, 64); err == nil {
+				config.ScaleToX = vFloat
+			}
+		case "scale-y", "y":
+			if vFloat, err := strconv.ParseFloat(v, 64); err == nil {
+				config.ScaleToY = vFloat
+			}
+		case "from":
+			if vFloat, err := strconv.ParseFloat(v, 64); err == nil {
+				config.ScaleFromX = vFloat
+				config.ScaleFromY = vFloat
+			}
+		case "from-x":
+			if vFloat, err := strconv.ParseFloat(v, 64); err == nil {
+				config.ScaleFromX = vFloat
+			}
+		case "from-y":
+			if vFloat, err := strconv.ParseFloat(v, 64); err == nil {
+				config.ScaleFromY = vFloat
+			}
+		case "to":
+			if vFloat, err := strconv.ParseFloat(v, 64); err == nil {
+				config.ScaleToX = vFloat
+				config.ScaleToY = vFloat
+			}
+		case "to-x":
+			if vFloat, err := strconv.ParseFloat(v, 64); err == nil {
+				config.ScaleToX = vFloat
+			}
+		case "to-y":
+			if vFloat, err := strconv.ParseFloat(v, 64); err == nil {
+				config.ScaleToY = vFloat
+			}
 		case "angle":
 			if deg, err := strconv.ParseFloat(v, 64); err == nil {
 				config.RotationAngle = deg

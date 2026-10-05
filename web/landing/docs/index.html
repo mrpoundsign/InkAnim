@@ -178,12 +178,13 @@
       <section id="syntax" class="docs-section">
         <h2>⚙️ Syntax Reference</h2>
         <p>
-          The syntax is compact and space-separated. Two primary commands are available:
+          The syntax is compact and space-separated. Three primary commands are available:
         </p>
         <div class="code-card">
           <div class="code-header"><span>IAMS Syntax Format</span><span>Format</span></div>
-          <pre class="code-content"><code>Move {f:&lt;range&gt; [ease:&lt;curve&gt;] [rev] [orient:true] [angle:&lt;deg&gt;] [dir:cw|ccw] [pivot:&lt;origin&gt;]}
-Rot  {f:&lt;range&gt; [ease:&lt;curve&gt;] [rev] angle:&lt;deg&gt; [dir:cw|ccw] [pivot:&lt;origin&gt;]}</code></pre>
+          <pre class="code-content"><code>Move  {f:&lt;range&gt; [ease:&lt;curve&gt;] [rev] [orient:true] [angle:&lt;deg&gt;] [dir:cw|ccw] [pivot:&lt;origin&gt;]}
+Rot   {f:&lt;range&gt; [ease:&lt;curve&gt;] [rev] angle:&lt;deg&gt; [dir:cw|ccw] [pivot:&lt;origin&gt;]}
+Scale {f:&lt;range&gt; [ease:&lt;curve&gt;] [rev] [scale:&lt;multiplier&gt;] [scale-x:&lt;val&gt;] [scale-y:&lt;val&gt;] [from:&lt;val&gt;] [to:&lt;val&gt;] [pivot:&lt;origin&gt;]}</code></pre>
         </div>
 
         <div class="docs-table-wrapper">
@@ -212,6 +213,21 @@ Rot  {f:&lt;range&gt; [ease:&lt;curve&gt;] [rev] angle:&lt;deg&gt; [dir:cw|ccw] 
                 <td>Acceleration/deceleration curve: <code>linear</code>, <code>in</code>, <code>out</code>, <code>in-out</code>. Defaults to <code>linear</code>.</td>
               </tr>
               <tr>
+                <td><code>scale:&lt;val&gt;</code></td>
+                <td><span class="badge badge-cyan">scale:1.5</span></td>
+                <td>Uniform scale target multiplier (scales both X and Y from 1.0 to multiplier).</td>
+              </tr>
+              <tr>
+                <td><code>scale-x:&lt;val&gt;</code>, <code>scale-y:&lt;val&gt;</code></td>
+                <td><span class="badge badge-cyan">scale-x:1.2</span></td>
+                <td>Independent horizontal and vertical scale multipliers (also aliased as <code>x:</code> and <code>y:</code>).</td>
+              </tr>
+              <tr>
+                <td><code>from:&lt;val&gt;</code>, <code>to:&lt;val&gt;</code></td>
+                <td><span class="badge badge-cyan">from:0.5 to:1.5</span></td>
+                <td>Scale range interpolation (also supports independent axes: <code>from-x</code>, <code>to-x</code>, <code>from-y</code>, <code>to-y</code>). Defaults start at 1.0.</td>
+              </tr>
+              <tr>
                 <td><code>angle:&lt;deg&gt;</code></td>
                 <td><span class="badge badge-cyan">angle:360</span></td>
                 <td>Degrees of rotation to complete over the frame range.</td>
@@ -228,8 +244,8 @@ Rot  {f:&lt;range&gt; [ease:&lt;curve&gt;] [rev] angle:&lt;deg&gt; [dir:cw|ccw] 
               </tr>
               <tr>
                 <td><code>pivot:&lt;origin&gt;</code></td>
-                <td><span class="badge badge-amber">pivot:0</span></td>
-                <td>Rotation origin: <code>center</code> (bounding box center), clock degrees (<code>0</code>=top, <code>90</code>=right, <code>180</code>=bottom, <code>270</code>=left), element ID (<code>#pin</code>), or <code>path-start</code>.</td>
+                <td><span class="badge badge-amber">pivot:180</span></td>
+                <td>Rotation & scale anchor: <code>center</code> (bounding box center), clock degrees (<code>0</code>=top, <code>90</code>=right, <code>180</code>=bottom, <code>270</code>=left), element ID (<code>#pin</code>), or <code>path-start</code>.</td>
               </tr>
               <tr>
                 <td><code>rev</code> / <code>reverse</code></td>
@@ -331,7 +347,16 @@ Rot  {f:&lt;range&gt; [ease:&lt;curve&gt;] [rev] angle:&lt;deg&gt; [dir:cw|ccw] 
         </p>
         <div class="code-card">
           <div class="code-header"><span>Fly-By Recipe</span><span>Label</span></div>
-          <pre class="code-content"><code>Motion {f:all ease:linear}</code></pre>
+          <pre class="code-content"><code>Move {f:all ease:linear}</code></pre>
+        </div>
+
+        <h3>4. Squash-and-Stretch Bounce</h3>
+        <p>
+          An animated object compresses upon ground impact and stretches upwards, anchored to its bottom edge:
+        </p>
+        <div class="code-card">
+          <div class="code-header"><span>Squash-and-Stretch Recipe</span><span>Label</span></div>
+          <pre class="code-content"><code>Scale {f:1-15 ease:in-out from-x:1.4 to-x:0.8 from-y:0.6 to-y:1.25 pivot:180}</code></pre>
         </div>
       </section>
 
