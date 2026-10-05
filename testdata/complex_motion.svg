@@ -40,6 +40,39 @@
     <path id="fb_hide_3" inkscape:label="Hide {f: 16-17}" d="M 0,0 L 0,0" />
   </g>
 
+  <!-- Center Planet with Stylized Ring (Enlarged) -->
+  <g id="group_planet" inkscape:groupmode="layer" inkscape:label="Center Planet">
+    <!-- Tilted Planetary Ring behind/around -->
+    <ellipse cx="128" cy="128" rx="42" ry="11" fill="none" stroke="#a78bfa" stroke-width="2.5" transform="rotate(-45 128 128)" opacity="0.75" />
+    <!-- Planet Sphere -->
+    <circle cx="128" cy="128" r="26" fill="#7c3aed" stroke="#6d28d9" stroke-width="2" />
+    <circle cx="121" cy="121" r="19" fill="#8b5cf6" opacity="0.65" />
+    <circle cx="117" cy="116" r="4.5" fill="#c4b5fd" opacity="0.85" />
+  </g>
+
+  <!-- Moon in 45-degree Elliptical Orbit (shifts depth behind planet f: 1-10, in front f: 11-20) -->
+  <g id="group_moon" inkscape:groupmode="layer" inkscape:label="Orbiting Moon">
+    <!-- Moon Artwork placed at start point (92.6, 92.6) -->
+    <circle cx="92.6" cy="92.6" r="5" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1.2" />
+    <circle cx="91.5" cy="91.5" r="1.4" fill="#cbd5e1" />
+
+    <!-- 20-frame 45-degree Elliptical Orbit Path -->
+    <path
+       id="moon_orbit_path"
+       inkscape:label="Move {f: 1-20; ease: linear}"
+       d="M 92.6,92.6 C 100.4,84.8 122.6,94.4 142.1,113.9 C 161.6,133.4 171.2,155.6 163.4,163.4 C 155.6,171.2 133.4,161.6 113.9,142.1 C 94.4,122.6 84.8,100.4 92.6,92.6" />
+
+    <!-- Dynamic Depth: renders behind planet during back half, in front during front half -->
+    <path id="moon_depth_back" inkscape:label="Depth {f: 1-10; z: -1}" d="M 0,0 L 0,0" />
+    <path id="moon_depth_front" inkscape:label="Depth {f: 11-20; z: +1}" d="M 0,0 L 0,0" />
+
+    <!-- Perspective Scaling: shrinks as it moves away behind planet, swells as it orbits toward us in foreground -->
+    <path id="moon_scale_p1" inkscape:label="Scale {f: 1-5; ease: in-out; from: 1.0; to: 0.65; pivot: center}" d="M 0,0 L 0,0" />
+    <path id="moon_scale_p2" inkscape:label="Scale {f: 6-10; ease: in-out; from: 0.65; to: 1.0; pivot: center}" d="M 0,0 L 0,0" />
+    <path id="moon_scale_p3" inkscape:label="Scale {f: 11-15; ease: in-out; from: 1.0; to: 1.45; pivot: center}" d="M 0,0 L 0,0" />
+    <path id="moon_scale_p4" inkscape:label="Scale {f: 16-20; ease: in-out; from: 1.45; to: 1.0; pivot: center}" d="M 0,0 L 0,0" />
+  </g>
+
   <!-- Shuttle Group with overlapping 20-frame flight path and mid-flight 360 roll -->
   <g
      inkscape:groupmode="layer"

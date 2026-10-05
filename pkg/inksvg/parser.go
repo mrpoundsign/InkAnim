@@ -634,6 +634,15 @@ func parseMotionConfig(label string) (MotionConfig, bool) {
 		}
 	}
 	if configType == "" {
+		if idx := strings.Index(lower, "depth"); idx != -1 {
+			rest := strings.TrimLeft(label[idx+5:], " \t")
+			if strings.HasPrefix(rest, "{") {
+				configType = "depth"
+				contentStart = idx + 5 + (len(label[idx+5:]) - len(rest)) + 1
+			}
+		}
+	}
+	if configType == "" {
 		return MotionConfig{}, false
 	}
 
@@ -714,6 +723,12 @@ func parseMotionConfig(label string) (MotionConfig, bool) {
 			if vLower == "show" || vLower == "hide" {
 				config.VisibilityState = vLower
 				config.HasVisibility = true
+			}
+		case "z", "depth":
+			cleanV := strings.TrimPrefix(v, "+")
+			if zInt, err := strconv.Atoi(cleanV); err == nil {
+				config.DepthOffset = zInt
+				config.HasDepth = true
 			}
 		case "scale":
 			if vFloat, err := strconv.ParseFloat(v, 64); err == nil {
