@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="256"
+   height="256"
+   viewBox="0 0 256 256"
+   version="1.1"
+   id="svg_color_shift_demo"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns="http://www.w3.org/2000/svg">
+  <defs id="defs_color_demo">
+    <!-- Prismatic Gem Color Palette: Magenta -> Violet -> Cyan -> Emerald -->
+    <linearGradient id="gem_palette">
+      <stop offset="0%" stop-color="#ec4899" />
+      <stop offset="33%" stop-color="#8b5cf6" />
+      <stop offset="66%" stop-color="#06b6d4" />
+      <stop offset="100%" stop-color="#10b981" />
+    </linearGradient>
+  </defs>
+
+  <!-- Dark Studio Background -->
+  <rect width="256" height="256" fill="#090d16" id="bg" />
+
+  <!-- Circular Pedestal Platform -->
+  <ellipse cx="128" cy="205" rx="60" ry="18" fill="#1e293b" stroke="#334155" stroke-width="2" id="pedestal_base" />
+  <ellipse cx="128" cy="200" rx="48" ry="12" fill="#0f172a" stroke="#475569" stroke-width="1.5" id="pedestal_top" />
+
+  <!-- Background Ambient Glow Ring -->
+  <ellipse cx="128" cy="120" rx="42" ry="42" fill="none" stroke="#334155" stroke-width="1.5" stroke-dasharray="4 4" opacity="0.6" id="ambient_ring" />
+
+  <!-- Floating Prismatic Crystal Gem Group -->
+  <g
+     inkscape:groupmode="layer"
+     id="group_crystal"
+     inkscape:label="Prismatic Crystal">
+
+    <!-- Modifier Object: Sets 30-frame pingpong color cycle across all gem facets -->
+    <rect
+       id="gem_color_mod"
+       x="0"
+       y="0"
+       width="1"
+       height="1"
+       fill="url(#gem_palette)"
+       inkscape:label="Color { f: 1-30; pingpong: true; target: fill }" />
+
+    <!-- Motion Path: Gentle vertical levitation hover -->
+    <path
+       id="gem_hover"
+       inkscape:label="Move { f: 1-30; pingpong: true; ease: in-out }"
+       d="M 128,128 L 128,114" />
+
+    <!-- Multifaceted Gem Facets (different opacities create 3D gemstone volume) -->
+    <!-- Top Center Table Facet -->
+    <polygon
+       id="facet_top"
+       points="128,70 156,92 100,92"
+       fill="#8b5cf6"
+       opacity="0.95" />
+
+    <!-- Upper Left Facet -->
+    <polygon
+       id="facet_upper_left"
+       points="100,92 72,120 100,126 128,112"
+       fill="#8b5cf6"
+       opacity="0.75" />
+
+    <!-- Upper Right Facet -->
+    <polygon
+       id="facet_upper_right"
+       points="156,92 184,120 156,126 128,112"
+       fill="#8b5cf6"
+       opacity="0.85" />
+
+    <!-- Center Table Diamond -->
+    <polygon
+       id="facet_center"
+       points="128,92 156,112 128,132 100,112"
+       fill="#8b5cf6"
+       opacity="1.0" />
+
+    <!-- Lower Left Pavilion Facet -->
+    <polygon
+       id="facet_lower_left"
+       points="100,126 128,132 128,178 72,120"
+       fill="#8b5cf6"
+       opacity="0.70" />
+
+    <!-- Lower Right Pavilion Facet -->
+    <polygon
+       id="facet_lower_right"
+       points="156,126 128,132 128,178 184,120"
+       fill="#8b5cf6"
+       opacity="0.80" />
+
+    <!-- Center Lower Culet Ridge -->
+    <polygon
+       id="facet_culet"
+       points="128,132 136,150 128,178 120,150"
+       fill="#8b5cf6"
+       opacity="0.90" />
+
+    <!-- Specular Highlight Sparkle -->
+    <polygon
+       id="sparkle_accent"
+       points="128,74 133,86 128,88 123,86"
+       fill="#ffffff"
+       opacity="0.65" />
+  </g>
+</svg>

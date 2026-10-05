@@ -118,6 +118,12 @@ type MotionConfig struct {
 	IsCamera        bool    // true if Camera directive parsed
 	ParallaxFactor  float64 // parallax multiplier relative to camera (default 1.0, or 0.0 for fixed)
 	HasParallax     bool    // true if Dist directive parsed
+	IsColor         bool    // true if Color directive parsed
+	IsPingPong      bool    // true if pingpong: true
+	ColorRepeat     int     // repetitions across frame range (default 1)
+	HasColorAngle   bool    // true if angle specified for Color
+	ColorAngle      float64 // degrees for gradient sweep
+	ColorTarget     string  // "fill", "stroke", or "all" (default "fill")
 }
 
 // LayerRenderOrder tracks the document and effective Z-index for frame reordering.
@@ -142,6 +148,8 @@ func DefaultMotionConfig(configType string) MotionConfig {
 		OpacityFrom:    1.0,
 		OpacityTo:      1.0,
 		ParallaxFactor: 1.0,
+		ColorTarget:    "fill",
+		ColorRepeat:    1,
 	}
 	switch configType {
 	case "camera":
@@ -161,8 +169,25 @@ func DefaultMotionConfig(configType string) MotionConfig {
 		cfg.HasVisibility = true
 	case "depth":
 		cfg.HasDepth = true
+	case "color":
+		cfg.IsColor = true
+		cfg.ColorTarget = "fill"
+		cfg.ColorRepeat = 1
 	}
 	return cfg
+}
+
+// GradientStop represents a color stop within an SVG linear or radial gradient.
+type GradientStop struct {
+	Offset  float64
+	Color   string // hex #rrggbb or rgb(...)
+	Opacity float64
+}
+
+// SVGGradient represents an SVG gradient definition extracted from <defs>.
+type SVGGradient struct {
+	ID    string
+	Stops []GradientStop
 }
 
 // MotionPath represents a movement spline and its config found inside a group.
@@ -171,22 +196,24 @@ type MotionPath struct {
 	GroupID  string
 	PathData string
 	Config   MotionConfig
+	FillURL  string // gradient ID from url(#...) on modifier object
 }
 
 // SVGDocument holds parsed SVG metadata and elements.
 type SVGDocument struct {
-	RawContent  []byte
-	Width       float64
-	Height      float64
-	ViewBoxX    float64
-	ViewBoxY    float64
-	ViewBoxW    float64
-	ViewBoxH    float64
-	DrawingRect Rect
+	RawContent   []byte
+	Width        float64
+	Height       float64
+	ViewBoxX     float64
+	ViewBoxY     float64
+	ViewBoxW     float64
+	ViewBoxH     float64
+	DrawingRect  Rect
 	Layers       []Layer
 	Pages        []Page
 	MotionPaths  []MotionPath
 	CameraPath   *MotionPath
+	Gradients    map[string]SVGGradient
 	DefaultMode  FrameMode
 	ElementRects map[string]Rect
 }

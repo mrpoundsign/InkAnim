@@ -582,8 +582,8 @@ func TestIntegration_PendulumAndComplexMotion(t *testing.T) {
 	if len(doc2.Layers) != 60 {
 		t.Errorf("complex_motion.svg frame layers count = %d, want 60", len(doc2.Layers))
 	}
-	if len(doc2.MotionPaths) != 37 {
-		t.Fatalf("complex_motion.svg motion paths count = %d, want 37", len(doc2.MotionPaths))
+	if len(doc2.MotionPaths) != 39 {
+		t.Fatalf("complex_motion.svg motion paths count = %d, want 39", len(doc2.MotionPaths))
 	}
 	if doc2.CameraPath == nil || doc2.CameraPath.Config.Type != "camera" || doc2.CameraPath.Config.StartFrame != 1 || doc2.CameraPath.Config.EndFrame != 60 {
 		t.Fatalf("complex_motion.svg CameraPath = %+v, want camera f: 1-60", doc2.CameraPath)
@@ -592,6 +592,15 @@ func TestIntegration_PendulumAndComplexMotion(t *testing.T) {
 	mpMap := make(map[string]MotionPath)
 	for _, mp := range doc2.MotionPaths {
 		mpMap[mp.ID] = mp
+	}
+
+	mpFlameColor := mpMap["mod_flame_color"]
+	if !mpFlameColor.Config.IsColor || mpFlameColor.Config.ColorRepeat != 4 || !mpFlameColor.Config.IsPingPong {
+		t.Errorf("complex_motion.svg flame color mod = %+v, want isColor=true repeat=4 pingpong=true", mpFlameColor.Config)
+	}
+	mpStarsColor := mpMap["mod_stars_color"]
+	if !mpStarsColor.Config.IsColor || !mpStarsColor.Config.IsPingPong {
+		t.Errorf("complex_motion.svg stars color mod = %+v, want isColor=true pingpong=true", mpStarsColor.Config)
 	}
 
 	mpFadeDown := mpMap["twinkle_fade_down"]
@@ -829,6 +838,81 @@ func TestIntegration_ScaleTestSVG(t *testing.T) {
 		}
 		if len(frameBytes) == 0 {
 			t.Fatalf("BuildTimelineFrameSVG(frame %d) returned empty bytes", i)
+		}
+	}
+}
+
+func TestIntegration_ColorTestSVG(t *testing.T) {
+	data, err := os.ReadFile("../../testdata/color_test.svg")
+	if err != nil {
+		t.Fatalf("failed to read color_test.svg: %v", err)
+	}
+	doc, err := ParseSVG(data)
+	if err != nil {
+		t.Fatalf("ParseSVG(color_test.svg) failed: %v", err)
+	}
+	if doc.DefaultMode != ModeTimeline {
+		t.Errorf("color_test.svg DefaultMode = %s, want %s", doc.DefaultMode, ModeTimeline)
+	}
+	if len(doc.Layers) != 30 {
+		t.Errorf("color_test.svg frame count = %d, want 30", len(doc.Layers))
+	}
+	if len(doc.MotionPaths) != 2 {
+		t.Fatalf("color_test.svg motion paths count = %d, want 2", len(doc.MotionPaths))
+	}
+
+	// Verify gem_color_mod path
+	var foundColorMod bool
+	for _, mp := range doc.MotionPaths {
+		if mp.ID == "gem_color_mod" {
+			foundColorMod = true
+			if !mp.Config.IsColor || !mp.Config.IsPingPong {
+				t.Errorf("gem_color_mod expected isColor=true and pingpong=true, got %+v", mp.Config)
+			}
+			if mp.FillURL != "gem_palette" {
+				t.Errorf("gem_color_mod expected FillURL=gem_palette, got %q", mp.FillURL)
+			}
+		}
+	}
+	if !foundColorMod {
+		t.Errorf("gem_color_mod not found in doc.MotionPaths")
+	}
+
+	// Frame 0: t=0.0 -> color #ec4899
+	f0Bytes, err := BuildTimelineFrameSVG(doc, 0, doc.GetDrawingRect())
+	if err != nil {
+		t.Fatalf("BuildTimelineFrameSVG frame 0 failed: %v", err)
+	}
+	f0Str := string(f0Bytes)
+	if strings.Contains(f0Str, `id="gem_color_mod"`) {
+		t.Errorf("gem_color_mod modifier rect must be hidden from frame 0 SVG")
+	}
+	if !strings.Contains(f0Str, `fill="#ec4899"`) {
+		t.Errorf("frame 0 expected gem facets to have fill=#ec4899, got:\n%s", f0Str)
+	}
+
+	// Midpoint (frame 14): p = 14/29 ~ 0.48, with pingpong t = 0.48 * 2.0 = 0.96 (close to #10b981)
+	// Or frame 15 (p = 15/29 ~ 0.517, with pingpong t = (1 - 0.517)*2 = 0.965)
+	f14Bytes, err := BuildTimelineFrameSVG(doc, 14, doc.GetDrawingRect())
+	if err != nil {
+		t.Fatalf("BuildTimelineFrameSVG frame 14 failed: %v", err)
+	}
+	if len(f14Bytes) == 0 {
+		t.Fatalf("BuildTimelineFrameSVG frame 14 returned empty bytes")
+	}
+
+	// Render all 30 frames to RGBA
+	for i := 0; i < len(doc.Layers); i++ {
+		frameBytes, err := BuildTimelineFrameSVG(doc, i, doc.GetDrawingRect())
+		if err != nil {
+			t.Fatalf("BuildTimelineFrameSVG(frame %d) failed: %v", i, err)
+		}
+		img, err := RenderSVGToRGBA(frameBytes, 256, 256)
+		if err != nil {
+			t.Fatalf("RenderSVGToRGBA(frame %d) failed: %v", i, err)
+		}
+		if img == nil || img.Bounds().Dx() != 256 {
+			t.Fatalf("frame %d unexpected image bounds", i)
 		}
 	}
 }
@@ -1581,5 +1665,612 @@ func TestBuildTimelineFrameSVG_CameraParallax(t *testing.T) {
 		t.Fatalf("Rendered image bounds unexpected: %v", img.Bounds())
 	}
 }
+
+func TestParseMotionConfig_Color(t *testing.T) {
+	// Standard Color directive with pingpong and repeat
+	cfg, ok := parseMotionConfig("Color { f: 1-15; pingpong: true; r: 3; target: fill }")
+	if !ok {
+		t.Fatalf("Expected parseMotionConfig to succeed for Color")
+	}
+	if cfg.Type != "color" || !cfg.IsColor {
+		t.Errorf("Expected Type=color and IsColor=true, got type=%s, isColor=%v", cfg.Type, cfg.IsColor)
+	}
+	if cfg.StartFrame != 1 || cfg.EndFrame != 15 {
+		t.Errorf("Expected frames 1-15, got %d-%d", cfg.StartFrame, cfg.EndFrame)
+	}
+	if !cfg.IsPingPong {
+		t.Errorf("Expected IsPingPong=true")
+	}
+	if cfg.ColorRepeat != 3 {
+		t.Errorf("Expected ColorRepeat=3, got %d", cfg.ColorRepeat)
+	}
+	if cfg.ColorTarget != "fill" {
+		t.Errorf("Expected ColorTarget=fill, got %s", cfg.ColorTarget)
+	}
+
+	// Target stroke with angle
+	cfg2, ok := parseMotionConfig("Color { f: 1-60; target: stroke; angle: -45 }")
+	if !ok {
+		t.Fatalf("Expected parseMotionConfig to succeed for Color with angle")
+	}
+	if cfg2.ColorTarget != "stroke" {
+		t.Errorf("Expected ColorTarget=stroke, got %s", cfg2.ColorTarget)
+	}
+	if !cfg2.HasColorAngle || cfg2.ColorAngle != -45 {
+		t.Errorf("Expected HasColorAngle=true and ColorAngle=-45, got has=%v, angle=%f", cfg2.HasColorAngle, cfg2.ColorAngle)
+	}
+
+	// Repeat keyword alias and target all
+	cfg3, ok := parseMotionConfig("color { f: 1-10; repeat: 2; target: all; pingpong }")
+	if !ok {
+		t.Fatalf("Expected parseMotionConfig to succeed for color case-insensitive")
+	}
+	if cfg3.ColorRepeat != 2 {
+		t.Errorf("Expected ColorRepeat=2, got %d", cfg3.ColorRepeat)
+	}
+	if cfg3.ColorTarget != "all" {
+		t.Errorf("Expected ColorTarget=all, got %s", cfg3.ColorTarget)
+	}
+	if !cfg3.IsPingPong {
+		t.Errorf("Expected IsPingPong=true for bare 'pingpong' flag")
+	}
+
+	// Strictly require Color, no aliases
+	_, ok4 := parseMotionConfig("C { f: 1-10 }")
+	if ok4 {
+		t.Errorf("Expected 'C { ... }' to fail per strict 'Color' requirement")
+	}
+}
+
+func TestInterpolateGradientColor(t *testing.T) {
+	grad := SVGGradient{
+		ID: "test_grad",
+		Stops: []GradientStop{
+			{Offset: 0.0, Color: "#ff0000", Opacity: 1.0},
+			{Offset: 1.0, Color: "#0000ff", Opacity: 0.0},
+		},
+	}
+
+	// At start: pure red, full opacity
+	c0, op0 := InterpolateGradientColor(grad, 0.0)
+	if c0 != "#ff0000" || op0 != 1.0 {
+		t.Errorf("At t=0.0 expected #ff0000, 1.0; got %s, %f", c0, op0)
+	}
+
+	// At midpoint: #800080 (purple), 0.5 opacity
+	cHalf, opHalf := InterpolateGradientColor(grad, 0.5)
+	if cHalf != "#800080" || math.Abs(opHalf-0.5) > 1e-3 {
+		t.Errorf("At t=0.5 expected #800080, 0.5; got %s, %f", cHalf, opHalf)
+	}
+
+	// At end: pure blue, 0.0 opacity
+	c1, op1 := InterpolateGradientColor(grad, 1.0)
+	if c1 != "#0000ff" || op1 != 0.0 {
+		t.Errorf("At t=1.0 expected #0000ff, 0.0; got %s, %f", c1, op1)
+	}
+
+	// Clamping below 0 and above 1
+	cNeg, _ := InterpolateGradientColor(grad, -0.5)
+	if cNeg != "#ff0000" {
+		t.Errorf("At t=-0.5 expected clamped #ff0000, got %s", cNeg)
+	}
+	cOver, _ := InterpolateGradientColor(grad, 1.5)
+	if cOver != "#0000ff" {
+		t.Errorf("At t=1.5 expected clamped #0000ff, got %s", cOver)
+	}
+
+	// 3-stop gradient: Yellow -> Orange -> Cyan
+	grad3 := SVGGradient{
+		ID: "flame",
+		Stops: []GradientStop{
+			{Offset: 0.0, Color: "#fef08a", Opacity: 1.0}, // (254, 240, 138)
+			{Offset: 0.5, Color: "#f97316", Opacity: 1.0}, // (249, 115, 22)
+			{Offset: 1.0, Color: "#38bdf8", Opacity: 1.0}, // (56, 189, 248)
+		},
+	}
+	cFlame0, _ := InterpolateGradientColor(grad3, 0.0)
+	if cFlame0 != "#fef08a" {
+		t.Errorf("grad3 at t=0.0 expected #fef08a, got %s", cFlame0)
+	}
+	cFlameMid, _ := InterpolateGradientColor(grad3, 0.5)
+	if cFlameMid != "#f97316" {
+		t.Errorf("grad3 at t=0.5 expected #f97316, got %s", cFlameMid)
+	}
+	cFlameEnd, _ := InterpolateGradientColor(grad3, 1.0)
+	if cFlameEnd != "#38bdf8" {
+		t.Errorf("grad3 at t=1.0 expected #38bdf8, got %s", cFlameEnd)
+	}
+}
+
+func TestGradientParsing(t *testing.T) {
+	svgData := `<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <defs>
+    <linearGradient id="grad_source">
+      <stop offset="0%" stop-color="#fef08a" stop-opacity="1" />
+      <stop offset="50%" stop-color="#f97316" stop-opacity="0.8" />
+      <stop offset="100%" stop-color="#38bdf8" stop-opacity="1" />
+    </linearGradient>
+    <linearGradient id="grad_linked" xlink:href="#grad_source" x1="0" y1="0" x2="1" y2="0" />
+  </defs>
+  <g id="trail_group" inkscape:label="Flame">
+    <polygon id="flame_poly" points="18,122 -6,128 18,134" fill="#f97316" />
+    <rect id="color_dummy" x="0" y="0" width="10" height="10" fill="url(#grad_linked)" inkscape:label="Color { f: 1-15; pingpong: true; target: fill }" />
+  </g>
+</svg>`
+
+	doc, err := ParseSVG([]byte(svgData))
+	if err != nil {
+		t.Fatalf("ParseSVG failed: %v", err)
+	}
+
+	if len(doc.Gradients) == 0 {
+		t.Fatalf("Expected doc.Gradients to be populated, got 0")
+	}
+
+	gradSource, ok := doc.Gradients["grad_source"]
+	if !ok {
+		t.Fatalf("Expected grad_source in doc.Gradients")
+	}
+	if len(gradSource.Stops) != 3 {
+		t.Fatalf("Expected 3 stops in grad_source, got %d", len(gradSource.Stops))
+	}
+	if gradSource.Stops[0].Color != "#fef08a" || gradSource.Stops[1].Color != "#f97316" || gradSource.Stops[2].Color != "#38bdf8" {
+		t.Errorf("Unexpected stop colors in grad_source: %+v", gradSource.Stops)
+	}
+	if math.Abs(gradSource.Stops[1].Opacity-0.8) > 1e-3 {
+		t.Errorf("Expected stop 1 opacity 0.8, got %f", gradSource.Stops[1].Opacity)
+	}
+
+	// Check linked gradient inherited stops
+	gradLinked, ok := doc.Gradients["grad_linked"]
+	if !ok {
+		t.Fatalf("Expected grad_linked in doc.Gradients")
+	}
+	if len(gradLinked.Stops) != 3 {
+		t.Fatalf("Expected grad_linked to inherit 3 stops, got %d", len(gradLinked.Stops))
+	}
+
+	// Check MotionPath was extracted with FillURL
+	var foundColorMP bool
+	for _, mp := range doc.MotionPaths {
+		if mp.Config.IsColor {
+			foundColorMP = true
+			if mp.FillURL != "grad_linked" {
+				t.Errorf("Expected FillURL=grad_linked, got %q", mp.FillURL)
+			}
+			if mp.GroupID != "trail_group" {
+				t.Errorf("Expected GroupID=trail_group, got %q", mp.GroupID)
+			}
+		}
+	}
+	if !foundColorMP {
+		t.Errorf("Expected to find Color MotionPath in doc.MotionPaths")
+	}
+}
+
+func TestBuildTimelineFrameSVG_ColorShift(t *testing.T) {
+	svgData := `<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="pulse_grad">
+      <stop offset="0" stop-color="#ff0000" />
+      <stop offset="1" stop-color="#0000ff" />
+    </linearGradient>
+  </defs>
+  <g id="anim_group">
+    <rect id="sibling_fill" x="10" y="10" width="30" height="30" fill="#00ff00" />
+    <circle id="sibling_none" cx="50" cy="50" r="10" fill="none" stroke="#ffffff" stroke-width="2" />
+    <path id="color_dummy" d="M 0,0 L 10,10" fill="url(#pulse_grad)" inkscape:label="Color { f: 1-15; pingpong: true; target: fill }" />
+  </g>
+</svg>`
+
+	doc, err := ParseSVG([]byte(svgData))
+	if err != nil {
+		t.Fatalf("ParseSVG failed: %v", err)
+	}
+
+	// Frame 0 (frame1Idx = 1, t = 0.0):
+	// Pingpong starts at t=0.0 -> color is #ff0000
+	f0Bytes, err := BuildTimelineFrameSVG(doc, 0, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("BuildTimelineFrameSVG frame 0 failed: %v", err)
+	}
+	f0Str := string(f0Bytes)
+
+	// Verify dummy modifier object is hidden
+	if strings.Contains(f0Str, `id="color_dummy"`) {
+		t.Errorf("Expected color_dummy to be hidden from output SVG, found in frame 0:\n%s", f0Str)
+	}
+
+	// Verify sibling_fill received #ff0000
+	idxFill := strings.Index(f0Str, `id="sibling_fill"`)
+	if idxFill == -1 {
+		t.Fatalf("sibling_fill not found in frame 0 output")
+	}
+	subFill := f0Str[idxFill : idxFill+strings.Index(f0Str[idxFill:], ">")]
+	if !strings.Contains(subFill, `fill="#ff0000"`) {
+		t.Errorf("Expected sibling_fill to have fill=#ff0000 in frame 0, got: %s", subFill)
+	}
+
+	// Verify sibling_none with fill="none" was NOT filled
+	idxNone := strings.Index(f0Str, `id="sibling_none"`)
+	if idxNone == -1 {
+		t.Fatalf("sibling_none not found in frame 0 output")
+	}
+	subNone := f0Str[idxNone : idxNone+strings.Index(f0Str[idxNone:], ">")]
+	if strings.Contains(subNone, `fill="#ff0000"`) {
+		t.Errorf("Expected sibling_none to preserve fill=none, got: %s", subNone)
+	}
+
+	// Frame 7 (frame1Idx = 8, midpoint of 1-15):
+	// p = (8-1)/14 = 0.5. With pingpong, eased <= 0.5 -> t = 0.5 * 2.0 = 1.0!
+	// At t=1.0, color is #0000ff (pure blue)!
+	f7Bytes, err := BuildTimelineFrameSVG(doc, 7, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("BuildTimelineFrameSVG frame 7 failed: %v", err)
+	}
+	f7Str := string(f7Bytes)
+	idxFill7 := strings.Index(f7Str, `id="sibling_fill"`)
+	subFill7 := f7Str[idxFill7 : idxFill7+strings.Index(f7Str[idxFill7:], ">")]
+	if !strings.Contains(subFill7, `fill="#0000ff"`) {
+		t.Errorf("Expected sibling_fill to have fill=#0000ff at midpoint frame 7, got: %s", subFill7)
+	}
+
+	// Frame 14 (frame1Idx = 15, end of 1-15):
+	// p = 1.0. With pingpong, eased > 0.5 -> t = (1.0 - 1.0) * 2.0 = 0.0!
+	// Returns to #ff0000 (red)!
+	f14Bytes, err := BuildTimelineFrameSVG(doc, 14, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("BuildTimelineFrameSVG frame 14 failed: %v", err)
+	}
+	f14Str := string(f14Bytes)
+	idxFill14 := strings.Index(f14Str, `id="sibling_fill"`)
+	subFill14 := f14Str[idxFill14 : idxFill14+strings.Index(f14Str[idxFill14:], ">")]
+	if !strings.Contains(subFill14, `fill="#ff0000"`) {
+		t.Errorf("Expected sibling_fill to return to fill=#ff0000 at end frame 14, got: %s", subFill14)
+	}
+
+	// Verify rasterization succeeds
+	img, err := RenderSVGToRGBA(f7Bytes, 200, 200)
+	if err != nil {
+		t.Fatalf("RenderSVGToRGBA failed on color shift frame: %v", err)
+	}
+	if img == nil || img.Bounds().Dx() != 200 {
+		t.Fatalf("Rendered image unexpected bounds: %v", img.Bounds())
+	}
+}
+
+func TestBuildTimelineFrameSVG_ColorTargetStrokeAndAll(t *testing.T) {
+	svgDataStroke := `<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="stroke_grad">
+      <stop offset="0" stop-color="#10b981" />
+      <stop offset="1" stop-color="#6366f1" />
+    </linearGradient>
+  </defs>
+  <g id="stroke_group">
+    <!-- Shape A: both fill and stroke -->
+    <rect id="shape_a" x="10" y="10" width="20" height="20" fill="#fbbf24" stroke="#000000" stroke-width="2" />
+    <!-- Shape B: fill only, explicit stroke="none" -->
+    <circle id="shape_b" cx="50" cy="50" r="10" fill="#ef4444" stroke="none" />
+    <!-- Shape C: stroke only, explicit fill="none" -->
+    <path id="shape_c" d="M 0,0 L 20,20" fill="none" stroke="#000000" stroke-width="2" />
+    <rect id="mod_stroke" x="0" y="0" width="5" height="5" fill="url(#stroke_grad)" inkscape:label="Color { f: 1-10; target: stroke }" />
+  </g>
+</svg>`
+
+	doc, err := ParseSVG([]byte(svgDataStroke))
+	if err != nil {
+		t.Fatalf("ParseSVG failed: %v", err)
+	}
+
+	// Frame 0 (frame1Idx = 1, t = 0.0 -> #10b981)
+	f0Bytes, err := BuildTimelineFrameSVG(doc, 0, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("BuildTimelineFrameSVG failed: %v", err)
+	}
+	f0Str := string(f0Bytes)
+
+	// Shape A: stroke should be #10b981, fill should remain #fbbf24
+	idxA := strings.Index(f0Str, `id="shape_a"`)
+	subA := f0Str[idxA : idxA+strings.Index(f0Str[idxA:], ">")]
+	if !strings.Contains(subA, `stroke="#10b981"`) {
+		t.Errorf("Shape A expected stroke=#10b981, got: %s", subA)
+	}
+	if !strings.Contains(subA, `fill="#fbbf24"`) {
+		t.Errorf("Shape A expected fill=#fbbf24 to be untouched, got: %s", subA)
+	}
+
+	// Shape B: stroke="none" should be preserved, not painted
+	idxB := strings.Index(f0Str, `id="shape_b"`)
+	subB := f0Str[idxB : idxB+strings.Index(f0Str[idxB:], ">")]
+	if strings.Contains(subB, `stroke="#10b981"`) {
+		t.Errorf("Shape B expected stroke=none to be preserved, got: %s", subB)
+	}
+
+	// Shape C: fill="none" should be preserved, stroke should be #10b981
+	idxC := strings.Index(f0Str, `id="shape_c"`)
+	subC := f0Str[idxC : idxC+strings.Index(f0Str[idxC:], ">")]
+	if !strings.Contains(subC, `stroke="#10b981"`) {
+		t.Errorf("Shape C expected stroke=#10b981, got: %s", subC)
+	}
+	if !strings.Contains(subC, `fill="none"`) {
+		t.Errorf("Shape C expected fill=none to be preserved, got: %s", subC)
+	}
+
+	// Now test target: all
+	svgDataAll := strings.Replace(svgDataStroke, "target: stroke", "target: all", 1)
+	docAll, err := ParseSVG([]byte(svgDataAll))
+	if err != nil {
+		t.Fatalf("ParseSVG(all) failed: %v", err)
+	}
+
+	fAllBytes, err := BuildTimelineFrameSVG(docAll, 0, docAll.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("BuildTimelineFrameSVG(all) failed: %v", err)
+	}
+	fAllStr := string(fAllBytes)
+
+	// Shape A with target:all -> both fill and stroke become #10b981
+	idxAAll := strings.Index(fAllStr, `id="shape_a"`)
+	subAAll := fAllStr[idxAAll : idxAAll+strings.Index(fAllStr[idxAAll:], ">")]
+	if !strings.Contains(subAAll, `fill="#10b981"`) || !strings.Contains(subAAll, `stroke="#10b981"`) {
+		t.Errorf("Shape A (target:all) expected both fill and stroke #10b981, got: %s", subAAll)
+	}
+
+	// Shape B with target:all -> fill becomes #10b981, stroke="none" preserved
+	idxBAll := strings.Index(fAllStr, `id="shape_b"`)
+	subBAll := fAllStr[idxBAll : idxBAll+strings.Index(fAllStr[idxBAll:], ">")]
+	if !strings.Contains(subBAll, `fill="#10b981"`) {
+		t.Errorf("Shape B (target:all) expected fill=#10b981, got: %s", subBAll)
+	}
+	if strings.Contains(subBAll, `stroke="#10b981"`) {
+		t.Errorf("Shape B (target:all) expected stroke=none preserved, got: %s", subBAll)
+	}
+}
+
+func TestBuildTimelineFrameSVG_ColorRepeatAndReverse(t *testing.T) {
+	svgData := `<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="two_color">
+      <stop offset="0" stop-color="#ffffff" />
+      <stop offset="1" stop-color="#000000" />
+    </linearGradient>
+  </defs>
+  <g id="repeat_group">
+    <rect id="repeat_box" x="10" y="10" width="20" height="20" fill="#ff0000" />
+    <rect id="mod_repeat" x="0" y="0" width="5" height="5" fill="url(#two_color)" inkscape:label="Color { f: 1-10; r: 2; target: fill }" />
+  </g>
+  <g id="rev_group">
+    <rect id="rev_box" x="50" y="50" width="20" height="20" fill="#ff0000" />
+    <rect id="mod_rev" x="0" y="0" width="5" height="5" fill="url(#two_color)" inkscape:label="Color { f: 1-10; rev: true; target: fill }" />
+  </g>
+</svg>`
+
+	doc, err := ParseSVG([]byte(svgData))
+	if err != nil {
+		t.Fatalf("ParseSVG failed: %v", err)
+	}
+
+	// Frame 0 (frame1Idx = 1, start of first cycle of 2 repeats):
+	// p = 0.0 -> fraction = 0.0 -> #ffffff
+	f0Bytes, err := BuildTimelineFrameSVG(doc, 0, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("BuildTimelineFrameSVG frame 0 failed: %v", err)
+	}
+	f0Str := string(f0Bytes)
+	idxR0 := strings.Index(f0Str, `id="repeat_box"`)
+	subR0 := f0Str[idxR0 : idxR0+strings.Index(f0Str[idxR0:], ">")]
+	if !strings.Contains(subR0, `fill="#ffffff"`) {
+		t.Errorf("repeat_box frame 0 expected #ffffff, got: %s", subR0)
+	}
+
+	// rev_box with rev:true at frame 0 (t = 1.0 - 0.0 = 1.0) -> #000000
+	idxRev0 := strings.Index(f0Str, `id="rev_box"`)
+	subRev0 := f0Str[idxRev0 : idxRev0+strings.Index(f0Str[idxRev0:], ">")]
+	if !strings.Contains(subRev0, `fill="#000000"`) {
+		t.Errorf("rev_box frame 0 with rev:true expected #000000, got: %s", subRev0)
+	}
+
+	// Frame 9 (frame1Idx = 10, end of 1-10):
+	// p = 1.0 -> fraction = 1.0 -> #000000
+	f9Bytes, err := BuildTimelineFrameSVG(doc, 9, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("BuildTimelineFrameSVG frame 9 failed: %v", err)
+	}
+	f9Str := string(f9Bytes)
+	idxR9 := strings.Index(f9Str, `id="repeat_box"`)
+	subR9 := f9Str[idxR9 : idxR9+strings.Index(f9Str[idxR9:], ">")]
+	if !strings.Contains(subR9, `fill="#000000"`) {
+		t.Errorf("repeat_box frame 9 expected #000000, got: %s", subR9)
+	}
+
+	// rev_box at frame 9 (t = 1.0 - 1.0 = 0.0) -> #ffffff
+	idxRev9 := strings.Index(f9Str, `id="rev_box"`)
+	subRev9 := f9Str[idxRev9 : idxRev9+strings.Index(f9Str[idxRev9:], ">")]
+	if !strings.Contains(subRev9, `fill="#ffffff"`) {
+		t.Errorf("rev_box frame 9 with rev:true expected #ffffff, got: %s", subRev9)
+	}
+}
+
+func TestBuildTimelineFrameSVG_ColorConflictResolution(t *testing.T) {
+	// Group containing two Color modifier objects: the first in XML order must win
+	svgData := `<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="grad_first">
+      <stop offset="0" stop-color="#ff0000" />
+      <stop offset="1" stop-color="#ff0000" />
+    </linearGradient>
+    <linearGradient id="grad_second">
+      <stop offset="0" stop-color="#0000ff" />
+      <stop offset="1" stop-color="#0000ff" />
+    </linearGradient>
+  </defs>
+  <g id="conflict_group">
+    <rect id="first_mod" x="0" y="0" width="5" height="5" fill="url(#grad_first)" inkscape:label="Color { f: 1-10; target: fill }" />
+    <rect id="second_mod" x="0" y="0" width="5" height="5" fill="url(#grad_second)" inkscape:label="Color { f: 1-10; target: fill }" />
+    <circle id="target_shape" cx="30" cy="30" r="10" fill="#ffff00" />
+  </g>
+</svg>`
+
+	doc, err := ParseSVG([]byte(svgData))
+	if err != nil {
+		t.Fatalf("ParseSVG failed: %v", err)
+	}
+
+	f0Bytes, err := BuildTimelineFrameSVG(doc, 0, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("BuildTimelineFrameSVG failed: %v", err)
+	}
+	f0Str := string(f0Bytes)
+
+	// Both dummy modifiers must be hidden
+	if strings.Contains(f0Str, `id="first_mod"`) || strings.Contains(f0Str, `id="second_mod"`) {
+		t.Errorf("Expected both dummy modifiers to be hidden, got:\n%s", f0Str)
+	}
+
+	// target_shape should receive first_mod's color (#ff0000), not second_mod (#0000ff)
+	idxTarget := strings.Index(f0Str, `id="target_shape"`)
+	subTarget := f0Str[idxTarget : idxTarget+strings.Index(f0Str[idxTarget:], ">")]
+	if !strings.Contains(subTarget, `fill="#ff0000"`) {
+		t.Errorf("Expected first modifier to win (#ff0000), got: %s", subTarget)
+	}
+}
+
+func TestBuildTimelineFrameSVG_ColorNestedGroupsAndScoping(t *testing.T) {
+	svgData := `<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="grad_outer">
+      <stop offset="0" stop-color="#ff0000" />
+      <stop offset="1" stop-color="#ff0000" />
+    </linearGradient>
+    <linearGradient id="grad_inner">
+      <stop offset="0" stop-color="#00ff00" />
+      <stop offset="1" stop-color="#00ff00" />
+    </linearGradient>
+  </defs>
+  <g id="outer_group">
+    <rect id="mod_outer" x="0" y="0" width="5" height="5" fill="url(#grad_outer)" inkscape:label="Color { f: 1-10; target: fill }" />
+    <circle id="outer_circle" cx="20" cy="20" r="10" fill="#ffffff" />
+    <g id="inner_group">
+      <rect id="mod_inner" x="0" y="0" width="5" height="5" fill="url(#grad_inner)" inkscape:label="Color { f: 1-10; target: fill }" />
+      <circle id="inner_circle" cx="50" cy="50" r="10" fill="#ffffff" />
+    </g>
+    <circle id="outer_circle_after" cx="80" cy="80" r="10" fill="#ffffff" />
+  </g>
+</svg>`
+
+	doc, err := ParseSVG([]byte(svgData))
+	if err != nil {
+		t.Fatalf("ParseSVG failed: %v", err)
+	}
+
+	f0Bytes, err := BuildTimelineFrameSVG(doc, 0, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("BuildTimelineFrameSVG failed: %v", err)
+	}
+	f0Str := string(f0Bytes)
+
+	// outer_circle before inner group -> #ff0000
+	idxOut := strings.Index(f0Str, `id="outer_circle"`)
+	subOut := f0Str[idxOut : idxOut+strings.Index(f0Str[idxOut:], ">")]
+	if !strings.Contains(subOut, `fill="#ff0000"`) {
+		t.Errorf("outer_circle expected #ff0000, got: %s", subOut)
+	}
+
+	// inner_circle inside inner group -> #00ff00
+	idxIn := strings.Index(f0Str, `id="inner_circle"`)
+	subIn := f0Str[idxIn : idxIn+strings.Index(f0Str[idxIn:], ">")]
+	if !strings.Contains(subIn, `fill="#00ff00"`) {
+		t.Errorf("inner_circle expected #00ff00, got: %s", subIn)
+	}
+
+	// outer_circle_after after inner group closed -> popped back to outer scope #ff0000
+	idxOutAfter := strings.Index(f0Str, `id="outer_circle_after"`)
+	subOutAfter := f0Str[idxOutAfter : idxOutAfter+strings.Index(f0Str[idxOutAfter:], ">")]
+	if !strings.Contains(subOutAfter, `fill="#ff0000"`) {
+		t.Errorf("outer_circle_after expected #ff0000, got: %s", subOutAfter)
+	}
+}
+
+func TestInterpolateGradientColor_CornerCases(t *testing.T) {
+	// Empty gradient
+	emptyGrad := SVGGradient{ID: "empty"}
+	cEmp, opEmp := InterpolateGradientColor(emptyGrad, 0.5)
+	if cEmp != "#ffffff" || opEmp != 1.0 {
+		t.Errorf("Empty gradient expected #ffffff, 1.0; got %s, %f", cEmp, opEmp)
+	}
+
+	// 1-stop gradient
+	oneGrad := SVGGradient{
+		ID: "one",
+		Stops: []GradientStop{
+			{Offset: 0.5, Color: "#123456", Opacity: 0.75},
+		},
+	}
+	for _, tVal := range []float64{-1.0, 0.0, 0.5, 1.0, 2.0} {
+		cOne, opOne := InterpolateGradientColor(oneGrad, tVal)
+		if cOne != "#123456" || opOne != 0.75 {
+			t.Errorf("1-stop gradient at t=%f expected #123456, 0.75; got %s, %f", tVal, cOne, opOne)
+		}
+	}
+
+	// Named colors in stops
+	namedGrad := SVGGradient{
+		ID: "named",
+		Stops: []GradientStop{
+			{Offset: 0.0, Color: "white", Opacity: 1.0},
+			{Offset: 1.0, Color: "black", Opacity: 1.0},
+		},
+	}
+	cNamed, _ := InterpolateGradientColor(namedGrad, 0.5)
+	if cNamed != "#808080" {
+		t.Errorf("Named colors at midpoint expected #808080, got %s", cNamed)
+	}
+}
+
+func TestBuildTimelineFrameSVG_ColorOpacityOverride(t *testing.T) {
+	svgData := `<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="fade_grad">
+      <stop offset="0" stop-color="#ff0000" stop-opacity="0.25" />
+      <stop offset="1" stop-color="#0000ff" stop-opacity="1.0" />
+    </linearGradient>
+  </defs>
+  <g id="opacity_group">
+    <rect id="styled_box" x="10" y="10" width="20" height="20" style="fill:#00ff00;fill-opacity:0.9;" />
+    <rect id="mod_fade" x="0" y="0" width="5" height="5" fill="url(#fade_grad)" inkscape:label="Color { f: 1-10; target: fill }" />
+  </g>
+</svg>`
+
+	doc, err := ParseSVG([]byte(svgData))
+	if err != nil {
+		t.Fatalf("ParseSVG failed: %v", err)
+	}
+
+	// Frame 0: t=0.0 -> stop-opacity is 0.25
+	f0Bytes, err := BuildTimelineFrameSVG(doc, 0, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("BuildTimelineFrameSVG frame 0 failed: %v", err)
+	}
+	f0Str := string(f0Bytes)
+	idx0 := strings.Index(f0Str, `id="styled_box"`)
+	sub0 := f0Str[idx0 : idx0+strings.Index(f0Str[idx0:], ">")]
+	if !strings.Contains(sub0, `fill-opacity:0.250`) && !strings.Contains(sub0, `fill-opacity: 0.250`) {
+		t.Errorf("styled_box frame 0 expected fill-opacity:0.250, got: %s", sub0)
+	}
+
+	// Frame 9: t=1.0 -> stop-opacity is 1.0 (restored)
+	f9Bytes, err := BuildTimelineFrameSVG(doc, 9, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("BuildTimelineFrameSVG frame 9 failed: %v", err)
+	}
+	f9Str := string(f9Bytes)
+	idx9 := strings.Index(f9Str, `id="styled_box"`)
+	sub9 := f9Str[idx9 : idx9+strings.Index(f9Str[idx9:], ">")]
+	if !strings.Contains(sub9, `fill-opacity:1`) && !strings.Contains(sub9, `fill-opacity: 1`) {
+		t.Errorf("styled_box frame 9 expected fill-opacity restored to 1, got: %s", sub9)
+	}
+}
+
 
 

@@ -8,6 +8,7 @@ import (
 	"io"
 	"math"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"unicode"
@@ -28,12 +29,15 @@ func ParseSVG(data []byte) (*SVGDocument, error) {
 	doc := &SVGDocument{
 		RawContent:  processedData,
 		DefaultMode: ModeLayers,
+		Gradients:   make(map[string]SVGGradient),
 	}
 
 	decoder := xml.NewDecoder(bytes.NewReader(processedData))
 	var inSVGTag bool
 	var layerIdx, pageIdx int
 	var activeGroups []string
+	var curGrad *SVGGradient
+	gradHrefs := make(map[string]string)
 
 	for {
 		token, err := decoder.Token()
@@ -101,24 +105,44 @@ func ParseSVG(data []byte) (*SVGDocument, error) {
 			}
 
 			// Check for IAMS Motion Path or marker element: <path inkscape:label="..." d="...">
-			if name == "path" || name == "circle" || name == "rect" || name == "ellipse" || name == "line" {
-				var id, label, d string
+			if name == "path" || name == "circle" || name == "rect" || name == "ellipse" || name == "line" || name == "polygon" || name == "polyline" {
+				var id, label, d, fill, style string
 				for _, attr := range elem.Attr {
-					if attr.Name.Local == "id" {
+					switch attr.Name.Local {
+					case "id":
 						id = attr.Value
-					}
-					if attr.Name.Local == "label" {
+					case "label":
 						label = attr.Value
-					}
-					if attr.Name.Local == "d" {
+					case "d":
 						d = attr.Value
+					case "fill":
+						fill = attr.Value
+					case "style":
+						style = attr.Value
 					}
 				}
 				if cfg, ok := parseMotionConfig(label); ok {
+					var fillURL string
+					if cfg.IsColor {
+						gradRef := fill
+						if gradRef == "" || !strings.Contains(gradRef, "url(") {
+							gradRef = extractCSSProp(style, "fill")
+						}
+						if strings.Contains(gradRef, "url(") {
+							start := strings.Index(gradRef, "url(") + 4
+							end := strings.Index(gradRef[start:], ")")
+							if end != -1 {
+								ref := strings.TrimSpace(gradRef[start : start+end])
+								ref = strings.Trim(ref, `"'#`)
+								fillURL = ref
+							}
+						}
+					}
 					mp := MotionPath{
 						ID:       id,
 						PathData: d,
 						Config:   cfg,
+						FillURL:  fillURL,
 					}
 					if len(activeGroups) > 0 {
 						mp.GroupID = activeGroups[len(activeGroups)-1]
@@ -130,6 +154,69 @@ func ParseSVG(data []byte) (*SVGDocument, error) {
 						doc.MotionPaths = append(doc.MotionPaths, mp)
 					}
 				}
+			}
+
+			// Check for linearGradient / radialGradient definitions and stops
+			if name == "linearGradient" || name == "radialGradient" {
+				var id, href string
+				for _, attr := range elem.Attr {
+					switch attr.Name.Local {
+					case "id":
+						id = attr.Value
+					case "href":
+						href = strings.TrimPrefix(attr.Value, "#")
+					}
+				}
+				curGrad = &SVGGradient{
+					ID: id,
+				}
+				if href != "" {
+					gradHrefs[id] = href
+				}
+			}
+			if name == "stop" && curGrad != nil {
+				var offsetStr, stopColor, stopOpacityStr, styleStr string
+				for _, attr := range elem.Attr {
+					switch attr.Name.Local {
+					case "offset":
+						offsetStr = attr.Value
+					case "stop-color":
+						stopColor = attr.Value
+					case "stop-opacity":
+						stopOpacityStr = attr.Value
+					case "style":
+						styleStr = attr.Value
+					}
+				}
+				if stopColor == "" {
+					stopColor = extractCSSProp(styleStr, "stop-color")
+				}
+				if stopOpacityStr == "" {
+					stopOpacityStr = extractCSSProp(styleStr, "stop-opacity")
+				}
+				offset := 0.0
+				offsetStr = strings.TrimSpace(offsetStr)
+				if before, ok0 := strings.CutSuffix(offsetStr, "%"); ok0 {
+					if val, err := strconv.ParseFloat(before, 64); err == nil {
+						offset = val / 100.0
+					}
+				} else if val, err := strconv.ParseFloat(offsetStr, 64); err == nil {
+					offset = val
+				}
+				opacity := 1.0
+				if stopOpacityStr != "" {
+					if val, err := strconv.ParseFloat(strings.TrimSpace(stopOpacityStr), 64); err == nil {
+						opacity = val
+					}
+				}
+				if stopColor == "" {
+					stopColor = "#000000"
+				}
+				curGrad.Stops = append(curGrad.Stops, GradientStop{
+					Offset:  offset,
+					Color:   stopColor,
+					Opacity: opacity,
+				})
 			}
 
 			// Check for Inkscape 1.2+ page: <inkscape:page ...>
@@ -178,7 +265,47 @@ func ParseSVG(data []byte) (*SVGDocument, error) {
 			if endElem.Name.Local == "g" && len(activeGroups) > 0 {
 				activeGroups = activeGroups[:len(activeGroups)-1]
 			}
+			if endElem.Name.Local == "linearGradient" || endElem.Name.Local == "radialGradient" {
+				if curGrad != nil {
+					if curGrad.ID != "" {
+						doc.Gradients[curGrad.ID] = *curGrad
+					}
+					curGrad = nil
+				}
+			}
 		}
+	}
+
+	// Resolve gradient stop inheritance (for gradients linking to template gradients)
+	for id, href := range gradHrefs {
+		grad, exists := doc.Gradients[id]
+		if exists && len(grad.Stops) == 0 {
+			targetHref := href
+			for range 10 {
+				parent, ok := doc.Gradients[targetHref]
+				if !ok {
+					break
+				}
+				if len(parent.Stops) > 0 {
+					grad.Stops = make([]GradientStop, len(parent.Stops))
+					copy(grad.Stops, parent.Stops)
+					doc.Gradients[id] = grad
+					break
+				}
+				targetHref = gradHrefs[targetHref]
+				if targetHref == "" {
+					break
+				}
+			}
+		}
+	}
+
+	// Ensure gradient stops are sorted by offset
+	for id, grad := range doc.Gradients {
+		sort.SliceStable(grad.Stops, func(i, j int) bool {
+			return grad.Stops[i].Offset < grad.Stops[j].Offset
+		})
+		doc.Gradients[id] = grad
 	}
 
 	// Default mode is ModeLayers (pages serve as artboard crop boundaries)
@@ -685,6 +812,15 @@ func parseMotionConfig(label string) (MotionConfig, bool) {
 		}
 	}
 	if configType == "" {
+		if idx := strings.Index(lower, "color"); idx != -1 {
+			rest := strings.TrimLeft(label[idx+5:], " \t")
+			if strings.HasPrefix(rest, "{") {
+				configType = "color"
+				contentStart = idx + 5 + (len(label[idx+5:]) - len(rest)) + 1
+			}
+		}
+	}
+	if configType == "" {
 		return MotionConfig{}, false
 	}
 
@@ -731,6 +867,10 @@ func parseMotionConfig(label string) (MotionConfig, bool) {
 			config.Reverse = true
 			continue
 		}
+		if part == "pingpong" {
+			config.IsPingPong = true
+			continue
+		}
 		if part == "fixed" {
 			config.ParallaxFactor = 0.0
 			config.HasParallax = true
@@ -747,6 +887,19 @@ func parseMotionConfig(label string) (MotionConfig, bool) {
 			config.Ease = v
 		case "t":
 			config.Type = v
+		case "pingpong":
+			config.IsPingPong = (v == "true" || v == "1" || v == "yes")
+		case "target":
+			vLower := strings.ToLower(v)
+			if vLower == "stroke" || vLower == "all" {
+				config.ColorTarget = vLower
+			} else {
+				config.ColorTarget = "fill"
+			}
+		case "r", "repeat":
+			if vInt, err := strconv.Atoi(v); err == nil && vInt > 0 {
+				config.ColorRepeat = vInt
+			}
 		case "rev", "reverse":
 			config.Reverse = (v == "true" || v == "1" || v == "yes")
 		case "factor":
@@ -879,7 +1032,12 @@ func parseMotionConfig(label string) (MotionConfig, bool) {
 			}
 		case "angle":
 			if deg, err := strconv.ParseFloat(v, 64); err == nil {
-				config.RotationAngle = deg
+				if configType == "color" {
+					config.ColorAngle = deg
+					config.HasColorAngle = true
+				} else {
+					config.RotationAngle = deg
+				}
 			}
 		case "dir":
 			config.RotationDir = strings.ToLower(v)
