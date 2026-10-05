@@ -345,6 +345,38 @@ func (s *Session) renderFramesForBoundary(boundaryRect inksvg.Rect) ([]inksvg.Re
 		}
 	}
 
+	if inksvg.CustomBatchRasterizer != nil && len(jobs) > 0 {
+		svgList := make([][]byte, len(jobs))
+		var buildErr error
+		for i, j := range jobs {
+			var frameSVG []byte
+			if s.Document.DefaultMode == inksvg.ModeTimeline {
+				frameSVG, buildErr = inksvg.BuildTimelineFrameSVG(s.Document, j.layerIdx, boundaryRect)
+			} else {
+				frameSVG, buildErr = inksvg.BuildLayerFrameSVG(s.Document, j.layer.ID, s.PinnedLayers, boundaryRect)
+			}
+			if buildErr != nil {
+				return nil, fmt.Errorf("failed to build frame for layer %s: %w", j.layer.Label, buildErr)
+			}
+			svgList[i] = frameSVG
+		}
+
+		images, err := inksvg.CustomBatchRasterizer(svgList, renderW, renderH)
+		if err == nil && len(images) == len(jobs) {
+			frames := make([]inksvg.RenderedFrame, len(jobs))
+			for i, j := range jobs {
+				dur := j.layer.EffectiveDuration(s.ExportOptions.DefaultDurationMs)
+				frames[j.frameIdx] = inksvg.RenderedFrame{
+					Index:      j.layerIdx,
+					Label:      j.layer.Label,
+					Image:      images[i],
+					DurationMs: dur,
+				}
+			}
+			return frames, nil
+		}
+	}
+
 	frames := make([]inksvg.RenderedFrame, len(jobs))
 	err := parallel.Run(len(jobs), func(idx int) error {
 		j := jobs[idx]

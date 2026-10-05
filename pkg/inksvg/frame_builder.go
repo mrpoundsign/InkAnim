@@ -380,15 +380,16 @@ type topLevelNode struct {
 	tokens     []xml.Token
 }
 
-// BuildTimelineFrameSVG generates an SVG frame for a timeline animation.
-// It hides any motion paths/markers, dynamically reorders top-level groups according to Depth directives,
-// and injects translate/rotate/scale/opacity/visibility into animated groups.
-func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]byte, error) {
-	if boundary.Width <= 0 || boundary.Height <= 0 {
-		boundary = doc.GetDocumentRect()
-	}
+type timelineTemplate struct {
+	preamble   []xml.Token
+	rootElem   xml.StartElement
+	rootEnd    xml.EndElement
+	postTokens []xml.Token
+	nodes      []topLevelNode
+}
 
-	decoder := xml.NewDecoder(bytes.NewReader(doc.RawContent))
+func parseTimelineTemplate(rawContent []byte) (*timelineTemplate, error) {
+	decoder := xml.NewDecoder(bytes.NewReader(rawContent))
 	var preamble []xml.Token
 	var rootElem xml.StartElement
 	var rootFound bool
@@ -414,7 +415,6 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 			case xml.StartElement:
 				if elem.Name.Local == "svg" {
 					rootFound = true
-					applyBoundaryToSVG(&elem, boundary)
 					rootElem = elem
 					currentDepth = 1
 				} else {
@@ -479,6 +479,46 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 			postTokens = append(postTokens, xml.CopyToken(token))
 		}
 	}
+
+	return &timelineTemplate{
+		preamble:   preamble,
+		rootElem:   rootElem,
+		rootEnd:    rootEnd,
+		postTokens: postTokens,
+		nodes:      nodes,
+	}, nil
+}
+
+// BuildTimelineFrameSVG generates an SVG frame for a timeline animation.
+// It hides any motion paths/markers, dynamically reorders top-level groups according to Depth directives,
+// and injects translate/rotate/scale/opacity/visibility into animated groups.
+func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]byte, error) {
+	if boundary.Width <= 0 || boundary.Height <= 0 {
+		boundary = doc.GetDocumentRect()
+	}
+
+	var tpl *timelineTemplate
+	if doc.timelineTpl != nil {
+		tpl = doc.timelineTpl.(*timelineTemplate)
+	} else {
+		var err error
+		tpl, err = parseTimelineTemplate(doc.RawContent)
+		if err != nil {
+			return nil, err
+		}
+		doc.timelineTpl = tpl
+	}
+
+	rootElem := tpl.rootElem
+	rootElem.Attr = append([]xml.Attr(nil), tpl.rootElem.Attr...)
+	applyBoundaryToSVG(&rootElem, boundary)
+
+	preamble := tpl.preamble
+	rootEnd := tpl.rootEnd
+	postTokens := tpl.postTokens
+
+	nodes := make([]topLevelNode, len(tpl.nodes))
+	copy(nodes, tpl.nodes)
 
 	frame1Idx := frameIndex + 1
 	maxF := len(doc.Layers)

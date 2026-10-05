@@ -12,6 +12,8 @@ import (
 )
 
 func (mw *MainWindow) initPlatform() {
+	initNativeRasterizer()
+
 	doc := js.Global().Get("document")
 	if doc.IsUndefined() || doc.IsNull() {
 		return
@@ -73,8 +75,7 @@ func (mw *MainWindow) initPlatform() {
 
 			data := <-done
 			if data != nil {
-				fyne.Do(func() {
-					mw.loadData(data, name)
+				mw.loadDataAsync(data, name, func() {
 					if fn := js.Global().Get("inkanimOnLoaded"); fn.Type() == js.TypeFunction {
 						fn.Invoke(name)
 					}
@@ -95,8 +96,7 @@ func (mw *MainWindow) initPlatform() {
 		length := uint8Array.Length()
 		data := make([]byte, length)
 		js.CopyBytesToGo(data, uint8Array)
-		fyne.Do(func() {
-			mw.loadData(data, name)
+		mw.loadDataAsync(data, name, func() {
 			if fn := js.Global().Get("inkanimOnLoaded"); fn.Type() == js.TypeFunction {
 				fn.Invoke(name)
 			}
@@ -158,8 +158,7 @@ func (mw *MainWindow) promptOpenFile() {
 			body.Call("removeChild", input)
 
 			if data != nil {
-				fyne.Do(func() {
-					mw.loadData(data, name)
+				mw.loadDataAsync(data, name, func() {
 					if fn := js.Global().Get("inkanimOnLoaded"); fn.Type() == js.TypeFunction {
 						fn.Invoke(name)
 					}
@@ -236,6 +235,37 @@ func (p *RightExportPanel) PromptExport() {
 				p.parentWindow)
 			d.SetOnClosed(resume)
 			d.Show()
+		})
+	}()
+}
+
+func (mw *MainWindow) loadDataAsync(data []byte, filename string, onLoaded func()) {
+	if mw.centerPanel != nil {
+		mw.centerPanel.Pause()
+	}
+	mw.statusLabel.SetText("Loading: " + filename)
+
+	go func() {
+		err := mw.session.LoadSVGData(data, filename)
+		fyne.Do(func() {
+			if err != nil {
+				dialog.ShowError(err, mw.window)
+				mw.statusLabel.SetText("Failed to load SVG.")
+			} else {
+				mw.fileLabel.SetText(fmt.Sprintf("%s (%0.0fx%0.0f)", filename, mw.session.Document.Width, mw.session.Document.Height))
+				mw.statusLabel.SetText(fmt.Sprintf("Loaded %d layers, %d pages. Ready to preview and export.", len(mw.session.Layers), len(mw.session.Pages)))
+
+				mw.leftPanel.Refresh()
+				mw.centerPanel.Refresh()
+				mw.rightPanel.syncOptions()
+
+				if len(mw.session.RenderedFrames) > 1 {
+					mw.centerPanel.Play()
+				}
+			}
+			if onLoaded != nil {
+				onLoaded()
+			}
 		})
 	}()
 }

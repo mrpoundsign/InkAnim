@@ -5,6 +5,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"sync"
 	"unicode"
 )
 
@@ -318,46 +319,73 @@ func parsePathSegments(pathData string) ([]PathSegment, float64, float64, error)
 	return segments, startX, startY, nil
 }
 
+type ParsedPath struct {
+	Segments []PathSegment
+	StartX   float64
+	StartY   float64
+	TotalLen float64
+	Lens     []float64
+}
+
+var parsedPathCache sync.Map
+
+func getParsedPath(pathData string) (*ParsedPath, error) {
+	if val, ok := parsedPathCache.Load(pathData); ok {
+		return val.(*ParsedPath), nil
+	}
+	segments, startX, startY, err := parsePathSegments(pathData)
+	if err != nil {
+		return nil, err
+	}
+	var totalLen float64
+	lens := make([]float64, len(segments))
+	for i, seg := range segments {
+		l := seg.Length()
+		lens[i] = l
+		totalLen += l
+	}
+	pp := &ParsedPath{
+		Segments: segments,
+		StartX:   startX,
+		StartY:   startY,
+		TotalLen: totalLen,
+		Lens:     lens,
+	}
+	parsedPathCache.Store(pathData, pp)
+	return pp, nil
+}
+
 func EvaluatePathAt(pathData string, t float64) (float64, float64, error) {
 	if t <= 0.0 { t = 0.0 }
 	if t >= 1.0 { t = 1.0 }
 
-	segments, startX, startY, err := parsePathSegments(pathData)
+	pp, err := getParsedPath(pathData)
 	if err != nil {
 		return 0, 0, err
 	}
-	if len(segments) == 0 {
+	if len(pp.Segments) == 0 || pp.TotalLen == 0 {
 		return 0, 0, nil
 	}
 
-	var totalLen float64
-	for _, seg := range segments {
-		totalLen += seg.Length()
-	}
-
-	if totalLen == 0 {
-		return 0, 0, nil
-	}
-
-	targetLen := t * totalLen
+	targetLen := t * pp.TotalLen
 	var currentLen float64
 
-	for _, seg := range segments {
-		segLen := seg.Length()
-		if currentLen + segLen >= targetLen {
+	for i, seg := range pp.Segments {
+		segLen := pp.Lens[i]
+		if currentLen+segLen >= targetLen || segLen == 0 {
 			u := 0.0
 			if segLen > 0 {
 				u = (targetLen - currentLen) / segLen
 			}
 			x, y := seg.EvaluateAt(u)
-			return x - startX, y - startY, nil
+			return x - pp.StartX, y - pp.StartY, nil
 		}
 		currentLen += segLen
 	}
 
 	// Fallback to end of last segment
-	x, y := segments[len(segments)-1].EvaluateAt(1.0)
-	return x - startX, y - startY, nil
+	x, y := pp.Segments[len(pp.Segments)-1].EvaluateAt(1.0)
+	return x - pp.StartX, y - pp.StartY, nil
 }
 
 func ApplyEasing(t float64, easeType string) float64 {
@@ -378,8 +406,11 @@ func ApplyEasing(t float64, easeType string) float64 {
 
 // GetPathStartPoint returns the initial starting point (startX, startY) of the path.
 func GetPathStartPoint(pathData string) (float64, float64, error) {
-	_, startX, startY, err := parsePathSegments(pathData)
-	return startX, startY, err
+	pp, err := getParsedPath(pathData)
+	if err != nil {
+		return 0, 0, err
+	}
+	return pp.StartX, pp.StartY, nil
 }
 
 // EvaluatePathTangentAngle returns the tangent angle in degrees at progress t (0.0 to 1.0).
@@ -391,28 +422,19 @@ func EvaluatePathTangentAngle(pathData string, t float64) (float64, error) {
 		t = 1.0
 	}
 
-	segments, _, _, err := parsePathSegments(pathData)
+	pp, err := getParsedPath(pathData)
 	if err != nil {
 		return 0, err
 	}
-	if len(segments) == 0 {
+	if len(pp.Segments) == 0 || pp.TotalLen == 0 {
 		return 0, nil
 	}
 
-	var totalLen float64
-	for _, seg := range segments {
-		totalLen += seg.Length()
-	}
-
-	if totalLen == 0 {
-		return 0, nil
-	}
-
-	targetLen := t * totalLen
+	targetLen := t * pp.TotalLen
 	var currentLen float64
 
-	for _, seg := range segments {
-		segLen := seg.Length()
+	for i, seg := range pp.Segments {
+		segLen := pp.Lens[i]
 		if currentLen+segLen >= targetLen || segLen == 0 {
 			u := 0.0
 			if segLen > 0 {
@@ -424,7 +446,7 @@ func EvaluatePathTangentAngle(pathData string, t float64) (float64, error) {
 		currentLen += segLen
 	}
 
-	dx, dy := segments[len(segments)-1].TangentAt(1.0)
+	dx, dy := pp.Segments[len(pp.Segments)-1].TangentAt(1.0)
 	return math.Atan2(dy, dx) * 180.0 / math.Pi, nil
 }
 

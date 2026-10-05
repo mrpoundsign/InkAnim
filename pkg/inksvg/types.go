@@ -217,6 +217,7 @@ type SVGDocument struct {
 	Gradients    map[string]SVGGradient
 	DefaultMode  FrameMode
 	ElementRects map[string]Rect
+	timelineTpl  any
 }
 
 // GetElementRect returns the bounding rectangle of the specified element by ID,
