@@ -2,6 +2,7 @@ package inksvg
 
 import (
 	"math"
+	"os"
 	"strings"
 	"testing"
 )
@@ -54,58 +55,101 @@ func TestEvaluatePathAt_RelativeCommands(t *testing.T) {
 	}
 }
 
-func TestParseMotionConfig_SpaceSeparatedAndReverse(t *testing.T) {
+func TestParseMotionConfig_MoveAndRot(t *testing.T) {
 	tests := []struct {
 		label      string
 		wantOK     bool
+		wantType   string
 		wantStart  int
 		wantEnd    int
 		wantAll    bool
 		wantEase   string
 		wantRev    bool
+		wantAngle  float64
+		wantDir    string
+		wantOrient bool
+		wantPivot  string
+		wantEdge   float64
+		wantNode   string
 	}{
 		{
-			label:     "Motion {f:1-15}",
+			label:     "Move {f:1-15}",
 			wantOK:    true,
+			wantType:  "move",
 			wantStart: 1,
 			wantEnd:   15,
 			wantEase:  "linear",
-			wantRev:   false,
+			wantDir:   "cw",
+			wantPivot: "center",
 		},
 		{
-			label:     "Motion {f:1-15 rev}",
+			label:     "Move {f:1-15 rev}",
 			wantOK:    true,
+			wantType:  "move",
 			wantStart: 1,
 			wantEnd:   15,
 			wantEase:  "linear",
 			wantRev:   true,
+			wantDir:   "cw",
+			wantPivot: "center",
 		},
 		{
-			label:     "Motion {f:1-15 ease:in-out rev}",
+			label:     "Move {f:1-15 ease:in-out rev orient:true}",
 			wantOK:    true,
+			wantType:  "move",
 			wantStart: 1,
 			wantEnd:   15,
 			wantEase:  "in-out",
 			wantRev:   true,
+			wantOrient: true,
+			wantDir:   "cw",
+			wantPivot: "center",
 		},
 		{
-			label:     "Motion {f:all reverse}",
+			label:     "Rot {f:1-60 angle:360 dir:ccw pivot:center}",
 			wantOK:    true,
+			wantType:  "rot",
+			wantStart: 1,
+			wantEnd:   60,
+			wantEase:  "linear",
+			wantAngle: 360,
+			wantDir:   "ccw",
+			wantPivot: "center",
+		},
+		{
+			label:     "Rot {f:all ease:out angle:90 pivot:0}", // 0 = top edge
+			wantOK:    true,
+			wantType:  "rot",
+			wantAll:   true,
+			wantEase:  "out",
+			wantAngle: 90,
+			wantDir:   "cw",
+			wantPivot: "edge",
+			wantEdge:  0,
+		},
+		{
+			label:     "Rot {angle:45 pivot:#arm_joint}", // omitted f defaults to all
+			wantOK:    true,
+			wantType:  "rot",
 			wantAll:   true,
 			wantEase:  "linear",
-			wantRev:   true,
+			wantAngle: 45,
+			wantDir:   "cw",
+			wantPivot: "node",
+			wantNode:  "arm_joint",
 		},
 		{
-			label:     "Motion {f:1-10; ease:out; rev}", // legacy semicolon separation
+			label:     "Rot {pivot:path-start}",
 			wantOK:    true,
-			wantStart: 1,
-			wantEnd:   10,
-			wantEase:  "out",
-			wantRev:   true,
+			wantType:  "rot",
+			wantAll:   true,
+			wantEase:  "linear",
+			wantDir:   "cw",
+			wantPivot: "path-start",
 		},
 		{
-			label:     "Regular Label",
-			wantOK:    false,
+			label:  "Regular Label",
+			wantOK: false,
 		},
 	}
 
@@ -117,6 +161,9 @@ func TestParseMotionConfig_SpaceSeparatedAndReverse(t *testing.T) {
 		}
 		if !tt.wantOK {
 			continue
+		}
+		if cfg.Type != tt.wantType {
+			t.Errorf("[%s] type = %s, want %s", tt.label, cfg.Type, tt.wantType)
 		}
 		if cfg.StartFrame != tt.wantStart || cfg.EndFrame != tt.wantEnd {
 			t.Errorf("[%s] frame range = %d-%d, want %d-%d", tt.label, cfg.StartFrame, cfg.EndFrame, tt.wantStart, tt.wantEnd)
@@ -130,6 +177,76 @@ func TestParseMotionConfig_SpaceSeparatedAndReverse(t *testing.T) {
 		if cfg.Reverse != tt.wantRev {
 			t.Errorf("[%s] reverse = %v, want %v", tt.label, cfg.Reverse, tt.wantRev)
 		}
+		if cfg.RotationAngle != tt.wantAngle {
+			t.Errorf("[%s] angle = %f, want %f", tt.label, cfg.RotationAngle, tt.wantAngle)
+		}
+		if cfg.RotationDir != tt.wantDir {
+			t.Errorf("[%s] dir = %s, want %s", tt.label, cfg.RotationDir, tt.wantDir)
+		}
+		if cfg.OrientPath != tt.wantOrient {
+			t.Errorf("[%s] orient = %v, want %v", tt.label, cfg.OrientPath, tt.wantOrient)
+		}
+		if cfg.PivotType != tt.wantPivot {
+			t.Errorf("[%s] pivot = %s, want %s", tt.label, cfg.PivotType, tt.wantPivot)
+		}
+		if cfg.PivotEdgeAngle != tt.wantEdge {
+			t.Errorf("[%s] pivotEdge = %f, want %f", tt.label, cfg.PivotEdgeAngle, tt.wantEdge)
+		}
+		if cfg.PivotNodeID != tt.wantNode {
+			t.Errorf("[%s] pivotNode = %s, want %s", tt.label, cfg.PivotNodeID, tt.wantNode)
+		}
+	}
+}
+
+func TestCalculateEdgePivot(t *testing.T) {
+	rect := Rect{X: 10, Y: 20, Width: 100, Height: 60}
+	cx := 10.0 + 50.0 // 60
+	cy := 20.0 + 30.0 // 50
+
+	// 0 deg: top-center (cx, Y) -> (60, 20)
+	px, py := CalculateEdgePivot(rect, 0)
+	if math.Abs(px-cx) > 0.001 || math.Abs(py-20.0) > 0.001 {
+		t.Errorf("pivot 0 = (%f, %f), want (%f, 20)", px, py, cx)
+	}
+
+	// 90 deg: right-center (X+W, cy) -> (110, 50)
+	px, py = CalculateEdgePivot(rect, 90)
+	if math.Abs(px-110.0) > 0.001 || math.Abs(py-cy) > 0.001 {
+		t.Errorf("pivot 90 = (%f, %f), want (110, %f)", px, py, cy)
+	}
+
+	// 180 deg: bottom-center (cx, Y+H) -> (60, 80)
+	px, py = CalculateEdgePivot(rect, 180)
+	if math.Abs(px-cx) > 0.001 || math.Abs(py-80.0) > 0.001 {
+		t.Errorf("pivot 180 = (%f, %f), want (%f, 80)", px, py, cx)
+	}
+
+	// 270 deg: left-center (X, cy) -> (10, 50)
+	px, py = CalculateEdgePivot(rect, 270)
+	if math.Abs(px-10.0) > 0.001 || math.Abs(py-cy) > 0.001 {
+		t.Errorf("pivot 270 = (%f, %f), want (10, %f)", px, py, cy)
+	}
+}
+
+func TestEvaluatePathTangentAngle(t *testing.T) {
+	// Line going right (+X)
+	pathRight := "M 0,0 L 100,0"
+	ang, err := EvaluatePathTangentAngle(pathRight, 0.5)
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+	if math.Abs(ang-0.0) > 0.001 {
+		t.Errorf("pathRight angle = %f, want 0", ang)
+	}
+
+	// Line going down (+Y)
+	pathDown := "M 0,0 L 0,100"
+	ang, err = EvaluatePathTangentAngle(pathDown, 0.5)
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+	if math.Abs(ang-90.0) > 0.001 {
+		t.Errorf("pathDown angle = %f, want 90", ang)
 	}
 }
 
@@ -137,7 +254,7 @@ func TestBuildTimelineFrameSVG_Reverse(t *testing.T) {
 	svgContent := `<svg width="100" height="100" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape">
   <g id="starGroup" inkscape:groupmode="layer" inkscape:label="Star">
     <rect id="star" x="0" y="0" width="10" height="10"/>
-    <path id="motionPath" inkscape:label="Motion {f:1-3 rev}" d="M 0,0 L 100,50"/>
+    <path id="motionPath" inkscape:label="Move {f:1-3 rev}" d="M 0,0 L 100,50"/>
   </g>
 </svg>`
 
@@ -180,3 +297,263 @@ func TestBuildTimelineFrameSVG_Reverse(t *testing.T) {
 		t.Errorf("frame 2 (end of reverse) should not have non-zero translate, got:\n%s", string(frame2))
 	}
 }
+
+func TestBuildTimelineFrameSVG_RotationAndMultiMotion(t *testing.T) {
+	// A group with both Move and Rot
+	svgContent := `<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape">
+  <g id="boxGroup" inkscape:groupmode="layer" inkscape:label="Box">
+    <rect id="box" x="10" y="10" width="20" height="20" fill="red"/>
+    <path id="movePath" inkscape:label="Move {f:1-3}" d="M 0,0 L 40,0"/>
+    <path id="rotPath" inkscape:label="Rot {f:1-3 angle:90 dir:cw pivot:0}" d="M 0,0 L 0,0"/>
+  </g>
+</svg>`
+
+	doc, err := ParseSVG([]byte(svgContent))
+	if err != nil {
+		t.Fatalf("ParseSVG failed: %v", err)
+	}
+
+	if len(doc.MotionPaths) != 2 {
+		t.Fatalf("expected 2 motion paths, got %d", len(doc.MotionPaths))
+	}
+
+	// Frame 0 (frame 1): progress = 0.0 -> translate 0, rot 0
+	f0, err := BuildTimelineFrameSVG(doc, 0, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("BuildTimelineFrameSVG f0 failed: %v", err)
+	}
+	if strings.Contains(string(f0), "rotate(") || strings.Contains(string(f0), "translate(") {
+		t.Errorf("f0 expected no transform at resting start, got:\n%s", string(f0))
+	}
+
+	// Frame 2 (frame 3): progress = 1.0 -> translate (40, 0), rot 90 around top edge (20, 10)
+	f2, err := BuildTimelineFrameSVG(doc, 2, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("BuildTimelineFrameSVG f2 failed: %v", err)
+	}
+	f2Str := string(f2)
+	if !strings.Contains(f2Str, "translate(40.000000, 0.000000)") {
+		t.Errorf("f2 expected translate(40, 0), got:\n%s", f2Str)
+	}
+	if !strings.Contains(f2Str, "rotate(90.000000, 20.000000, 10.000000)") {
+		t.Errorf("f2 expected rotate(90, 20, 10) for pivot 0 (top-center), got:\n%s", f2Str)
+	}
+}
+
+func TestBuildTimelineFrameSVG_OrientPath(t *testing.T) {
+	// Path curves from right (+X) to down (+Y)
+	// Tangent at t=0 is 0 deg. Tangent at t=1 is 90 deg.
+	// Relative rotation at t=1 should be 90 deg.
+	svgContent := `<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape">
+  <g id="arrowGroup" inkscape:groupmode="layer" inkscape:label="Arrow">
+    <rect id="arrow" x="10" y="10" width="20" height="20" fill="blue"/>
+    <path id="curvePath" inkscape:label="Move {f:1-3 orient:true}" d="M 0,0 C 50,0 50,50 50,50"/>
+  </g>
+</svg>`
+
+	doc, err := ParseSVG([]byte(svgContent))
+	if err != nil {
+		t.Fatalf("ParseSVG failed: %v", err)
+	}
+
+	// Frame 0: relative orient = 0 deg
+	f0, err := BuildTimelineFrameSVG(doc, 0, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("f0 failed: %v", err)
+	}
+	if strings.Contains(string(f0), "rotate(") {
+		t.Errorf("f0 expected no rotation at start of path, got:\n%s", string(f0))
+	}
+
+	// Frame 2 (frame 3): endpoint tangent should be rotated
+	f2, err := BuildTimelineFrameSVG(doc, 2, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("f2 failed: %v", err)
+	}
+	f2Str := string(f2)
+	if !strings.Contains(f2Str, "rotate(") {
+		t.Errorf("f2 expected rotate transform for orient:true, got:\n%s", f2Str)
+	}
+}
+
+func TestBuildTimelineFrameSVG_NodePivot(t *testing.T) {
+	// Pivot referencing #pin
+	svgContent := `<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape">
+  <rect id="pin" x="50" y="50" width="10" height="10"/>
+  <g id="armGroup" inkscape:groupmode="layer" inkscape:label="Arm">
+    <rect id="arm" x="0" y="0" width="100" height="20" fill="green"/>
+    <path id="rot" inkscape:label="Rot {f:1-3 angle:45 pivot:#pin}" d="M 0,0 L 0,0"/>
+  </g>
+</svg>`
+
+	doc, err := ParseSVG([]byte(svgContent))
+	if err != nil {
+		t.Fatalf("ParseSVG failed: %v", err)
+	}
+
+	// Frame 2: #pin center is (50+5, 50+5) = (55, 55)
+	f2, err := BuildTimelineFrameSVG(doc, 2, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("f2 failed: %v", err)
+	}
+	f2Str := string(f2)
+	if !strings.Contains(f2Str, "rotate(45.000000, 55.000000, 55.000000)") {
+		t.Errorf("f2 expected rotate(45, 55, 55) for pivot:#pin, got:\n%s", f2Str)
+	}
+}
+
+func TestIntegration_PendulumAndComplexMotion(t *testing.T) {
+	// 1. Test testdata/pendulum.svg
+	pendulumData, err := os.ReadFile("../../testdata/pendulum.svg")
+	if err != nil {
+		t.Fatalf("failed to read pendulum.svg: %v", err)
+	}
+	doc, err := ParseSVG(pendulumData)
+	if err != nil {
+		t.Fatalf("ParseSVG(pendulum.svg) failed: %v", err)
+	}
+	if doc.DefaultMode != ModeTimeline {
+		t.Errorf("pendulum.svg DefaultMode = %s, want %s", doc.DefaultMode, ModeTimeline)
+	}
+	if len(doc.Layers) != 10 {
+		t.Errorf("pendulum.svg frame layers count = %d, want 10", len(doc.Layers))
+	}
+	if len(doc.MotionPaths) != 1 {
+		t.Fatalf("pendulum.svg motion paths count = %d, want 1", len(doc.MotionPaths))
+	}
+	mp := doc.MotionPaths[0]
+	if mp.Config.Type != "rot" || mp.Config.RotationAngle != 48 || mp.Config.RotationDir != "ccw" || mp.Config.PivotType != "node" || mp.Config.PivotNodeID != "pivot_mount" {
+		t.Errorf("pendulum.svg parsed config = %+v, want Rot 48 deg ccw pivot:#pivot_mount", mp.Config)
+	}
+
+	// Render all 10 frames to verify no panic or XML error
+	for i := 0; i < len(doc.Layers); i++ {
+		frameBytes, err := BuildTimelineFrameSVG(doc, i, doc.GetDrawingRect())
+		if err != nil {
+			t.Fatalf("BuildTimelineFrameSVG(pendulum, frame %d) failed: %v", i, err)
+		}
+		if len(frameBytes) == 0 {
+			t.Fatalf("BuildTimelineFrameSVG(pendulum, frame %d) returned empty bytes", i)
+		}
+	}
+
+	// 2. Test testdata/complex_motion.svg
+	complexData, err := os.ReadFile("../../testdata/complex_motion.svg")
+	if err != nil {
+		t.Fatalf("failed to read complex_motion.svg: %v", err)
+	}
+	doc2, err := ParseSVG(complexData)
+	if err != nil {
+		t.Fatalf("ParseSVG(complex_motion.svg) failed: %v", err)
+	}
+	if doc2.DefaultMode != ModeTimeline {
+		t.Errorf("complex_motion.svg DefaultMode = %s, want %s", doc2.DefaultMode, ModeTimeline)
+	}
+	if len(doc2.Layers) != 20 {
+		t.Errorf("complex_motion.svg frame layers count = %d, want 20", len(doc2.Layers))
+	}
+	if len(doc2.MotionPaths) != 2 {
+		t.Fatalf("complex_motion.svg motion paths count = %d, want 2", len(doc2.MotionPaths))
+	}
+
+	// Render all 20 frames to verify compositing across overlapping Move and Rot
+	for i := 0; i < len(doc2.Layers); i++ {
+		frameBytes, err := BuildTimelineFrameSVG(doc2, i, doc2.GetDrawingRect())
+		if err != nil {
+			t.Fatalf("BuildTimelineFrameSVG(complex_motion, frame %d) failed: %v", i, err)
+		}
+		if len(frameBytes) == 0 {
+			t.Fatalf("BuildTimelineFrameSVG(complex_motion, frame %d) returned empty bytes", i)
+		}
+	}
+}
+
+func TestQuadraticBezierSegment(t *testing.T) {
+	// (0,0) -> Control (50, 100) -> End (100, 0)
+	seg := NewQuadraticBezierSegment(0, 0, 50, 100, 100, 0)
+	if seg.Length() <= 0 {
+		t.Errorf("expected positive length, got %f", seg.Length())
+	}
+
+	// At u=0: (0, 0)
+	x0, y0 := seg.EvaluateAt(0.0)
+	if math.Abs(x0) > 1e-4 || math.Abs(y0) > 1e-4 {
+		t.Errorf("at u=0, expected (0,0), got (%f, %f)", x0, y0)
+	}
+
+	// At u=0.5: x = 0.25*0 + 2*0.25*50 + 0.25*100 = 50, y = 0.25*0 + 2*0.25*100 + 0 = 50
+	xMid, yMid := seg.EvaluateAt(0.5)
+	if math.Abs(xMid-50) > 1e-4 || math.Abs(yMid-50) > 1e-4 {
+		t.Errorf("at u=0.5, expected (50,50), got (%f, %f)", xMid, yMid)
+	}
+
+	// At u=1.0: (100, 0)
+	x1, y1 := seg.EvaluateAt(1.0)
+	if math.Abs(x1-100) > 1e-4 || math.Abs(y1) > 1e-4 {
+		t.Errorf("at u=1.0, expected (100,0), got (%f, %f)", x1, y1)
+	}
+
+	// Tangents: at u=0, vector is 2*(cx-sx, cy-sy) = (100, 200) -> positive
+	tx0, ty0 := seg.TangentAt(0.0)
+	if tx0 <= 0 || ty0 <= 0 {
+		t.Errorf("at u=0, expected positive tangent vector, got (%f, %f)", tx0, ty0)
+	}
+
+	// At u=1, vector is 2*(ex-cx, ey-cy) = (100, -200) -> positive dx, negative dy
+	tx1, ty1 := seg.TangentAt(1.0)
+	if tx1 <= 0 || ty1 >= 0 {
+		t.Errorf("at u=1, expected positive dx and negative dy, got (%f, %f)", tx1, ty1)
+	}
+
+	// Degenerate tangent test (when dx==0 && dy==0)
+	degen := NewQuadraticBezierSegment(10, 10, 10, 10, 20, 20)
+	dtx, dty := degen.TangentAt(0.0)
+	if dtx != 10 || dty != 10 {
+		t.Errorf("expected fallback tangent (10, 10), got (%f, %f)", dtx, dty)
+	}
+}
+
+func TestQuadraticPathParsing(t *testing.T) {
+	// Q (absolute) and q (relative)
+	pathData := "M 0 0 Q 50 100 100 0 q 50 -100 100 0"
+	xEnd, yEnd, err := EvaluatePathAt(pathData, 1.0)
+	if err != nil {
+		t.Fatalf("EvaluatePathAt quadratic path failed: %v", err)
+	}
+	if math.Abs(xEnd-200) > 1e-2 || math.Abs(yEnd) > 1e-2 {
+		t.Errorf("expected end at (200, 0), got (%f, %f)", xEnd, yEnd)
+	}
+
+	angle, err := EvaluatePathTangentAngle(pathData, 0.5)
+	if err != nil {
+		t.Fatalf("EvaluatePathTangentAngle failed: %v", err)
+	}
+	_ = angle
+}
+
+func TestGetPathStartPoint(t *testing.T) {
+	// Absolute M
+	x, y, err := GetPathStartPoint("M 15.5 42.8 L 100 200")
+	if err != nil {
+		t.Fatalf("GetPathStartPoint failed: %v", err)
+	}
+	if math.Abs(x-15.5) > 1e-4 || math.Abs(y-42.8) > 1e-4 {
+		t.Errorf("expected (15.5, 42.8), got (%f, %f)", x, y)
+	}
+
+	// Relative m
+	xRel, yRel, err := GetPathStartPoint("m 10 25 l 50 50")
+	if err != nil {
+		t.Fatalf("GetPathStartPoint relative failed: %v", err)
+	}
+	if math.Abs(xRel-10) > 1e-4 || math.Abs(yRel-25) > 1e-4 {
+		t.Errorf("expected (10, 25), got (%f, %f)", xRel, yRel)
+	}
+
+	// Invalid path
+	_, _, err = GetPathStartPoint("invalid path")
+	if err == nil {
+		t.Errorf("expected error on invalid path, got nil")
+	}
+}
+

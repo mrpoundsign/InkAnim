@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="256"
+   height="256"
+   viewBox="0 0 256 256"
+   version="1.1"
+   id="svg_complex_motion_demo"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns="http://www.w3.org/2000/svg">
+  <!-- Space Background with Stars -->
+  <rect width="256" height="256" fill="#0f172a" id="space_bg" />
+  <circle cx="40" cy="60" r="1.5" fill="#fef08a" opacity="0.8" />
+  <circle cx="180" cy="50" r="2" fill="#fef08a" opacity="0.9" />
+  <circle cx="90" cy="200" r="1" fill="#fef08a" opacity="0.6" />
+  <circle cx="210" cy="190" r="1.5" fill="#fef08a" opacity="0.7" />
+  <circle cx="130" cy="30" r="1" fill="#ffffff" opacity="0.5" />
+
+  <!-- Shuttle Group with overlapping 20-frame flight path and mid-flight 360 roll -->
+  <g
+     inkscape:groupmode="layer"
+     id="group_shuttle"
+     inkscape:label="Space Shuttle">
+    <!-- Spaceship Artwork facing right (+X) -->
+    <polygon points="45,128 18,118 24,128 18,138" fill="#38bdf8" stroke="#0284c7" stroke-width="2" />
+    <polygon points="22,126 12,128 22,130" fill="#f97316" />
+    <circle cx="34" cy="128" r="3" fill="#f8fafc" />
+
+    <!-- Motion 1: 20-frame flight across S-curve with auto-orientation -->
+    <path
+       id="flight_path"
+       inkscape:label="Move {f: 1-20; ease: in-out; orient: true}"
+       d="M 30,128 C 70,40 110,40 128,128 C 146,216 186,216 226,128" />
+
+    <!-- Motion 2: Mid-flight 360 degree barrel roll during frames 5 to 15 -->
+    <path
+       id="barrel_roll"
+       inkscape:label="Rot {f: 5-15; ease: in-out; angle: 360; dir: cw; pivot: center}"
+       d="M 0,0 L 0,0" />
+  </g>
+</svg>

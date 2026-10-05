@@ -7,7 +7,9 @@ set -euo pipefail
 #   ./build.sh cli      # Build Pure-Go CLI into build/
 #   ./build.sh gui      # Build Desktop GUI into build/
 #   ./build.sh gui-win  # Build Desktop GUI for Windows via MinGW into build/
-#   ./build.sh test     # Run unit tests
+#   ./build.sh wasm       # Package WebAssembly studio into build/gh-pages
+#   ./build.sh wasm-check # Verify WebAssembly compilation
+#   ./build.sh test       # Run unit tests
 #   ./build.sh cross    # Cross-compile CLI for multiple targets
 #   ./build.sh clean    # Clean build outputs
 
@@ -56,6 +58,12 @@ build_gui_win() {
     echo "✓ Successfully built $BUILD_DIR/inkanim.exe"
 }
 
+verify_wasm() {
+    echo "==> Verifying WebAssembly compilation..."
+    GOOS=js GOARCH=wasm go build -tags migrated_fynedo -o /dev/null ./cmd/inkanim
+    echo "✓ WebAssembly compilation verified!"
+}
+
 build_wasm() {
     echo "==> Packaging WebAssembly studio & assembling GitHub Pages site..."
     local PAGES_DIR="$BUILD_DIR/gh-pages"
@@ -68,7 +76,7 @@ build_wasm() {
         cd "$WASM_TEMP"
         go run fyne.io/tools/cmd/fyne@latest package -os web --release \
             --tags migrated_fynedo \
-            --sourceDir "$ROOT_DIR/cmd/inkanim" \
+            --source-dir "$ROOT_DIR/cmd/inkanim" \
             --icon "$ROOT_DIR/assets/icon.png" \
             --name InkAnim
     )
@@ -144,6 +152,7 @@ case "$TARGET" in
     all)
         run_lint
         run_tests
+        verify_wasm
         build_cli
         build_gui
         ;;
@@ -158,6 +167,9 @@ case "$TARGET" in
         ;;
     wasm)
         build_wasm
+        ;;
+    wasm-check)
+        verify_wasm
         ;;
     serve)
         serve_web

@@ -89,12 +89,18 @@ func (p Page) EffectiveDuration(globalDefault int) int {
 
 // MotionConfig holds the parsed animation parameters from IAMS syntax.
 type MotionConfig struct {
-	StartFrame int
-	EndFrame   int
-	IsAll      bool
-	Ease       string
-	Type       string
-	Reverse    bool
+	StartFrame     int
+	EndFrame       int
+	IsAll          bool
+	Ease           string
+	Type           string  // "move" or "rot"
+	Reverse        bool
+	RotationAngle  float64 // degrees
+	RotationDir    string  // "cw" or "ccw"
+	OrientPath     bool    // true if orient: true
+	PivotType      string  // "center", "edge", "node", "path-start"
+	PivotEdgeAngle float64 // clock degrees (0 = top, 90 = right, 180 = bottom, 270 = left)
+	PivotNodeID    string  // element ID for node pivot (without '#')
 }
 
 // MotionPath represents a movement spline and its config found inside a group.
@@ -115,10 +121,31 @@ type SVGDocument struct {
 	ViewBoxW    float64
 	ViewBoxH    float64
 	DrawingRect Rect
-	Layers      []Layer
-	Pages       []Page
-	MotionPaths []MotionPath
-	DefaultMode FrameMode
+	Layers       []Layer
+	Pages        []Page
+	MotionPaths  []MotionPath
+	DefaultMode  FrameMode
+	ElementRects map[string]Rect
+}
+
+// GetElementRect returns the bounding rectangle of the specified element by ID,
+// falling back to GetDrawingRect if the element is not found or has empty bounds.
+func (d *SVGDocument) GetElementRect(id string) Rect {
+	if d == nil {
+		return Rect{X: 0, Y: 0, Width: 512, Height: 512}
+	}
+	if d.ElementRects == nil {
+		d.ElementRects = make(map[string]Rect)
+	}
+	if r, ok := d.ElementRects[id]; ok {
+		return r
+	}
+	r, ok := ComputeElementRect(d.RawContent, id)
+	if ok && (r.Width > 0 || r.Height > 0) {
+		d.ElementRects[id] = r
+		return r
+	}
+	return d.GetDrawingRect()
 }
 
 // GetDrawingRect returns the bounding rectangle of all rendered paths/elements in the SVG,

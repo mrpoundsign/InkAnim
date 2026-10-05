@@ -175,6 +175,9 @@ func ParseSVG(data []byte) (*SVGDocument, error) {
 			maxFrame = mp.Config.EndFrame
 		}
 	}
+	if maxFrame == 0 && len(doc.MotionPaths) > 0 {
+		maxFrame = 15
+	}
 
 	if maxFrame > 0 {
 		doc.DefaultMode = ModeTimeline
@@ -262,6 +265,141 @@ func (s *bboxScanner) SetColor(color any)                {}
 func (s *bboxScanner) SetWinding(useNonZeroWinding bool) {}
 func (s *bboxScanner) Clear()                            {}
 func (s *bboxScanner) SetClip(rect image.Rectangle)      {}
+
+// ComputeElementRect extracts the SVG subtree of the element with the given ID
+// (preserving its ancestor groups and transforms, but excluding motion path guides),
+// wraps it in a root SVG with the document's viewBox, and computes its visual bounding box.
+func ComputeElementRect(data []byte, elementID string) (Rect, bool) {
+	if len(data) == 0 || elementID == "" {
+		return Rect{}, false
+	}
+
+	decoder := xml.NewDecoder(bytes.NewReader(data))
+	var rootElem xml.StartElement
+	var rootFound bool
+
+	var ancestorStack []xml.StartElement
+	var targetTokens []xml.Token
+	var inTarget bool
+	var targetDepth int
+
+	for {
+		tok, err := decoder.Token()
+		if err != nil {
+			break
+		}
+
+		switch elem := tok.(type) {
+		case xml.StartElement:
+			if !rootFound && elem.Name.Local == "svg" {
+				rootFound = true
+				rootElem = elem.Copy()
+			}
+
+			if inTarget {
+				targetDepth++
+				// Skip internal motion path guides so they don't expand the element's bounding box
+				if elem.Name.Local == "path" {
+					for _, attr := range elem.Attr {
+						if attr.Name.Local == "label" {
+							if _, ok := parseMotionConfig(attr.Value); ok {
+								_ = decoder.Skip()
+								targetDepth--
+								goto nextToken
+							}
+						}
+					}
+				}
+				targetTokens = append(targetTokens, xml.CopyToken(elem))
+			} else {
+				var id string
+				for _, attr := range elem.Attr {
+					if attr.Name.Local == "id" {
+						id = attr.Value
+						break
+					}
+				}
+				if id == elementID {
+					inTarget = true
+					targetDepth = 1
+					targetTokens = append(targetTokens, xml.CopyToken(elem))
+				} else {
+					ancestorStack = append(ancestorStack, elem.Copy())
+				}
+			}
+
+		case xml.EndElement:
+			if inTarget {
+				targetTokens = append(targetTokens, xml.CopyToken(elem))
+				targetDepth--
+				if targetDepth == 0 {
+					goto finishScan
+				}
+			} else if len(ancestorStack) > 0 {
+				ancestorStack = ancestorStack[:len(ancestorStack)-1]
+			}
+		case xml.CharData, xml.Comment, xml.ProcInst, xml.Directive:
+			if inTarget {
+				targetTokens = append(targetTokens, xml.CopyToken(tok))
+			}
+		}
+	nextToken:
+	}
+
+finishScan:
+	if len(targetTokens) == 0 {
+		return Rect{}, false
+	}
+
+	var buf bytes.Buffer
+	enc := xml.NewEncoder(&buf)
+
+	if !rootFound {
+		rootElem = xml.StartElement{
+			Name: xml.Name{Local: "svg"},
+			Attr: []xml.Attr{
+				{Name: xml.Name{Local: "xmlns"}, Value: "http://www.w3.org/2000/svg"},
+			},
+		}
+	}
+	if err := enc.EncodeToken(rootElem); err != nil {
+		return Rect{}, false
+	}
+
+	for _, a := range ancestorStack {
+		if a.Name.Local == "svg" {
+			continue
+		}
+		if err := enc.EncodeToken(a); err != nil {
+			return Rect{}, false
+		}
+	}
+
+	for _, t := range targetTokens {
+		if err := enc.EncodeToken(t); err != nil {
+			return Rect{}, false
+		}
+	}
+
+	for i := len(ancestorStack) - 1; i >= 0; i-- {
+		if ancestorStack[i].Name.Local == "svg" {
+			continue
+		}
+		if err := enc.EncodeToken(ancestorStack[i].End()); err != nil {
+			return Rect{}, false
+		}
+	}
+
+	if err := enc.EncodeToken(rootElem.End()); err != nil {
+		return Rect{}, false
+	}
+	if err := enc.Flush(); err != nil {
+		return Rect{}, false
+	}
+
+	rect := ComputeDrawingRect(buf.Bytes())
+	return rect, true
+}
 
 // ComputeDrawingRect calculates the bounding box of all paths in the SVG drawing,
 // applying element and group transformation matrices, stroke widths, and joins.
@@ -429,22 +567,67 @@ func parseDimension(s string) float64 {
 }
 
 func parseMotionConfig(label string) (MotionConfig, bool) {
-	idx := strings.Index(label, "Motion {")
-	if idx == -1 {
+	var configType string
+	var contentStart int
+
+	lower := strings.ToLower(label)
+	if idx := strings.Index(lower, "move"); idx != -1 {
+		rest := strings.TrimLeft(label[idx+4:], " \t")
+		if strings.HasPrefix(rest, "{") {
+			configType = "move"
+			contentStart = idx + 4 + (len(label[idx+4:]) - len(rest)) + 1
+		}
+	}
+	if configType == "" {
+		if idx := strings.Index(lower, "rot"); idx != -1 {
+			rest := strings.TrimLeft(label[idx+3:], " \t")
+			if strings.HasPrefix(rest, "{") {
+				configType = "rot"
+				contentStart = idx + 3 + (len(label[idx+3:]) - len(rest)) + 1
+			}
+		}
+	}
+	if configType == "" {
 		return MotionConfig{}, false
 	}
-	endIdx := strings.Index(label[idx:], "}")
+
+	endIdx := strings.Index(label[contentStart:], "}")
 	if endIdx == -1 {
 		return MotionConfig{}, false
 	}
-	configStr := label[idx+8 : idx+endIdx]
+	configStr := label[contentStart : contentStart+endIdx]
+
+	// Normalize whitespace around colons so "k : v" becomes "k:v"
+	var cleaned strings.Builder
+	runes := []rune(configStr)
+	for i := 0; i < len(runes); i++ {
+		r := runes[i]
+		if r == ':' {
+			str := strings.TrimRight(cleaned.String(), " \t")
+			cleaned.Reset()
+			cleaned.WriteString(str)
+			cleaned.WriteRune(':')
+			for i+1 < len(runes) && (runes[i+1] == ' ' || runes[i+1] == '\t') {
+				i++
+			}
+		} else {
+			cleaned.WriteRune(r)
+		}
+	}
+	configStr = cleaned.String()
+
 	parts := strings.FieldsFunc(configStr, func(r rune) bool {
 		return r == ';' || r == ',' || unicode.IsSpace(r)
 	})
 
 	config := MotionConfig{
-		Ease: "linear",
+		Type:        configType,
+		Ease:        "linear",
+		RotationDir: "cw",
+		PivotType:   "center",
 	}
+
+	var foundF bool
 
 	for _, part := range parts {
 		part = strings.TrimSpace(part)
@@ -468,7 +651,29 @@ func parseMotionConfig(label string) (MotionConfig, bool) {
 			config.Type = v
 		case "rev", "reverse":
 			config.Reverse = (v == "true" || v == "1" || v == "yes")
+		case "angle":
+			if deg, err := strconv.ParseFloat(v, 64); err == nil {
+				config.RotationAngle = deg
+			}
+		case "dir":
+			config.RotationDir = strings.ToLower(v)
+		case "orient":
+			config.OrientPath = (v == "true" || v == "1" || v == "yes")
+		case "pivot":
+			vLower := strings.ToLower(v)
+			if vLower == "center" || vLower == "" {
+				config.PivotType = "center"
+			} else if vLower == "path-start" {
+				config.PivotType = "path-start"
+			} else if strings.HasPrefix(v, "#") {
+				config.PivotType = "node"
+				config.PivotNodeID = strings.TrimPrefix(v, "#")
+			} else if angle, err := strconv.ParseFloat(v, 64); err == nil {
+				config.PivotType = "edge"
+				config.PivotEdgeAngle = angle
+			}
 		case "f":
+			foundF = true
 			if v == "all" {
 				config.IsAll = true
 			} else {
@@ -482,5 +687,10 @@ func parseMotionConfig(label string) (MotionConfig, bool) {
 			}
 		}
 	}
+
+	if !foundF {
+		config.IsAll = true
+	}
+
 	return config, true
 }
