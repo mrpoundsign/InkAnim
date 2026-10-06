@@ -2515,5 +2515,119 @@ func TestParseMotionConfig_DirectiveMatching(t *testing.T) {
 	}
 }
 
+func TestParseMotionConfig_MultiDirective(t *testing.T) {
+	t.Run("Move and Scale combined", func(t *testing.T) {
+		label := "Move {f: 1-20; ease: in-out} Scale {f: 1-20; from: 1.0; to: 0.5}"
+		cfg, ok := parseMotionConfig(label)
+		if !ok {
+			t.Fatalf("failed to parse multi-directive label: %s", label)
+		}
+		if cfg.Type != "move" {
+			t.Errorf("Type = %q, want %q", cfg.Type, "move")
+		}
+		if cfg.StartFrame != 1 || cfg.EndFrame != 20 {
+			t.Errorf("frames = %d-%d, want 1-20", cfg.StartFrame, cfg.EndFrame)
+		}
+		if cfg.Ease != "in-out" {
+			t.Errorf("Ease = %q, want %q", cfg.Ease, "in-out")
+		}
+		if cfg.ScaleFromX != 1.0 || cfg.ScaleToX != 0.5 {
+			t.Errorf("ScaleX = %v -> %v, want 1.0 -> 0.5", cfg.ScaleFromX, cfg.ScaleToX)
+		}
+		if cfg.ScaleFromY != 1.0 || cfg.ScaleToY != 0.5 {
+			t.Errorf("ScaleY = %v -> %v, want 1.0 -> 0.5", cfg.ScaleFromY, cfg.ScaleToY)
+		}
+	})
+
+	t.Run("Move, Rot, and Fade combined", func(t *testing.T) {
+		label := "Move {f: 1-30; ease: in-out} Rot {angle: 360; dir: ccw} Fade {from: 0; to: 1}"
+		cfg, ok := parseMotionConfig(label)
+		if !ok {
+			t.Fatalf("failed to parse multi-directive label: %s", label)
+		}
+		if cfg.Type != "move" {
+			t.Errorf("Type = %q, want %q", cfg.Type, "move")
+		}
+		if cfg.RotationAngle != 360 {
+			t.Errorf("RotationAngle = %v, want 360", cfg.RotationAngle)
+		}
+		if cfg.RotationDir != "ccw" {
+			t.Errorf("RotationDir = %q, want ccw", cfg.RotationDir)
+		}
+		if !cfg.HasOpacity {
+			t.Errorf("HasOpacity = false, want true")
+		}
+		if cfg.OpacityFrom != 0.0 || cfg.OpacityTo != 1.0 {
+			t.Errorf("Opacity = %v -> %v, want 0.0 -> 1.0", cfg.OpacityFrom, cfg.OpacityTo)
+		}
+	})
+
+	t.Run("Scale and Rot combined without Move", func(t *testing.T) {
+		label := "Scale {f: 1-10; from: 0.5; to: 1.5} Rot {angle: 180}"
+		cfg, ok := parseMotionConfig(label)
+		if !ok {
+			t.Fatalf("failed to parse multi-directive label: %s", label)
+		}
+		if cfg.Type != "scale" {
+			t.Errorf("Type = %q, want %q", cfg.Type, "scale")
+		}
+		if cfg.ScaleFromX != 0.5 || cfg.ScaleToX != 1.5 {
+			t.Errorf("ScaleX = %v -> %v, want 0.5 -> 1.5", cfg.ScaleFromX, cfg.ScaleToX)
+		}
+		if cfg.RotationAngle != 180 {
+			t.Errorf("RotationAngle = %v, want 180", cfg.RotationAngle)
+		}
+	})
+}
+
+func TestMultiDirective_FrameRendering(t *testing.T) {
+	svgContent := `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="200" height="200" viewBox="0 0 200 200">
+  <g id="layer1" inkscape:groupmode="layer">
+    <g id="group1">
+      <rect id="rect1" x="10" y="10" width="50" height="50" fill="red" />
+      <path id="path_motion" d="M 0,0 L 100,0" inkscape:label="Move {f: 1-10} Scale {from: 1.0; to: 2.0}" />
+    </g>
+  </g>
+</svg>`
+
+	doc, err := ParseSVG([]byte(svgContent))
+	if err != nil {
+		t.Fatalf("ParseSVG failed: %v", err)
+	}
+
+	if len(doc.MotionPaths) != 1 {
+		t.Fatalf("len(MotionPaths) = %d, want 1", len(doc.MotionPaths))
+	}
+	mp := doc.MotionPaths[0]
+	if mp.Config.Type != "move" {
+		t.Errorf("Config.Type = %q, want move", mp.Config.Type)
+	}
+	if mp.Config.ScaleToX != 2.0 {
+		t.Errorf("Config.ScaleToX = %v, want 2.0", mp.Config.ScaleToX)
+	}
+
+	frame0, err := BuildTimelineFrameSVG(doc, 0, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("BuildTimelineFrameSVG frame 0 failed: %v", err)
+	}
+	frame9, err := BuildTimelineFrameSVG(doc, 9, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("BuildTimelineFrameSVG frame 9 failed: %v", err)
+	}
+
+	// Frame 9 at t=1.0 should translate by 100px and scale by 2.0
+	f9Str := string(frame9)
+	if !strings.Contains(f9Str, "translate(100") {
+		t.Errorf("frame 9 should contain translation near 100, got: %s", f9Str)
+	}
+	if !strings.Contains(f9Str, "scale(2") {
+		t.Errorf("frame 9 should contain scale near 2, got: %s", f9Str)
+	}
+
+	_ = frame0
+}
+
+
 
 
