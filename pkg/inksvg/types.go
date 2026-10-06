@@ -2,6 +2,7 @@ package inksvg
 
 import (
 	"image"
+	"sync"
 )
 
 // FrameMode specifies how frames are extracted from the SVG.
@@ -215,6 +216,7 @@ type SVGDocument struct {
 	DefaultMode  FrameMode
 	ElementRects map[string]Rect
 	timelineTpl  any
+	mu           sync.RWMutex
 }
 
 // GetElementRect returns the bounding rectangle of the specified element by ID,
@@ -223,15 +225,23 @@ func (d *SVGDocument) GetElementRect(id string) Rect {
 	if d == nil {
 		return Rect{X: 0, Y: 0, Width: 512, Height: 512}
 	}
-	if d.ElementRects == nil {
-		d.ElementRects = make(map[string]Rect)
+	d.mu.RLock()
+	if d.ElementRects != nil {
+		if r, ok := d.ElementRects[id]; ok {
+			d.mu.RUnlock()
+			return r
+		}
 	}
-	if r, ok := d.ElementRects[id]; ok {
-		return r
-	}
+	d.mu.RUnlock()
+
 	r, ok := ComputeElementRect(d.RawContent, id)
 	if ok && (r.Width > 0 || r.Height > 0) {
+		d.mu.Lock()
+		if d.ElementRects == nil {
+			d.ElementRects = make(map[string]Rect)
+		}
 		d.ElementRects[id] = r
+		d.mu.Unlock()
 		return r
 	}
 	return d.GetDrawingRect()

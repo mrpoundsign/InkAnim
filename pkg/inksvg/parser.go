@@ -27,9 +27,10 @@ func ParseSVG(data []byte) (*SVGDocument, error) {
 	}
 
 	doc := &SVGDocument{
-		RawContent:  processedData,
-		DefaultMode: ModeTimeline,
-		Gradients:   make(map[string]SVGGradient),
+		RawContent:   processedData,
+		DefaultMode:  ModeTimeline,
+		Gradients:    make(map[string]SVGGradient),
+		ElementRects: make(map[string]Rect),
 	}
 
 	decoder := xml.NewDecoder(bytes.NewReader(processedData))
@@ -385,6 +386,10 @@ func ParseSVG(data []byte) (*SVGDocument, error) {
 	}
 
 	doc.DrawingRect = ComputeDrawingRect(processedData)
+
+	if tpl, err := parseTimelineTemplate(processedData); err == nil {
+		doc.timelineTpl = tpl
+	}
 
 	return doc, nil
 }
