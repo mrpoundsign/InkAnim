@@ -11,27 +11,6 @@
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns="http://www.w3.org/2000/svg"
    xmlns:svg="http://www.w3.org/2000/svg">
-  <sodipodi:namedview
-     id="namedview7"
-     pagecolor="#ffffff"
-     bordercolor="#666666"
-     borderopacity="1.0"
-     inkscape:pageshadow="2"
-     inkscape:pageopacity="0.0"
-     inkscape:pagecheckerboard="0"
-     inkscape:document-units="px"
-     showgrid="false"
-     inkscape:showpageshadow="2"
-     inkscape:deskcolor="#d1d1d1"
-     inkscape:zoom="1.0898438"
-     inkscape:cx="255.54121"
-     inkscape:cy="256.91755"
-     inkscape:window-width="2560"
-     inkscape:window-height="1494"
-     inkscape:window-x="-11"
-     inkscape:window-y="-11"
-     inkscape:window-maximized="1"
-     inkscape:current-layer="layer1" />
   <defs
      id="defs1">
     <marker
@@ -75,24 +54,32 @@
          id="path1" />
     </marker>
   </defs>
+  <sodipodi:namedview
+     id="namedview7"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:pageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:document-units="px"
+     showgrid="false"
+     inkscape:showpageshadow="2"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:zoom="1.0898438"
+     inkscape:cx="255.99999"
+     inkscape:cy="256.91755"
+     inkscape:window-width="1261"
+     inkscape:window-height="1186"
+     inkscape:window-x="3788"
+     inkscape:window-y="257"
+     inkscape:window-maximized="0"
+     inkscape:current-layer="layer2" />
   <g
      inkscape:groupmode="layer"
      id="layer1"
      inkscape:label="Layer 1">
     <!-- Group containing the object and its movement spline -->
-    <path
-       style="fill:#00aa00;stroke:#ff0000;stroke-width:124.724;stroke-linecap:round;stroke-linejoin:round;paint-order:stroke fill markers"
-       id="path6"
-       sodipodi:type="arc"
-       sodipodi:cx="159.6559"
-       sodipodi:cy="396.38708"
-       sodipodi:rx="68.8172"
-       sodipodi:ry="38.537632"
-       sodipodi:start="4.1989969"
-       sodipodi:end="4.0819974"
-       sodipodi:open="true"
-       sodipodi:arc-type="arc"
-       d="m 125.85737,362.81759 a 68.8172,38.537632 0 0 1 92.72996,13.66865 68.8172,38.537632 0 0 1 -21.68592,52.30631 68.8172,38.537632 0 0 1 -93.9984,-10.60918 68.8172,38.537632 0 0 1 16.18783,-52.92686" />
     <g
        id="g_rocket">
       <!-- The object to move (a red square) -->
@@ -126,7 +113,7 @@
          style="display:inline;fill:none;fill-opacity:1;stroke:#0000ff;stroke-width:3px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1;marker-end:url(#ArrowWide)"
          d="M 75,75 C 66.487464,684.05015 439.4552,-176.2007 465.59857,461.92831"
          id="path_motion"
-         inkscape:label="Move {f: 1-20; ease: in-out} Rot {f: 10-20; angle: 180}"
+         inkscape:label="Move {f: 1-20; ease: in-out}"
          sodipodi:nodetypes="cc" />
     </g>
   </g>
@@ -155,7 +142,7 @@
          sodipodi:argument="-17.947803"
          sodipodi:t0="0"
          d="m 250.49461,210.12186 c 8.7985,11.12748 -10.65876,17.3501 -18.49461,14.62367 -21.23466,-7.38845 -21.47545,-35.72169 -10.75273,-51.61289 19.18042,-28.42564 60.21941,-27.2216 84.73117,-6.8818 35.97201,29.84947 33.18221,85.06542 3.01086,117.84946 -40.21366,43.69597 -110.03715,39.23685 -150.96774,-0.86008 C 106.51459,232.78233 112.68089,148.1709 162.75258,99.154196 184.82716,77.544711 213.8053,63.650983 244.35102,59.350443"
-         inkscape:label="Move {f:all} Scale {f: 1-20; from: 1.0; to: 0.5}" />
+         inkscape:label="Move {f:all}" />
     </g>
   </g>
 </svg>

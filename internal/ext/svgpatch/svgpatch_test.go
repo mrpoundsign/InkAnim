@@ -11,10 +11,10 @@ import (
 )
 
 func TestSetAttr_SplineTest(t *testing.T) {
-	origPath := filepath.Join("..", "..", "..", "testdata", "spline_test.svg")
+	origPath := filepath.Join("..", "..", "..", "testdata", "migrations", "movement_current.svg")
 	origBytes, err := os.ReadFile(origPath)
 	if err != nil {
-		t.Fatalf("failed to read spline_test.svg: %v", err)
+		t.Fatalf("failed to read fixture: %v", err)
 	}
 
 	newLabel := "Move {f: 1-20; ease: in-out} · Spike"

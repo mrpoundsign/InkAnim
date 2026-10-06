@@ -3,16 +3,19 @@ package main
 import (
 	"fmt"
 	"strings"
+	"sync"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
+	"inkanim/internal/app"
 	"inkanim/internal/ext/doctree"
 	"inkanim/internal/ext/svgpatch"
+	"inkanim/internal/ui"
 )
 
 var motionTypeDefaults = map[string]string{
@@ -51,6 +54,23 @@ type EditorState struct {
 	Applied     bool
 }
 
+// ComputePatchedSVG generates the updated SVG bytes with all modified labels applied.
+func (s *EditorState) ComputePatchedSVG() []byte {
+	patchedData := s.SVGData
+	for id := range s.ModifiedIDs {
+		node := s.NodeMap[id]
+		if node == nil {
+			continue
+		}
+		newLabel := node.FormatLabel()
+		patched, err := svgpatch.SetAttr(patchedData, id, svgpatch.InkscapeNS, "label", newLabel)
+		if err == nil {
+			patchedData = patched
+		}
+	}
+	return patchedData
+}
+
 // NewEditorState initializes the editor model from SVG data and CLI parameters.
 func NewEditorState(data []byte, inputPath string, selectedIDs []string) (*EditorState, error) {
 	roots, nodeMap, err := doctree.ParseTree(data)
@@ -78,10 +98,52 @@ func NewEditorState(data []byte, inputPath string, selectedIDs []string) (*Edito
 	}, nil
 }
 
-// ShowEditorWindow displays the interactive two-pane Motion Editor window.
+// ShowEditorWindow displays the interactive Motion Editor window with live preview.
 func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
-	w := a.NewWindow("InkAnim Motion Editor")
-	w.Resize(fyne.NewSize(850, 540))
+	w := a.NewWindow("InkAnim Motion Studio")
+	w.Resize(fyne.NewSize(1150, 650))
+
+	// Live Animation Preview Session
+	sess := app.NewSession()
+	_ = sess.LoadSVGData(state.SVGData, state.InputPath)
+	preview := ui.NewCenterPreviewPanel(sess)
+	preview.SetInspectorVisible(false)
+	if len(sess.RenderedFrames) > 1 {
+		preview.Play()
+	}
+
+	var previewTimer *time.Timer
+	var previewMu sync.Mutex
+	schedulePreviewUpdate := func() {
+		previewMu.Lock()
+		if previewTimer != nil {
+			previewTimer.Stop()
+		}
+		previewTimer = time.AfterFunc(200*time.Millisecond, func() {
+			patched := state.ComputePatchedSVG()
+			fyne.Do(func() {
+				if err := sess.LoadSVGData(patched, state.InputPath); err == nil {
+					preview.Refresh()
+					if len(sess.RenderedFrames) > 1 && !preview.IsPlaying() {
+						preview.Play()
+					}
+				}
+			})
+		})
+		previewMu.Unlock()
+	}
+
+	cleanupPlayback := func() {
+		previewMu.Lock()
+		if previewTimer != nil {
+			previewTimer.Stop()
+		}
+		previewMu.Unlock()
+		if preview.IsPlaying() {
+			preview.Pause()
+		}
+	}
+	w.SetOnClosed(cleanupPlayback)
 
 	// Status label at bottom
 	statusLabel := widget.NewLabel("")
@@ -150,6 +212,7 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 			updatePreview()
 			updateStatus()
 			refreshTree()
+			schedulePreviewUpdate()
 		}
 
 		// Directives list container
@@ -177,6 +240,7 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 							updatePreview()
 							updateStatus()
 							refreshTree()
+							schedulePreviewUpdate()
 						}
 					})
 					typeSelect.SetSelected(dir.Type)
@@ -190,6 +254,7 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 						updatePreview()
 						updateStatus()
 						refreshTree()
+						schedulePreviewUpdate()
 					}
 
 					deleteBtn := widget.NewButtonWithIcon("", theme.DeleteIcon(), func() {
@@ -199,6 +264,7 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 						updatePreview()
 						updateStatus()
 						refreshTree()
+						schedulePreviewUpdate()
 					})
 					deleteBtn.Importance = widget.DangerImportance
 
@@ -235,6 +301,7 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 			updatePreview()
 			updateStatus()
 			refreshTree()
+			schedulePreviewUpdate()
 		})
 		addMotionBtn.Importance = widget.MediumImportance
 
@@ -351,32 +418,18 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 		tree.Refresh()
 	}
 
-	// Layout SplitPane
-	split := container.NewHSplit(tree, inspectorCard)
-	split.SetOffset(0.35)
+	// 3-Pane Studio Layout: [Tree] | [Inspector] | [Live Canvas Preview]
+	inspectorScroll := container.NewVScroll(inspectorCard)
+	leftSplit := container.NewHSplit(tree, inspectorScroll)
+	leftSplit.SetOffset(0.38)
+
+	mainSplit := container.NewHSplit(leftSplit, preview.Container())
+	mainSplit.SetOffset(0.55)
 
 	// Bottom action buttons
 	applyBtn := widget.NewButtonWithIcon("Apply Changes", theme.ConfirmIcon(), func() {
-		// Apply all modified nodes to the SVG
-		patchedData := state.SVGData
-		appliedCount := 0
-
-		for id := range state.ModifiedIDs {
-			node := state.NodeMap[id]
-			if node == nil {
-				continue
-			}
-			newLabel := node.FormatLabel()
-			patched, err := svgpatch.SetAttr(patchedData, id, svgpatch.InkscapeNS, "label", newLabel)
-			if err != nil {
-				dialog.ShowError(fmt.Errorf("failed to update element %q: %w", id, err), w)
-				return
-			}
-			patchedData = patched
-			appliedCount++
-		}
-
-		state.Result = patchedData
+		cleanupPlayback()
+		state.Result = state.ComputePatchedSVG()
 		state.Applied = true
 		w.Close()
 		a.Quit()
@@ -384,6 +437,7 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 	applyBtn.Importance = widget.HighImportance
 
 	cancelBtn := widget.NewButtonWithIcon("Cancel", theme.CancelIcon(), func() {
+		cleanupPlayback()
 		state.Result = state.SVGData
 		state.Applied = false
 		w.Close()
@@ -405,7 +459,7 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 		container.NewVBox(widget.NewSeparator(), bottomBar),
 		nil,
 		nil,
-		split,
+		mainSplit,
 	)
 
 	w.SetContent(container.NewPadded(rootContent))

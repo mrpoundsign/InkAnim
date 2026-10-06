@@ -2518,64 +2518,70 @@ func TestParseMotionConfig_DirectiveMatching(t *testing.T) {
 func TestParseMotionConfig_MultiDirective(t *testing.T) {
 	t.Run("Move and Scale combined", func(t *testing.T) {
 		label := "Move {f: 1-20; ease: in-out} Scale {f: 1-20; from: 1.0; to: 0.5}"
-		cfg, ok := parseMotionConfig(label)
-		if !ok {
-			t.Fatalf("failed to parse multi-directive label: %s", label)
+		cfgs := parseMotionConfigs(label)
+		if len(cfgs) != 2 {
+			t.Fatalf("expected 2 configs, got %d", len(cfgs))
 		}
-		if cfg.Type != "move" {
-			t.Errorf("Type = %q, want %q", cfg.Type, "move")
+		if cfgs[0].Type != "move" {
+			t.Errorf("cfgs[0].Type = %q, want %q", cfgs[0].Type, "move")
 		}
-		if cfg.StartFrame != 1 || cfg.EndFrame != 20 {
-			t.Errorf("frames = %d-%d, want 1-20", cfg.StartFrame, cfg.EndFrame)
+		if cfgs[0].StartFrame != 1 || cfgs[0].EndFrame != 20 {
+			t.Errorf("cfgs[0] frames = %d-%d, want 1-20", cfgs[0].StartFrame, cfgs[0].EndFrame)
 		}
-		if cfg.Ease != "in-out" {
-			t.Errorf("Ease = %q, want %q", cfg.Ease, "in-out")
+		if cfgs[0].Ease != "in-out" {
+			t.Errorf("cfgs[0].Ease = %q, want %q", cfgs[0].Ease, "in-out")
 		}
-		if cfg.ScaleFromX != 1.0 || cfg.ScaleToX != 0.5 {
-			t.Errorf("ScaleX = %v -> %v, want 1.0 -> 0.5", cfg.ScaleFromX, cfg.ScaleToX)
+		if cfgs[1].Type != "scale" {
+			t.Errorf("cfgs[1].Type = %q, want %q", cfgs[1].Type, "scale")
 		}
-		if cfg.ScaleFromY != 1.0 || cfg.ScaleToY != 0.5 {
-			t.Errorf("ScaleY = %v -> %v, want 1.0 -> 0.5", cfg.ScaleFromY, cfg.ScaleToY)
+		if cfgs[1].StartFrame != 1 || cfgs[1].EndFrame != 20 {
+			t.Errorf("cfgs[1] frames = %d-%d, want 1-20", cfgs[1].StartFrame, cfgs[1].EndFrame)
+		}
+		if cfgs[1].ScaleFromX != 1.0 || cfgs[1].ScaleToX != 0.5 {
+			t.Errorf("ScaleX = %v -> %v, want 1.0 -> 0.5", cfgs[1].ScaleFromX, cfgs[1].ScaleToX)
+		}
+		if cfgs[1].ScaleFromY != 1.0 || cfgs[1].ScaleToY != 0.5 {
+			t.Errorf("ScaleY = %v -> %v, want 1.0 -> 0.5", cfgs[1].ScaleFromY, cfgs[1].ScaleToY)
 		}
 	})
 
-	t.Run("Move, Rot, and Fade combined", func(t *testing.T) {
+	t.Run("Move, Rot, and Fade combined with inherited f", func(t *testing.T) {
 		label := "Move {f: 1-30; ease: in-out} Rot {angle: 360; dir: ccw} Fade {from: 0; to: 1}"
-		cfg, ok := parseMotionConfig(label)
-		if !ok {
-			t.Fatalf("failed to parse multi-directive label: %s", label)
+		cfgs := parseMotionConfigs(label)
+		if len(cfgs) != 3 {
+			t.Fatalf("expected 3 configs, got %d", len(cfgs))
 		}
-		if cfg.Type != "move" {
-			t.Errorf("Type = %q, want %q", cfg.Type, "move")
+		if cfgs[0].Type != "move" || cfgs[0].StartFrame != 1 || cfgs[0].EndFrame != 30 {
+			t.Errorf("cfgs[0] move = %q %d-%d, want move 1-30", cfgs[0].Type, cfgs[0].StartFrame, cfgs[0].EndFrame)
 		}
-		if cfg.RotationAngle != 360 {
-			t.Errorf("RotationAngle = %v, want 360", cfg.RotationAngle)
+		if cfgs[1].Type != "rot" || cfgs[1].StartFrame != 1 || cfgs[1].EndFrame != 30 {
+			t.Errorf("cfgs[1] rot = %q %d-%d, want rot 1-30 (inherited)", cfgs[1].Type, cfgs[1].StartFrame, cfgs[1].EndFrame)
 		}
-		if cfg.RotationDir != "ccw" {
-			t.Errorf("RotationDir = %q, want ccw", cfg.RotationDir)
+		if cfgs[1].RotationAngle != 360 || cfgs[1].RotationDir != "ccw" {
+			t.Errorf("cfgs[1] rotation = %v %q, want 360 ccw", cfgs[1].RotationAngle, cfgs[1].RotationDir)
 		}
-		if !cfg.HasOpacity {
-			t.Errorf("HasOpacity = false, want true")
+		if cfgs[2].Type != "fade" || cfgs[2].StartFrame != 1 || cfgs[2].EndFrame != 30 {
+			t.Errorf("cfgs[2] fade = %q %d-%d, want fade 1-30 (inherited)", cfgs[2].Type, cfgs[2].StartFrame, cfgs[2].EndFrame)
 		}
-		if cfg.OpacityFrom != 0.0 || cfg.OpacityTo != 1.0 {
-			t.Errorf("Opacity = %v -> %v, want 0.0 -> 1.0", cfg.OpacityFrom, cfg.OpacityTo)
+		if !cfgs[2].HasOpacity || cfgs[2].OpacityFrom != 0.0 || cfgs[2].OpacityTo != 1.0 {
+			t.Errorf("cfgs[2] opacity = %v -> %v, want 0.0 -> 1.0", cfgs[2].OpacityFrom, cfgs[2].OpacityTo)
 		}
 	})
 
-	t.Run("Scale and Rot combined without Move", func(t *testing.T) {
-		label := "Scale {f: 1-10; from: 0.5; to: 1.5} Rot {angle: 180}"
-		cfg, ok := parseMotionConfig(label)
-		if !ok {
-			t.Fatalf("failed to parse multi-directive label: %s", label)
+	t.Run("Move and Rot with independent frame ranges", func(t *testing.T) {
+		label := "Move {f: 1-20; ease: in-out} Rot {f: 10-20; angle: 180}"
+		cfgs := parseMotionConfigs(label)
+		if len(cfgs) != 2 {
+			t.Fatalf("expected 2 configs, got %d", len(cfgs))
 		}
-		if cfg.Type != "scale" {
-			t.Errorf("Type = %q, want %q", cfg.Type, "scale")
+		if cfgs[0].Type != "move" || cfgs[0].StartFrame != 1 || cfgs[0].EndFrame != 20 {
+			t.Errorf("cfgs[0] = %q %d-%d, want move 1-20", cfgs[0].Type, cfgs[0].StartFrame, cfgs[0].EndFrame)
 		}
-		if cfg.ScaleFromX != 0.5 || cfg.ScaleToX != 1.5 {
-			t.Errorf("ScaleX = %v -> %v, want 0.5 -> 1.5", cfg.ScaleFromX, cfg.ScaleToX)
+		if cfgs[1].Type != "rot" || cfgs[1].StartFrame != 10 || cfgs[1].EndFrame != 20 {
+			t.Errorf("cfgs[1] = %q %d-%d, want rot 10-20", cfgs[1].Type, cfgs[1].StartFrame, cfgs[1].EndFrame)
 		}
-		if cfg.RotationAngle != 180 {
-			t.Errorf("RotationAngle = %v, want 180", cfg.RotationAngle)
+		if cfgs[1].RotationAngle != 180 {
+			t.Errorf("cfgs[1].RotationAngle = %v, want 180", cfgs[1].RotationAngle)
 		}
 	})
 }
@@ -2596,15 +2602,19 @@ func TestMultiDirective_FrameRendering(t *testing.T) {
 		t.Fatalf("ParseSVG failed: %v", err)
 	}
 
-	if len(doc.MotionPaths) != 1 {
-		t.Fatalf("len(MotionPaths) = %d, want 1", len(doc.MotionPaths))
+	if len(doc.MotionPaths) != 2 {
+		t.Fatalf("len(MotionPaths) = %d, want 2", len(doc.MotionPaths))
 	}
-	mp := doc.MotionPaths[0]
-	if mp.Config.Type != "move" {
-		t.Errorf("Config.Type = %q, want move", mp.Config.Type)
+	mp0 := doc.MotionPaths[0]
+	if mp0.Config.Type != "move" {
+		t.Errorf("mp0.Config.Type = %q, want move", mp0.Config.Type)
 	}
-	if mp.Config.ScaleToX != 2.0 {
-		t.Errorf("Config.ScaleToX = %v, want 2.0", mp.Config.ScaleToX)
+	mp1 := doc.MotionPaths[1]
+	if mp1.Config.Type != "scale" {
+		t.Errorf("mp1.Config.Type = %q, want scale", mp1.Config.Type)
+	}
+	if mp1.Config.ScaleToX != 2.0 {
+		t.Errorf("mp1.Config.ScaleToX = %v, want 2.0", mp1.Config.ScaleToX)
 	}
 
 	frame0, err := BuildTimelineFrameSVG(doc, 0, doc.GetDocumentRect())
@@ -2626,6 +2636,151 @@ func TestMultiDirective_FrameRendering(t *testing.T) {
 	}
 
 	_ = frame0
+}
+
+func TestMultiDirective_IndependentFrameRanges_Visibility(t *testing.T) {
+	svgContent := `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="200" height="200" viewBox="0 0 200 200">
+  <g id="layer1" inkscape:groupmode="layer">
+    <g id="group1">
+      <rect id="rect1" x="10" y="10" width="50" height="50" fill="red" />
+      <path id="path_motion" d="M 0,0 L 100,0" inkscape:label="Move {f: 1-20; ease: in-out} Rot {f: 10-20; angle: 180}" />
+    </g>
+  </g>
+</svg>`
+
+	doc, err := ParseSVG([]byte(svgContent))
+	if err != nil {
+		t.Fatalf("ParseSVG failed: %v", err)
+	}
+
+	if len(doc.MotionPaths) != 2 {
+		t.Fatalf("len(MotionPaths) = %d, want 2", len(doc.MotionPaths))
+	}
+
+	// Frame 0 (1-based frame 1): Move is active, Rot is inactive. Object MUST be visible!
+	f0, err := BuildTimelineFrameSVG(doc, 0, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("frame 0 failed: %v", err)
+	}
+	f0Str := string(f0)
+	if strings.Contains(f0Str, `display="none"`) {
+		t.Errorf("frame 0: group1 should NOT be hidden, got display=none")
+	}
+	if strings.Contains(f0Str, "rotate(") {
+		t.Errorf("frame 0: Rot should NOT be active on frame 1, got rotate in transform: %s", f0Str)
+	}
+
+	// Frame 4 (1-based frame 5): Move is active, Rot is inactive. Object MUST be visible and translated!
+	f4, err := BuildTimelineFrameSVG(doc, 4, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("frame 4 failed: %v", err)
+	}
+	f4Str := string(f4)
+	if strings.Contains(f4Str, `display="none"`) {
+		t.Errorf("frame 4: group1 should NOT be hidden, got display=none")
+	}
+	if !strings.Contains(f4Str, "translate(") {
+		t.Errorf("frame 4: group1 should have translation, got: %s", f4Str)
+	}
+	if strings.Contains(f4Str, "rotate(") {
+		t.Errorf("frame 4: Rot should NOT be active on frame 5, got rotate in transform: %s", f4Str)
+	}
+
+	// Frame 9 (1-based frame 10): Move is active and Rot begins. Object must NOT be hidden!
+	f9, err := BuildTimelineFrameSVG(doc, 9, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("frame 9 failed: %v", err)
+	}
+	f9Str := string(f9)
+	if strings.Contains(f9Str, "display:none") || strings.Contains(f9Str, `display="none"`) {
+		t.Errorf("frame 9: group1 should NOT be hidden")
+	}
+	if !strings.Contains(f9Str, "translate(") {
+		t.Errorf("frame 9: translate should be active, got: %s", f9Str)
+	}
+
+	// Frame 14 (1-based frame 15): Mid-way through Rot (5/10 duration = 90 deg) and Move.
+	f14, err := BuildTimelineFrameSVG(doc, 14, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("frame 14 failed: %v", err)
+	}
+	f14Str := string(f14)
+	if strings.Contains(f14Str, "display:none") || strings.Contains(f14Str, `display="none"`) {
+		t.Errorf("frame 14: group1 should NOT be hidden")
+	}
+	if !strings.Contains(f14Str, "translate(") || !strings.Contains(f14Str, "rotate(") {
+		t.Errorf("frame 14: both translate and rotate should be active, got: %s", f14Str)
+	}
+
+	// Frame 19 (1-based frame 20): Both Move and Rot are active at end of range!
+	f19, err := BuildTimelineFrameSVG(doc, 19, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("frame 19 failed: %v", err)
+	}
+	f19Str := string(f19)
+	if strings.Contains(f19Str, "display:none") || strings.Contains(f19Str, `display="none"`) {
+		t.Errorf("frame 19: group1 should NOT be hidden")
+	}
+	if !strings.Contains(f19Str, "rotate(180") {
+		t.Errorf("frame 19: rotation should reach 180, got: %s", f19Str)
+	}
+
+	// Frame 20 (1-based frame 21): Outside 1-20 range, group1 should be hidden!
+	f20, err := BuildTimelineFrameSVG(doc, 20, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("frame 20 failed: %v", err)
+	}
+	f20Str := string(f20)
+	if !strings.Contains(f20Str, "display:none") && !strings.Contains(f20Str, `display="none"`) {
+		t.Errorf("frame 20: group1 should be hidden outside frame range, got: %s", f20Str)
+	}
+}
+
+func TestBuildTimelineFrameSVG_ShowMotionLines(t *testing.T) {
+	svgContent := `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="200" height="200" viewBox="0 0 200 200">
+  <g id="layer1" inkscape:groupmode="layer">
+    <g id="group1">
+      <rect id="rect1" x="10" y="10" width="50" height="50" fill="red" />
+      <path id="path_motion" d="M 10,10 L 150,150" inkscape:label="Move {f: 1-10}" />
+    </g>
+  </g>
+</svg>`
+
+	doc, err := ParseSVG([]byte(svgContent))
+	if err != nil {
+		t.Fatalf("ParseSVG failed: %v", err)
+	}
+
+	// 1. By default ShowMotionLines is false: no guide layer emitted
+	fDefault, err := BuildTimelineFrameSVG(doc, 0, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("BuildTimelineFrameSVG default failed: %v", err)
+	}
+	if strings.Contains(string(fDefault), "inkanim_motion_guides") {
+		t.Errorf("expected no motion guides when ShowMotionLines=false")
+	}
+
+	// 2. When ShowMotionLines is true: dashed guide layer emitted
+	doc.ShowMotionLines = true
+	fGuides, err := BuildTimelineFrameSVG(doc, 0, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("BuildTimelineFrameSVG with guides failed: %v", err)
+	}
+	guidesStr := string(fGuides)
+	if !strings.Contains(guidesStr, "inkanim_motion_guides") {
+		t.Errorf("expected inkanim_motion_guides in frame SVG when ShowMotionLines=true")
+	}
+	if !strings.Contains(guidesStr, `stroke-dasharray="6,4"`) {
+		t.Errorf("expected stroke-dasharray=\"6,4\" on dashed guide path, got: %s", guidesStr)
+	}
+	if !strings.Contains(guidesStr, "#38BDF8") {
+		t.Errorf("expected Electric Sky Blue #38BDF8 stroke on dashed guide, got: %s", guidesStr)
+	}
+	if !strings.Contains(guidesStr, `d="M 10,10 L 150,150"`) {
+		t.Errorf("expected original path data in motion guide, got: %s", guidesStr)
+	}
 }
 
 

@@ -26,6 +26,7 @@ type Session struct {
 	Pages            []inksvg.Page
 	ExportOptions    gif.ExportOptions
 	RenderedFrames   []inksvg.RenderedFrame
+	ShowMotionLines  bool
 
 	frameCache map[string][]inksvg.RenderedFrame
 	cacheMu    sync.RWMutex
@@ -92,6 +93,7 @@ func (s *Session) LoadSVGData(data []byte, filename string) error {
 	}
 
 	s.FilePath = filename
+	doc.ShowMotionLines = s.ShowMotionLines
 	s.Document = doc
 	s.Layers = make([]inksvg.Layer, len(doc.Layers))
 	copy(s.Layers, doc.Layers)
@@ -111,6 +113,16 @@ func (s *Session) LoadSVGData(data []byte, filename string) error {
 
 	s.PrerenderPages()
 	return nil
+}
+
+// SetShowMotionLines toggles visibility of dashed motion lines in preview frames.
+func (s *Session) SetShowMotionLines(show bool) error {
+	s.ShowMotionLines = show
+	if s.Document != nil {
+		s.Document.ShowMotionLines = show
+	}
+	s.invalidateCache()
+	return s.RerenderAllFrames()
 }
 
 // SetMode sets the animation mode (always inksvg.ModeTimeline).
@@ -472,6 +484,12 @@ func (s *Session) RenderExportFrames() ([]gif.FrameInput, error) {
 	if s.Document == nil {
 		return nil, errors.New("no SVG document loaded")
 	}
+
+	prevGuides := s.Document.ShowMotionLines
+	s.Document.ShowMotionLines = false
+	defer func() {
+		s.Document.ShowMotionLines = prevGuides
+	}()
 
 	boundW, boundH := s.GetActiveBoundaryDimensions()
 	if boundW <= 0 {

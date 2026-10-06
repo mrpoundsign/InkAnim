@@ -520,6 +520,12 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 		}
 	}
 
+	if doc.ShowMotionLines {
+		if err := serializeMotionGuides(encoder, doc); err != nil {
+			return nil, err
+		}
+	}
+
 	if err := encoder.EncodeToken(rootEnd); err != nil {
 		return nil, err
 	}
@@ -955,6 +961,124 @@ func resolvePivot(doc *SVGDocument, groupID string, config MotionConfig, pathDat
 		groupRect := doc.GetElementRect(groupID)
 		return groupRect.X + groupRect.Width/2.0, groupRect.Y + groupRect.Height/2.0
 	}
+}
+
+func serializeMotionGuides(encoder *xml.Encoder, doc *SVGDocument) error {
+	if len(doc.MotionPaths) == 0 {
+		return nil
+	}
+
+	guidesGroup := xml.StartElement{
+		Name: xml.Name{Local: "g"},
+		Attr: []xml.Attr{
+			{Name: xml.Name{Local: "id"}, Value: "inkanim_motion_guides"},
+			{Name: xml.Name{Local: "style"}, Value: "pointer-events:none"},
+		},
+	}
+	if err := encoder.EncodeToken(guidesGroup); err != nil {
+		return err
+	}
+
+	seenPaths := make(map[string]bool)
+	for _, mp := range doc.MotionPaths {
+		if mp.PathData != "" {
+			if seenPaths[mp.PathData] {
+				continue
+			}
+			seenPaths[mp.PathData] = true
+
+			// 1. Dark under-casing for high contrast on light backgrounds
+			underCasing := xml.StartElement{
+				Name: xml.Name{Local: "path"},
+				Attr: []xml.Attr{
+					{Name: xml.Name{Local: "d"}, Value: mp.PathData},
+					{Name: xml.Name{Local: "fill"}, Value: "none"},
+					{Name: xml.Name{Local: "stroke"}, Value: "#0f172a"},
+					{Name: xml.Name{Local: "stroke-width"}, Value: "3.5"},
+					{Name: xml.Name{Local: "stroke-linecap"}, Value: "round"},
+					{Name: xml.Name{Local: "stroke-linejoin"}, Value: "round"},
+					{Name: xml.Name{Local: "opacity"}, Value: "0.6"},
+				},
+			}
+			if err := encoder.EncodeToken(underCasing); err != nil {
+				return err
+			}
+			if err := encoder.EncodeToken(underCasing.End()); err != nil {
+				return err
+			}
+
+			// 2. Vibrant Electric Sky Blue dashed guide line
+			dashedGuide := xml.StartElement{
+				Name: xml.Name{Local: "path"},
+				Attr: []xml.Attr{
+					{Name: xml.Name{Local: "d"}, Value: mp.PathData},
+					{Name: xml.Name{Local: "fill"}, Value: "none"},
+					{Name: xml.Name{Local: "stroke"}, Value: "#38BDF8"},
+					{Name: xml.Name{Local: "stroke-width"}, Value: "2"},
+					{Name: xml.Name{Local: "stroke-dasharray"}, Value: "6,4"},
+					{Name: xml.Name{Local: "stroke-linecap"}, Value: "round"},
+					{Name: xml.Name{Local: "stroke-linejoin"}, Value: "round"},
+					{Name: xml.Name{Local: "opacity"}, Value: "0.95"},
+				},
+			}
+			if err := encoder.EncodeToken(dashedGuide); err != nil {
+				return err
+			}
+			if err := encoder.EncodeToken(dashedGuide.End()); err != nil {
+				return err
+			}
+
+			// 3. Start point indicator dot
+			if sx, sy, err := GetPathStartPoint(mp.PathData); err == nil {
+				startDot := xml.StartElement{
+					Name: xml.Name{Local: "circle"},
+					Attr: []xml.Attr{
+						{Name: xml.Name{Local: "cx"}, Value: fmt.Sprintf("%.2f", sx)},
+						{Name: xml.Name{Local: "cy"}, Value: fmt.Sprintf("%.2f", sy)},
+						{Name: xml.Name{Local: "r"}, Value: "3.5"},
+						{Name: xml.Name{Local: "fill"}, Value: "#38BDF8"},
+						{Name: xml.Name{Local: "stroke"}, Value: "#0f172a"},
+						{Name: xml.Name{Local: "stroke-width"}, Value: "1.5"},
+					},
+				}
+				if err := encoder.EncodeToken(startDot); err != nil {
+					return err
+				}
+				if err := encoder.EncodeToken(startDot.End()); err != nil {
+					return err
+				}
+			}
+		} else if mp.Bounds.Width > 0 && mp.Bounds.Height > 0 {
+			shapeKey := fmt.Sprintf("%.2f,%.2f,%.2f,%.2f", mp.Bounds.X, mp.Bounds.Y, mp.Bounds.Width, mp.Bounds.Height)
+			if seenPaths[shapeKey] {
+				continue
+			}
+			seenPaths[shapeKey] = true
+
+			shapeGuide := xml.StartElement{
+				Name: xml.Name{Local: "rect"},
+				Attr: []xml.Attr{
+					{Name: xml.Name{Local: "x"}, Value: fmt.Sprintf("%.2f", mp.Bounds.X)},
+					{Name: xml.Name{Local: "y"}, Value: fmt.Sprintf("%.2f", mp.Bounds.Y)},
+					{Name: xml.Name{Local: "width"}, Value: fmt.Sprintf("%.2f", mp.Bounds.Width)},
+					{Name: xml.Name{Local: "height"}, Value: fmt.Sprintf("%.2f", mp.Bounds.Height)},
+					{Name: xml.Name{Local: "fill"}, Value: "none"},
+					{Name: xml.Name{Local: "stroke"}, Value: "#38BDF8"},
+					{Name: xml.Name{Local: "stroke-width"}, Value: "2"},
+					{Name: xml.Name{Local: "stroke-dasharray"}, Value: "6,4"},
+					{Name: xml.Name{Local: "opacity"}, Value: "0.85"},
+				},
+			}
+			if err := encoder.EncodeToken(shapeGuide); err != nil {
+				return err
+			}
+			if err := encoder.EncodeToken(shapeGuide.End()); err != nil {
+				return err
+			}
+		}
+	}
+
+	return encoder.EncodeToken(guidesGroup.End())
 }
 
 type dynamicSweepGradient struct {

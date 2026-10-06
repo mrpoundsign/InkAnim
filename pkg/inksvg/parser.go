@@ -76,12 +76,14 @@ func ParseSVG(data []byte) (*SVGDocument, error) {
 					}
 				}
 
-				if cfg, ok := parseMotionConfig(label); ok && cfg.HasParallax {
-					doc.MotionPaths = append(doc.MotionPaths, MotionPath{
-						ID:      id + "_dist",
-						GroupID: id,
-						Config:  cfg,
-					})
+				for _, cfg := range parseMotionConfigs(label) {
+					if cfg.HasParallax {
+						doc.MotionPaths = append(doc.MotionPaths, MotionPath{
+							ID:      id + "_dist",
+							GroupID: id,
+							Config:  cfg,
+						})
+					}
 				}
 				activeGroups = append(activeGroups, id)
 			}
@@ -109,21 +111,24 @@ func ParseSVG(data []byte) (*SVGDocument, error) {
 						doc.Migrations = append(doc.Migrations, h)
 					}
 				}
-				if cfg, ok := parseMotionConfig(label); ok {
+				if cfgs := parseMotionConfigs(label); len(cfgs) > 0 {
 					var fillURL string
-					if cfg.IsColor {
-						gradRef := fill
-						if gradRef == "" || !strings.Contains(gradRef, "url(") {
-							gradRef = extractCSSProp(style, "fill")
-						}
-						if strings.Contains(gradRef, "url(") {
-							start := strings.Index(gradRef, "url(") + 4
-							end := strings.Index(gradRef[start:], ")")
-							if end != -1 {
-								ref := strings.TrimSpace(gradRef[start : start+end])
-								ref = strings.Trim(ref, `"'#`)
-								fillURL = ref
+					for _, cfg := range cfgs {
+						if cfg.IsColor {
+							gradRef := fill
+							if gradRef == "" || !strings.Contains(gradRef, "url(") {
+								gradRef = extractCSSProp(style, "fill")
 							}
+							if strings.Contains(gradRef, "url(") {
+								start := strings.Index(gradRef, "url(") + 4
+								end := strings.Index(gradRef[start:], ")")
+								if end != -1 {
+									ref := strings.TrimSpace(gradRef[start : start+end])
+									ref = strings.Trim(ref, `"'#`)
+									fillURL = ref
+								}
+							}
+							break
 						}
 					}
 					var bounds Rect
@@ -182,24 +187,29 @@ func ParseSVG(data []byte) (*SVGDocument, error) {
 							bounds = Rect{X: minX, Y: minY, Width: maxX - minX, Height: maxY - minY}
 						}
 					}
-					if id == "" && cfg.IsColor {
-						id = fmt.Sprintf("color_mp_%d", len(doc.MotionPaths)+1)
-					}
-					mp := MotionPath{
-						ID:       id,
-						PathData: d,
-						Config:   cfg,
-						FillURL:  fillURL,
-						Bounds:   bounds,
-					}
-					if len(activeGroups) > 0 {
-						mp.GroupID = activeGroups[len(activeGroups)-1]
-					}
-					if cfg.IsCamera {
-						doc.CameraPath = &mp
-					}
-					if len(activeGroups) > 0 {
-						doc.MotionPaths = append(doc.MotionPaths, mp)
+					for i, cfg := range cfgs {
+						mpID := id
+						if mpID == "" {
+							mpID = fmt.Sprintf("mp_%d", len(doc.MotionPaths)+1)
+						} else if i > 0 {
+							mpID = fmt.Sprintf("%s_%d", id, i)
+						}
+						mp := MotionPath{
+							ID:       mpID,
+							PathData: d,
+							Config:   cfg,
+							FillURL:  fillURL,
+							Bounds:   bounds,
+						}
+						if len(activeGroups) > 0 {
+							mp.GroupID = activeGroups[len(activeGroups)-1]
+						}
+						if cfg.IsCamera {
+							doc.CameraPath = &mp
+						}
+						if len(activeGroups) > 0 {
+							doc.MotionPaths = append(doc.MotionPaths, mp)
+						}
 					}
 				}
 			}
@@ -765,18 +775,14 @@ func parseDimension(s string) float64 {
 
 var directiveRe = regexp.MustCompile(`(?i)\b(move|rot|scale|scal|fade|show|hide|depth|camera|distance|dist|color)\s*\{`)
 
-func parseMotionConfig(label string) (MotionConfig, bool) {
+func parseMotionConfigs(label string) []MotionConfig {
 	label = migrateLabel(label)
 	locs := directiveRe.FindAllStringSubmatchIndex(label, -1)
 	if len(locs) == 0 {
-		return MotionConfig{}, false
+		return nil
 	}
 
-	config := DefaultMotionConfig("")
-	var firstType string
-	var hasMove bool
-	var foundF bool
-	var matchedAny bool
+	var results []MotionConfig
 
 	for _, loc := range locs {
 		rawType := strings.ToLower(label[loc[2]:loc[3]])
@@ -790,38 +796,14 @@ func parseMotionConfig(label string) (MotionConfig, bool) {
 			configType = rawType
 		}
 
-		if firstType == "" {
-			firstType = configType
-		}
-		if configType == "move" {
-			hasMove = true
-		}
-		if configType == "color" {
-			config.IsColor = true
-		}
-		if configType == "camera" {
-			config.IsCamera = true
-		}
-		if configType == "dist" {
-			config.HasParallax = true
-		}
-		if configType == "depth" {
-			config.HasDepth = true
-		}
-		if configType == "fade" {
-			config.HasOpacity = true
-		}
-		if configType == "show" || configType == "hide" {
-			config.HasVisibility = true
-			config.VisibilityState = configType
-		}
+		config := DefaultMotionConfig(configType)
+		var foundF bool
 
 		contentStart := loc[1]
 		endIdx := strings.Index(label[contentStart:], "}")
 		if endIdx == -1 {
 			continue
 		}
-		matchedAny = true
 		configStr := label[contentStart : contentStart+endIdx]
 
 		// Normalize whitespace around colons so "k : v" becomes "k:v"
@@ -1070,21 +1052,47 @@ func parseMotionConfig(label string) (MotionConfig, bool) {
 				}
 			}
 		}
+
+		if !foundF {
+			config.IsAll = true
+		}
+
+		results = append(results, config)
 	}
 
-	if !matchedAny {
+	if len(results) == 0 {
+		return nil
+	}
+
+	// If any directive specified an explicit frame range, companion directives on the same element
+	// that omitted an explicit "f:" inherit that frame range.
+	var sharedStart, sharedEnd int
+	var hasSharedF bool
+	for _, cfg := range results {
+		if !cfg.IsAll && cfg.EndFrame > 0 {
+			sharedStart = cfg.StartFrame
+			sharedEnd = cfg.EndFrame
+			hasSharedF = true
+			break
+		}
+	}
+	if hasSharedF {
+		for i := range results {
+			if results[i].IsAll {
+				results[i].StartFrame = sharedStart
+				results[i].EndFrame = sharedEnd
+				results[i].IsAll = false
+			}
+		}
+	}
+
+	return results
+}
+
+func parseMotionConfig(label string) (MotionConfig, bool) {
+	cfgs := parseMotionConfigs(label)
+	if len(cfgs) == 0 {
 		return MotionConfig{}, false
 	}
-
-	if hasMove {
-		config.Type = "move"
-	} else if config.Type == "" {
-		config.Type = firstType
-	}
-
-	if !foundF {
-		config.IsAll = true
-	}
-
-	return config, true
+	return cfgs[0], true
 }
