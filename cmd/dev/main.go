@@ -119,7 +119,7 @@ func runLint(args []string) {
 	fmt.Printf("Mode: %s\n", doc.DefaultMode)
 
 	if doc.DefaultMode != inksvg.ModeTimeline {
-		fmt.Printf("⚠️ WARNING: Default mode is %s, not timeline. (No valid 'Movement' paths found or no frames defined).\n", doc.DefaultMode)
+		fmt.Printf("⚠️ WARNING: Default mode is %s, not timeline. (No valid motion directives found or no frames defined).\n", doc.DefaultMode)
 	}
 
 	fmt.Printf("Found %d motion path(s).\n", len(doc.MotionPaths))

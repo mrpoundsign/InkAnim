@@ -2468,5 +2468,52 @@ func TestBuildTimelineFrameSVG_GradientSweepPingPongAndRepeat(t *testing.T) {
 	}
 }
 
+func TestParseMotionConfig_DirectiveMatching(t *testing.T) {
+	tests := []struct {
+		label      string
+		wantOK     bool
+		wantType   string
+		checkExtra func(t *testing.T, cfg MotionConfig)
+	}{
+		{label: "Fade {f: 1-10}", wantOK: true, wantType: "fade"},
+		{label: "Fade In: Fade {f: 1-10}", wantOK: true, wantType: "fade"},
+		{label: "Hidden: Hide {f: 1-6}", wantOK: true, wantType: "hide"},
+		{label: "Rotor Rot {f: 1-10}", wantOK: true, wantType: "rot"},
+		{
+			label:    "Scale {f: 1-15; from: 1.0; to: 0.65} · Pulse 1/4",
+			wantOK:   true,
+			wantType: "scale",
+			checkExtra: func(t *testing.T, cfg MotionConfig) {
+				if cfg.ScaleToX != 0.65 {
+					t.Errorf("ScaleToX = %v, want 0.65", cfg.ScaleToX)
+				}
+			},
+		},
+		{label: "Scal {f: 1-5}", wantOK: true, wantType: "scale"},
+		{label: "Distance {factor: 0.5}", wantOK: true, wantType: "dist"},
+		{label: "Dist {fixed}", wantOK: true, wantType: "dist"},
+		{label: "Remove {f: 1-5}", wantOK: false},
+		{label: "ROT{f:1-2}", wantOK: true, wantType: "rot"},
+		{label: "Spaceship", wantOK: false},
+	}
+
+	for _, tt := range tests {
+		cfg, ok := parseMotionConfig(tt.label)
+		if ok != tt.wantOK {
+			t.Errorf("[%s] parseMotionConfig ok = %v, want %v", tt.label, ok, tt.wantOK)
+			continue
+		}
+		if !tt.wantOK {
+			continue
+		}
+		if cfg.Type != tt.wantType {
+			t.Errorf("[%s] type = %q, want %q", tt.label, cfg.Type, tt.wantType)
+		}
+		if tt.checkExtra != nil {
+			tt.checkExtra(t, cfg)
+		}
+	}
+}
+
 
 
