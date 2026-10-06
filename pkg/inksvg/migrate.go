@@ -29,6 +29,13 @@ var migrationRules = []MigrationRule{
 		Detect:  regexp.MustCompile(`(?i)\bmovement(\s*\{)`),
 		Replace: "Move$1",
 	},
+	{
+		ID:      "motion-to-move",
+		Since:   "v0.4.0",
+		Message: "\"Motion\" was renamed to \"Move\"",
+		Detect:  regexp.MustCompile(`(?i)\bmotion(\s*\{)`),
+		Replace: "Move$1",
+	},
 }
 
 // migrateLabel applies every rule's Detect.ReplaceAllString(label, Replace) in registry order; returns the rewritten label.

@@ -3,6 +3,7 @@ package doctree
 import (
 	"bytes"
 	"encoding/xml"
+	"fmt"
 	"io"
 	"regexp"
 	"slices"
@@ -63,7 +64,7 @@ func (n *DocNode) FormatLabel() string {
 	return strings.Join(parts, " ")
 }
 
-var directiveScannerRe = regexp.MustCompile(`(?i)\b(move|rot|scale|scal|fade|show|hide|depth|camera|distance|dist|color)\s*\{([^}]*)\}`)
+var directiveScannerRe = regexp.MustCompile(`(?i)\b(move|motion|movement|rot|scale|scal|fade|show|hide|depth|camera|distance|dist|color)\s*\{([^}]*)\}`)
 
 // ParseDirectives extracts all motion directives from an inkscape:label.
 func ParseDirectives(label string) (prefix string, directives []Directive, suffix string) {
@@ -82,13 +83,23 @@ func ParseDirectives(label string) (prefix string, directives []Directive, suffi
 		typeStart, typeEnd := loc[2], loc[3]
 		paramsStart, paramsEnd := loc[4], loc[5]
 
-		dType := label[typeStart:typeEnd]
-		// Capitalize first letter (e.g. "move" -> "Move")
-		if len(dType) > 0 {
-			dType = strings.ToUpper(dType[:1]) + strings.ToLower(dType[1:])
+		rawDType := label[typeStart:typeEnd]
+		var dType string
+		switch strings.ToLower(rawDType) {
+		case "motion", "movement":
+			dType = "Move"
+		case "scal":
+			dType = "Scale"
+		case "distance":
+			dType = "Dist"
+		default:
+			if len(rawDType) > 0 {
+				dType = strings.ToUpper(rawDType[:1]) + strings.ToLower(rawDType[1:])
+			}
 		}
+
 		params := strings.TrimSpace(label[paramsStart:paramsEnd])
-		raw := label[loc[0]:loc[1]]
+		raw := fmt.Sprintf("%s {%s}", dType, params)
 
 		directives = append(directives, Directive{
 			Type:   dType,

@@ -22,12 +22,24 @@ func TestMigrateLabel(t *testing.T) {
 			want:  "Move{f:all}",
 		},
 		{
+			input: "Motion {f: 1-20}",
+			want:  "Move {f: 1-20}",
+		},
+		{
+			input: "motion{f:all}",
+			want:  "Move{f:all}",
+		},
+		{
 			input: "Move {f:1-2}",
 			want:  "Move {f:1-2}",
 		},
 		{
 			input: "Movements",
 			want:  "Movements",
+		},
+		{
+			input: "Motions",
+			want:  "Motions",
 		},
 	}
 
@@ -46,6 +58,14 @@ func TestDetectMigrations(t *testing.T) {
 	}
 	if movementHits[0].RuleID != "movement-to-move" {
 		t.Errorf("expected RuleID 'movement-to-move', got %q", movementHits[0].RuleID)
+	}
+
+	motionHits := DetectMigrations("Motion {f: 1-20; ease: in-out}")
+	if len(motionHits) != 1 {
+		t.Fatalf("expected 1 hit for Motion label, got %d", len(motionHits))
+	}
+	if motionHits[0].RuleID != "motion-to-move" {
+		t.Errorf("expected RuleID 'motion-to-move', got %q", motionHits[0].RuleID)
 	}
 	if movementHits[0].Before != "Movement {f: 1-20; ease: in-out}" {
 		t.Errorf("unexpected Before: %q", movementHits[0].Before)
