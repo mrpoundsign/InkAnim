@@ -163,7 +163,7 @@ function Verify-WASM {
 }
 
 function Build-WASM {
-    Write-Host "`n==> Packaging WebAssembly studio & assembling GitHub Pages site..." -ForegroundColor Cyan
+    Write-Host "`n==> Packaging WebAssembly demo & assembling GitHub Pages site..." -ForegroundColor Cyan
     $pagesDir = Join-Path $BuildDir "gh-pages"
     $wasmTemp = Join-Path $BuildDir "wasm-tmp"
     if (Test-Path $pagesDir) { Remove-Item $pagesDir -Recurse -Force }
@@ -196,7 +196,7 @@ function Build-WASM {
     # Copy sample SVGs
     Copy-Item (Join-Path $PSScriptRoot "web\samples\*") (Join-Path $pagesDir "samples") -Recurse -Force
 
-    Write-Host "[OK] WebAssembly studio and landing page assembled in $pagesDir" -ForegroundColor Green
+    Write-Host "[OK] WebAssembly demo and landing page assembled in $pagesDir" -ForegroundColor Green
 }
 
 function Serve-Web {

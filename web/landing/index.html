@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>InkAnim — Inkscape SVG to Twitch & Discord Animated GIF Studio</title>
-  <meta name="description" content="Transform Inkscape SVGs into optimized, production-ready animated GIFs for Twitch, Discord, and the web using declarative motion syntax. Native desktop apps and in-browser WebAssembly studio.">
+  <meta name="description" content="Transform Inkscape SVGs into optimized, production-ready animated GIFs for Twitch, Discord, and the web using declarative motion syntax. Native desktop apps and in-browser WebAssembly demo.">
   <link rel="icon" type="image/png" href="icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -36,7 +36,7 @@
           GitHub
         </a>
         <a href="./demo/" class="btn btn-primary">
-          <span>🚀 Launch Web Studio</span>
+          <span>⚡ Try Web Demo</span>
         </a>
       </div>
     </div>
@@ -58,7 +58,7 @@
       <div class="hero-buttons">
         <a href="./demo/" class="btn btn-primary btn-lg">
           <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3" fill="currentColor"/></svg>
-          Launch In-Browser Studio
+          Try In-Browser Demo
         </a>
         <a href="#downloads" class="btn btn-secondary btn-lg">
           <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
@@ -160,7 +160,7 @@
           <div class="feature-icon">🔒</div>
           <h3 class="feature-title">Complete Client-Side Privacy</h3>
           <p class="feature-desc">
-            Our WebAssembly studio runs 100% inside your browser. Your SVGs, illustrations, and exported GIFs never touch an external server or cloud service.
+            Our WebAssembly demo runs 100% inside your browser. Your SVGs, illustrations, and exported GIFs never touch an external server or cloud service.
           </p>
         </div>
       </div>
@@ -184,7 +184,7 @@
         <div class="section-subtitle">Interactive Showcase</div>
         <h2 class="section-title">Inkscape Vector Art vs. Living Motion</h2>
         <p class="section-desc" style="max-width: 680px; margin: 0 auto; color: var(--text-muted); font-size: 1.05rem;">
-          Click any sample animation below to compare the static Inkscape vector source against the compiled animation, inspect motion syntax directives, and launch directly in the Web Studio.
+          Click any sample animation below to compare the static Inkscape vector source against the compiled animation, inspect motion syntax directives, and test directly in the Web Demo.
         </p>
       </div>
 
@@ -307,11 +307,11 @@
         <div class="download-card">
           <div>
             <div class="download-icon">🌐</div>
-            <div class="download-platform">In-Browser Web Studio</div>
-            <div class="download-info">Run InkAnim directly in your browser with zero installation, zero downloads, and 100% client-side privacy.</div>
+            <div class="download-platform">Interactive Web Demo</div>
+            <div class="download-info">Test-drive InkAnim directly in your browser with zero installation, zero downloads, and 100% client-side privacy.</div>
           </div>
           <a href="./demo/" class="btn btn-secondary">
-            Launch Web Studio
+            Try In-Browser Demo
           </a>
         </div>
       </div>
@@ -335,7 +335,7 @@
         <strong>InkAnim</strong> — Open source under the MIT License.
       </div>
       <ul class="footer-links">
-        <li><a href="./demo/" class="footer-link">Web Studio</a></li>
+        <li><a href="./demo/" class="footer-link">Interactive Demo</a></li>
         <li><a href="https://github.com/mrpoundsign/InkAnim" target="_blank" rel="noopener noreferrer" class="footer-link">GitHub</a></li>
         <li><a href="https://github.com/mrpoundsign/InkAnim/issues" target="_blank" rel="noopener noreferrer" class="footer-link">Report Issue</a></li>
         <li><a href="https://github.com/mrpoundsign/InkAnim/releases" target="_blank" rel="noopener noreferrer" class="footer-link">Releases</a></li>
@@ -388,9 +388,9 @@
           <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
           Download Source SVG
         </a>
-        <a id="modal-studio-link" href="./demo/" class="btn btn-primary">
+        <a id="modal-demo-link" href="./demo/" class="btn btn-primary">
           <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3" fill="currentColor"/></svg>
-          Open in Web Studio
+          Open in Web Demo
         </a>
       </div>
     </div>
@@ -450,8 +450,8 @@
       downloadLink.href = 'samples/' + data.file;
       downloadLink.download = data.file;
 
-      const studioLink = document.getElementById('modal-studio-link');
-      studioLink.href = 'demo/?sample=' + encodeURIComponent(data.file);
+      const demoLink = document.getElementById('modal-demo-link');
+      demoLink.href = 'demo/?sample=' + encodeURIComponent(data.file);
 
       const modal = document.getElementById('compare-modal');
       modal.classList.add('active');

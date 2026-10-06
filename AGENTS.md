@@ -13,14 +13,14 @@
 ---
 
 ## 2. Project Overview & Mission
-**InkAnim** is an open-source desktop and WebAssembly studio application written in Go that transforms **Inkscape SVGs into optimized, production-ready animated GIFs** using declarative object motion syntax (IAMS). It is especially tailored for Twitch streamers, emote creators, and web animators.
+**InkAnim** is an open-source desktop application and interactive WebAssembly demo written in Go that transforms **Inkscape SVGs into optimized, production-ready animated GIFs** using declarative object motion syntax (IAMS). It is especially tailored for Twitch streamers, emote creators, and web animators.
 
 - **Primary Repository**: `mrpoundsign/InkAnim`
 - **Visual Identity**: Obsidian Slate, Chrome White & Electric Sky Blue (`#38BDF8`) theme derived from the studio icon.
 - **Stack**: Go 1.27.0, [Fyne v2](https://fyne.io/) (v2.8.1 GUI toolkit with WebGL/WASM support), standard library imaging/gif with Floyd-Steinberg dithering and neural/median-cut color quantization.
 - **Targets**:
   - Native Desktop (Windows `inkanim.exe`, Linux, macOS `InkAnim.app`)
-  - WebAssembly (in-browser canvas via `fyne package -os web` / `fyne serve` and offline web zip)
+  - WebAssembly (interactive in-browser demo canvas via `fyne package -os web` / `fyne serve` and offline web zip)
   - Headless CLI (`inkanim-cli`)
 
 ---

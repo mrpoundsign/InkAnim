@@ -15,11 +15,14 @@ func main() {
 
 	_ = mime.AddExtensionType(".wasm", "application/wasm")
 	fs := http.FileServer(http.Dir(*dir))
-	http.Handle("/", fs)
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "must-revalidate, max-age=0")
+		fs.ServeHTTP(w, r)
+	})
 
 	fmt.Printf("==> Serving InkAnim Web:\n")
-	fmt.Printf("    Landing Page: http://localhost:%s/\n", *port)
-	fmt.Printf("    Web Studio:   http://localhost:%s/demo/\n\n", *port)
+	fmt.Printf("    Landing Page:     http://localhost:%s/\n", *port)
+	fmt.Printf("    Interactive Demo: http://localhost:%s/demo/\n\n", *port)
 	fmt.Println("Press Ctrl+C to stop.")
 
 	if err := http.ListenAndServe(":"+*port, nil); err != nil {

@@ -7,7 +7,7 @@ set -euo pipefail
 #   ./build.sh cli      # Build Pure-Go CLI into build/
 #   ./build.sh gui      # Build Desktop GUI into build/
 #   ./build.sh gui-win  # Build Desktop GUI for Windows via MinGW into build/
-#   ./build.sh wasm       # Package WebAssembly studio into build/gh-pages
+#   ./build.sh wasm       # Package WebAssembly demo into build/gh-pages
 #   ./build.sh wasm-check # Verify WebAssembly compilation
 #   ./build.sh test       # Run unit tests
 #   ./build.sh cross    # Cross-compile CLI for multiple targets
@@ -72,7 +72,7 @@ verify_wasm() {
 }
 
 build_wasm() {
-    echo "==> Packaging WebAssembly studio & assembling GitHub Pages site..."
+    echo "==> Packaging WebAssembly demo & assembling GitHub Pages site..."
     local PAGES_DIR="$BUILD_DIR/gh-pages"
     local WASM_TEMP="$BUILD_DIR/wasm-tmp"
     rm -rf "$PAGES_DIR" "$WASM_TEMP"
@@ -100,7 +100,7 @@ build_wasm() {
     # Copy sample SVGs
     cp -r "$ROOT_DIR/web/samples/"* "$PAGES_DIR/samples/"
 
-    echo "✓ WebAssembly studio and landing page assembled in $PAGES_DIR"
+    echo "✓ WebAssembly demo and landing page assembled in $PAGES_DIR"
 }
 
 serve_web() {

@@ -5,7 +5,7 @@
 
 ## 1. Executive Summary
 
-**InkAnim** is a cross-platform desktop studio and WebAssembly web application written in **Go** using the **Fyne Toolkit**. It enables designers and digital animators to convert Inkscape vector artwork into high-quality, production-ready **animated GIFs** optimized for Twitch emotes, Discord stickers, and web graphics.
+**InkAnim** is a cross-platform desktop studio and interactive WebAssembly demo written in **Go** using the **Fyne Toolkit**. It enables designers and digital animators to convert Inkscape vector artwork into high-quality, production-ready **animated GIFs** optimized for Twitch emotes, Discord stickers, and web graphics.
 
 Unlike legacy tools that require duplicating artwork across dozens of canvases, InkAnim powers animation through the **Inkscape Animation & Motion System (IAMS)**—a declarative object-level motion syntax that translates trajectories, rotations, scale transforms, fades, depth layering, and gradient sweeps into fluid multi-frame sequences.
 
@@ -169,9 +169,9 @@ InkAnim/
 │   ├── app/                     # Session state and frame pipeline orchestration
 │   ├── gif/                     # Animated GIF encoding, quantization & Twitch checks
 │   └── ui/                      # Fyne GUI components and Studio theme
-├── web/                         # Web landing page and WebAssembly studio distribution
+├── web/                         # Web landing page and WebAssembly demo distribution
 │   ├── landing/                 # Responsive landing page, samples gallery & docs
-│   └── demo/                    # In-browser WebAssembly studio template
+│   └── demo/                    # In-browser WebAssembly demo template
 ├── testdata/                    # Sample IAMS SVGs and test fixtures
 ├── build.sh                     # Linux/macOS build & packaging script
 └── build.ps1                    # Windows PowerShell build script
