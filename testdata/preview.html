@@ -362,11 +362,11 @@
       <div class="card-header">
         <span class="card-title">Main Emote Canvas</span>
         <span id="file-info" style="font-size: 12px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace;">
-          character_walk.gif (512x512)
+          pendulum.gif (512x512)
         </span>
       </div>
       <div class="viewport bg-checkerboard" id="main-viewport">
-        <img src="character_walk.gif" alt="Emote Preview" id="main-emote" class="emote-display pixelated" />
+        <img src="pendulum.gif" alt="Emote Preview" id="main-emote" class="emote-display pixelated" />
       </div>
     </div>
 
@@ -380,8 +380,8 @@
           <input type="file" id="file-input" accept="image/gif,image/png,image/webp" />
         </label>
         <div style="display: flex; gap: 8px; margin-top: 10px;">
-          <button class="btn" style="flex: 1; font-size: 11px;" id="load-demo-layers">Load Demo (Layers)</button>
-          <button class="btn" style="flex: 1; font-size: 11px;" id="load-demo-pages">Load Demo (Pages)</button>
+          <button class="btn" style="flex: 1; font-size: 11px;" id="load-demo-pendulum">Load Demo (Pendulum)</button>
+          <button class="btn" style="flex: 1; font-size: 11px;" id="load-demo-hydrate">Load Demo (Hydrate)</button>
         </div>
       </div>
 
@@ -406,15 +406,15 @@
             <span class="scale-label">Dark Chat</span>
             <div class="scale-items">
               <div class="scale-item">
-                <img src="character_walk.gif" class="scale-112 twitch-sync-img pixelated" />
+                <img src="pendulum.gif" class="scale-112 twitch-sync-img pixelated" />
                 <span>112px</span>
               </div>
               <div class="scale-item">
-                <img src="character_walk.gif" class="scale-56 twitch-sync-img pixelated" />
+                <img src="pendulum.gif" class="scale-56 twitch-sync-img pixelated" />
                 <span>56px</span>
               </div>
               <div class="scale-item">
-                <img src="character_walk.gif" class="scale-28 twitch-sync-img pixelated" />
+                <img src="pendulum.gif" class="scale-28 twitch-sync-img pixelated" />
                 <span>28px</span>
               </div>
             </div>
@@ -425,15 +425,15 @@
             <span class="scale-label">Light Chat</span>
             <div class="scale-items">
               <div class="scale-item">
-                <img src="character_walk.gif" class="scale-112 twitch-sync-img pixelated" />
+                <img src="pendulum.gif" class="scale-112 twitch-sync-img pixelated" />
                 <span>112px</span>
               </div>
               <div class="scale-item">
-                <img src="character_walk.gif" class="scale-56 twitch-sync-img pixelated" />
+                <img src="pendulum.gif" class="scale-56 twitch-sync-img pixelated" />
                 <span>56px</span>
               </div>
               <div class="scale-item">
-                <img src="character_walk.gif" class="scale-28 twitch-sync-img pixelated" />
+                <img src="pendulum.gif" class="scale-28 twitch-sync-img pixelated" />
                 <span>28px</span>
               </div>
             </div>
@@ -504,11 +504,11 @@
     }
 
     // Demo buttons
-    document.getElementById('load-demo-layers').addEventListener('click', () => {
-      setEmoteSource('character_walk.gif', 'character_walk.gif');
+    document.getElementById('load-demo-pendulum').addEventListener('click', () => {
+      setEmoteSource('pendulum.gif', 'pendulum.gif');
     });
-    document.getElementById('load-demo-pages').addEventListener('click', () => {
-      setEmoteSource('multipage_walk.gif', 'multipage_walk.gif');
+    document.getElementById('load-demo-hydrate').addEventListener('click', () => {
+      setEmoteSource('hydrate.gif', 'hydrate.gif');
     });
 
     // File Input & Drag and Drop

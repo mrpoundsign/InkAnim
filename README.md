@@ -16,16 +16,15 @@ Use InkAnim right now in your web browser with zero installation:
 👉 **[Launch InkAnim Web Studio (In-Browser)](https://mrpoundsign.github.io/InkAnim/)**
 
 - **100% Client-Side Privacy**: Vector parsing and GIF quantization execute entirely inside your browser sandbox via WebAssembly. Your artwork never leaves your machine.
-- **Full In-Browser Features**: Load layered SVGs, configure Twitch emote specs, inspect real-time chat scaling, and download exported GIFs directly.
+- **Full In-Browser Features**: Load Inkscape SVGs, configure Twitch emote specs, inspect real-time chat scaling, and download exported GIFs directly.
 
 ---
 
 ## ✨ Features
 
-- **Precision Vector Animation Systems**:
-  - **IAMS Object Motion Syntax (Flagship)**: Animate complex vector art directly using declarative tags: trajectory paths (`Move`), spin (`Rot`), zoom/pulsing (`Scale`), opacity transitions (`Fade`), layer ordering (`Depth`), and gradient color sweeps (`Color`).
-  - **Classic Layer Cycling**: Converts discrete Inkscape layers (`inkscape:groupmode="layer"`) into sequential animation frames with support for solitary frames, cumulative frames, and persistent pinned backgrounds.
-  - **Artboard Framing**: Choose between native document page bounds or automatic tight drawing bounds.
+- **Precision Vector Animation Engine**:
+  - **IAMS Object Motion Syntax**: Animate vector elements directly using declarative tags on object labels or descriptions: trajectory paths (`Move`), spin (`Rot`), zoom/pulsing (`Scale`), opacity transitions (`Fade`), z-stacking order (`Depth`), and gradient color sweeps (`Color`).
+  - **Artboard & Multi-Page Framing**: Choose between native document page bounds, multi-page bounds, or automatic tight drawing bounds.
 - **Export Square Mode**:
   - Automatically takes the wider/longer dimension of the SVG ($S = \max(\text{Width}, \text{Height})$) as the export resolution and centers the artwork with transparent padding.
   - Target resolution customizable up to the maximum Twitch limit of **4096 x 4096 px**.
@@ -80,7 +79,7 @@ Compile instantly on any platform:
 go build ./cmd/inkanim-cli
 ```
 
-Convert an SVG with **IAMS Motion Syntax or Layers** to a 512x512 square animated GIF:
+Convert an SVG with **IAMS Motion Syntax** to a 512x512 square animated GIF:
 ```bash
 inkanim-cli -i star_swirl.svg -o emote.gif -square -size 512 -fps 15
 ```
@@ -123,7 +122,7 @@ Run locally with Fyne:
 go run ./cmd/inkanim
 ```
 
-Drag and drop any Inkscape SVG into the window to immediately preview, reorder layers, inspect Twitch chat scaling, and export.
+Drag and drop any Inkscape SVG into the window to immediately preview the animation timeline, inspect Twitch chat scaling, and export.
 
 ---
 

@@ -28,13 +28,13 @@ func ParseSVG(data []byte) (*SVGDocument, error) {
 
 	doc := &SVGDocument{
 		RawContent:  processedData,
-		DefaultMode: ModeLayers,
+		DefaultMode: ModeTimeline,
 		Gradients:   make(map[string]SVGGradient),
 	}
 
 	decoder := xml.NewDecoder(bytes.NewReader(processedData))
 	var inSVGTag bool
-	var layerIdx, pageIdx int
+	var pageIdx int
 	var activeGroups []string
 	var curGrad *SVGGradient
 	gradHrefs := make(map[string]string)
@@ -56,44 +56,17 @@ func ParseSVG(data []byte) (*SVGDocument, error) {
 				parseSVGAttributes(elem.Attr, doc)
 			}
 
-			// Check for Inkscape layer: <g inkscape:groupmode="layer" ...>
 			if name == "g" {
-				var isLayer bool
-				var id, label, style string
+				var id, label string
 				for _, attr := range elem.Attr {
-					if attr.Name.Local == "groupmode" && attr.Value == "layer" {
-						isLayer = true
-					}
 					if attr.Name.Local == "id" {
 						id = attr.Value
 					}
 					if attr.Name.Local == "label" {
 						label = attr.Value
 					}
-					if attr.Name.Local == "style" {
-						style = attr.Value
-					}
 				}
 
-				if isLayer {
-					if label == "" {
-						label = id
-					}
-					if label == "" {
-						label = fmt.Sprintf("Layer %d", layerIdx+1)
-					}
-					visible := !strings.Contains(style, "display:none")
-					layer := Layer{
-						ID:         id,
-						Label:      label,
-						Index:      layerIdx,
-						Visible:    visible,
-						IsActive:   true,
-						DurationMs: 100, // 10 fps default
-					}
-					doc.Layers = append(doc.Layers, layer)
-					layerIdx++
-				}
 				if cfg, ok := parseMotionConfig(label); ok && cfg.HasParallax {
 					doc.MotionPaths = append(doc.MotionPaths, MotionPath{
 						ID:      id + "_dist",
@@ -368,8 +341,8 @@ func ParseSVG(data []byte) (*SVGDocument, error) {
 		doc.Gradients[id] = grad
 	}
 
-	// Default mode is ModeLayers (pages serve as artboard crop boundaries)
-	doc.DefaultMode = ModeLayers
+	// Default mode is ModeTimeline
+	doc.DefaultMode = ModeTimeline
 
 	// Check if this is a timeline animation
 	maxFrame := 0
@@ -378,12 +351,14 @@ func ParseSVG(data []byte) (*SVGDocument, error) {
 			maxFrame = mp.Config.EndFrame
 		}
 	}
+	if doc.CameraPath != nil && doc.CameraPath.Config.EndFrame > maxFrame {
+		maxFrame = doc.CameraPath.Config.EndFrame
+	}
 	if maxFrame == 0 && len(doc.MotionPaths) > 0 {
 		maxFrame = 15
 	}
 
 	if maxFrame > 0 {
-		doc.DefaultMode = ModeTimeline
 		doc.Layers = make([]Layer, maxFrame)
 		for i := 0; i < maxFrame; i++ {
 			doc.Layers[i] = Layer{
@@ -395,12 +370,12 @@ func ParseSVG(data []byte) (*SVGDocument, error) {
 				DurationMs: 100,
 			}
 		}
-	} else if len(doc.Layers) == 0 {
-		// Fallback: if no explicit layers were found, treat the document as a single layer
+	} else {
+		// Single static frame representing the entire document
 		doc.Layers = []Layer{
 			{
-				ID:         "layer_default",
-				Label:      "Layer 1",
+				ID:         "timeline_frame_1",
+				Label:      "Frame 1",
 				Index:      0,
 				Visible:    true,
 				IsActive:   true,
@@ -1127,6 +1102,12 @@ func parseMotionConfig(label string) (MotionConfig, bool) {
 					end, _ := strconv.Atoi(rangeParts[1])
 					config.StartFrame = start
 					config.EndFrame = end
+				} else if len(rangeParts) == 1 {
+					singleF, err := strconv.Atoi(rangeParts[0])
+					if err == nil && singleF > 0 {
+						config.StartFrame = singleF
+						config.EndFrame = singleF
+					}
 				}
 			}
 		}

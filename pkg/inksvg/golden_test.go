@@ -201,7 +201,7 @@ func TestGolden_AlertIcon(t *testing.T) {
 		t.Fatalf("failed to parse Alert Icon.svg: %v", err)
 	}
 
-	frame, err := BuildLayerFrameSVG(doc, "layer1", nil, doc.GetDocumentRect())
+	frame, err := BuildTimelineFrameSVG(doc, 0, doc.GetDocumentRect())
 	if err != nil {
 		t.Fatalf("failed to build frame: %v", err)
 	}
@@ -233,7 +233,7 @@ func TestGolden_Hydrate(t *testing.T) {
 		t.Fatalf("failed to parse hydrate.svg: %v", err)
 	}
 
-	frame, err := BuildLayerFrameSVG(doc, "layer1", nil, doc.GetDocumentRect())
+	frame, err := BuildTimelineFrameSVG(doc, 0, doc.GetDocumentRect())
 	if err != nil {
 		t.Fatalf("failed to build frame: %v", err)
 	}
@@ -251,61 +251,6 @@ func TestGolden_Hydrate(t *testing.T) {
 	AssertImageMatchesGolden(t, img, "../../testdata/hydrate-golden.png", opts)
 }
 
-func TestGolden_CharacterWalk(t *testing.T) {
-	svgBytes, err := os.ReadFile("../../testdata/character_walk.svg")
-	if err != nil {
-		t.Fatalf("failed to read character_walk.svg: %v", err)
-	}
-
-	doc, err := ParseSVG(svgBytes)
-	if err != nil {
-		t.Fatalf("failed to parse character_walk.svg: %v", err)
-	}
-
-	layers := []string{"layer_frame1", "layer_frame2", "layer_frame3"}
-	opts := DefaultGoldenCompareOptions()
-
-	for i, layerID := range layers {
-		frame, err := BuildLayerFrameSVG(doc, layerID, nil, doc.GetDocumentRect())
-		if err != nil {
-			t.Fatalf("failed to build frame for %s: %v", layerID, err)
-		}
-
-		img, err := RenderSVGToRGBA(frame, 256, 256)
-		if err != nil {
-			t.Fatalf("failed to render frame %s: %v", layerID, err)
-		}
-
-		goldenPath := fmt.Sprintf("../../testdata/golden/character_walk_f%d.png", i+1)
-		AssertImageMatchesGolden(t, img, goldenPath, opts)
-	}
-}
-
-func TestGolden_BouncingWalker(t *testing.T) {
-	svgBytes, err := os.ReadFile("../../testdata/bouncing_walker.svg")
-	if err != nil {
-		t.Fatalf("failed to read bouncing_walker.svg: %v", err)
-	}
-
-	doc, err := ParseSVG(svgBytes)
-	if err != nil {
-		t.Fatalf("failed to parse bouncing_walker.svg: %v", err)
-	}
-
-	// Frame 1 with pinned background layer
-	frame, err := BuildLayerFrameSVG(doc, "frame1_left_wall", map[string]bool{"layer_bg_grid": true}, doc.GetDocumentRect())
-	if err != nil {
-		t.Fatalf("failed to build frame for bouncing_walker: %v", err)
-	}
-
-	img, err := RenderSVGToRGBA(frame, 256, 256)
-	if err != nil {
-		t.Fatalf("failed to render frame: %v", err)
-	}
-
-	opts := DefaultGoldenCompareOptions()
-	AssertImageMatchesGolden(t, img, "../../testdata/golden/bouncing_walker_f1.png", opts)
-}
 
 func TestGolden_MultipageWalk(t *testing.T) {
 	svgBytes, err := os.ReadFile("../../testdata/multipage_walk.svg")

@@ -1249,13 +1249,6 @@ func isElementHidden(name string, attrs []xml.Attr) bool {
 	case "svg", "defs", "linearGradient", "radialGradient", "pattern", "clipPath", "mask", "filter", "style":
 		return false
 	}
-	// Never prune Inkscape animation layers; InkAnim's frame builder dynamically
-	// manages layer visibility when synthesizing animation frames.
-	for _, a := range attrs {
-		if a.Name.Local == "groupmode" && a.Value == "layer" {
-			return false
-		}
-	}
 	for _, a := range attrs {
 		switch a.Name.Local {
 		case "display":

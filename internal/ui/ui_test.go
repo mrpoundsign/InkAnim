@@ -27,7 +27,7 @@ func TestMainWindowInitAndLoad(t *testing.T) {
 	}
 
 	// Verify loading demo SVG does not panic
-	testSVGPath, err := filepath.Abs("../../testdata/character_walk.svg")
+	testSVGPath, err := filepath.Abs("../../testdata/pendulum.svg")
 	if err != nil {
 		t.Fatalf("failed to resolve test SVG path: %v", err)
 	}
@@ -39,23 +39,23 @@ func TestMainWindowInitAndLoad(t *testing.T) {
 		t.Errorf("expected exportBtn text to be 'Export Animated GIF...', got '%s'", mw.rightPanel.exportBtn.Text)
 	}
 
-	if len(mw.session.Layers) != 3 {
-		t.Errorf("expected 3 layers, got %d", len(mw.session.Layers))
+	if len(mw.session.Layers) != 10 {
+		t.Errorf("expected 10 layers, got %d", len(mw.session.Layers))
 	}
-	if len(mw.session.RenderedFrames) != 3 {
-		t.Errorf("expected 3 rendered layer frames, got %d", len(mw.session.RenderedFrames))
+	if len(mw.session.RenderedFrames) != 10 {
+		t.Errorf("expected 10 rendered layer frames, got %d", len(mw.session.RenderedFrames))
 	}
 
-	// Test loading multipage SVG
-	multiPagePath, err := filepath.Abs("../../testdata/multipage_walk.svg")
+	// Test loading second SVG with different frame count
+	secondSVGPath, err := filepath.Abs("../../testdata/color_test.svg")
 	if err != nil {
-		t.Fatalf("failed to resolve multipage SVG path: %v", err)
+		t.Fatalf("failed to resolve color_test SVG path: %v", err)
 	}
 
-	mw.loadFilePath(multiPagePath)
+	mw.loadFilePath(secondSVGPath)
 	mw.centerPanel.Pause()
-	if len(mw.session.RenderedFrames) != 2 {
-		t.Errorf("expected 2 layer frames, got %d", len(mw.session.RenderedFrames))
+	if len(mw.session.RenderedFrames) != 30 {
+		t.Errorf("expected 30 frames, got %d", len(mw.session.RenderedFrames))
 	}
 
 	// Switch back and forth between SVGs with different frame counts
@@ -63,7 +63,7 @@ func TestMainWindowInitAndLoad(t *testing.T) {
 		mw.loadFilePath(testSVGPath)
 		mw.centerPanel.Pause()
 		mw.centerPanel.StepFrame(2)
-		mw.loadFilePath(multiPagePath)
+		mw.loadFilePath(secondSVGPath)
 		mw.centerPanel.Pause()
 		mw.centerPanel.StepFrame(1)
 	}
@@ -92,18 +92,18 @@ func TestMainWindowInitAndLoad(t *testing.T) {
 	// Verify that switching between SVGs does not double the list items
 	mw.loadFilePath(testSVGPath)
 	mw.centerPanel.Pause()
-	if len(mw.leftPanel.listContainer.Objects) != 3 {
-		t.Errorf("expected exactly 3 frame objects in list, got %d", len(mw.leftPanel.listContainer.Objects))
+	if len(mw.leftPanel.listContainer.Objects) != 10 {
+		t.Errorf("expected exactly 10 frame objects in list, got %d", len(mw.leftPanel.listContainer.Objects))
 	}
-	mw.loadFilePath(multiPagePath)
+	mw.loadFilePath(secondSVGPath)
 	mw.centerPanel.Pause()
-	if len(mw.leftPanel.listContainer.Objects) != 2 {
-		t.Errorf("expected exactly 2 page objects in list, got %d", len(mw.leftPanel.listContainer.Objects))
+	if len(mw.leftPanel.listContainer.Objects) != 30 {
+		t.Errorf("expected exactly 30 frame objects in list, got %d", len(mw.leftPanel.listContainer.Objects))
 	}
 	mw.loadFilePath(testSVGPath)
 	mw.centerPanel.Pause()
-	if len(mw.leftPanel.listContainer.Objects) != 3 {
-		t.Errorf("expected exactly 3 frame objects in list after switching back, got %d", len(mw.leftPanel.listContainer.Objects))
+	if len(mw.leftPanel.listContainer.Objects) != 10 {
+		t.Errorf("expected exactly 10 frame objects in list after switching back, got %d", len(mw.leftPanel.listContainer.Objects))
 	}
 }
 
@@ -112,7 +112,7 @@ func TestAnimationPlayback(t *testing.T) {
 	defer app.Quit()
 
 	mw := NewMainWindow(app)
-	testSVGPath, err := filepath.Abs("../../testdata/character_walk.svg")
+	testSVGPath, err := filepath.Abs("../../testdata/pendulum.svg")
 	if err != nil {
 		t.Fatalf("failed to resolve test SVG path: %v", err)
 	}
@@ -140,7 +140,7 @@ func TestCheckFrameDifferences(t *testing.T) {
 	defer app.Quit()
 
 	mw := NewMainWindow(app)
-	testSVGPath, err := filepath.Abs("../../testdata/character_walk.svg")
+	testSVGPath, err := filepath.Abs("../../testdata/pendulum.svg")
 	if err != nil {
 		t.Fatalf("failed to resolve test SVG path: %v", err)
 	}
@@ -148,8 +148,8 @@ func TestCheckFrameDifferences(t *testing.T) {
 	mw.loadFilePath(testSVGPath)
 	mw.centerPanel.Pause()
 	frames := mw.session.RenderedFrames
-	if len(frames) != 3 {
-		t.Fatalf("expected 3 frames, got %d", len(frames))
+	if len(frames) != 10 {
+		t.Fatalf("expected 10 frames, got %d", len(frames))
 	}
 
 	// Compare pixels of frame 0 and frame 1
@@ -166,6 +166,9 @@ func TestCheckFrameDifferences(t *testing.T) {
 		}
 	}
 	t.Logf("Differences between frame 0 and frame 1: %d pixels", diff01)
+	if diff01 == 0 {
+		t.Errorf("expected differences between frame 0 and frame 1")
+	}
 
 	diff12 := 0
 	for y := 0; y < f1.Bounds().Dy(); y++ {
@@ -176,6 +179,9 @@ func TestCheckFrameDifferences(t *testing.T) {
 		}
 	}
 	t.Logf("Differences between frame 1 and frame 2: %d pixels", diff12)
+	if diff12 == 0 {
+		t.Errorf("expected differences between frame 1 and frame 2")
+	}
 }
 
 func TestNoLoopPlaybackAndButtonStates(t *testing.T) {
@@ -183,7 +189,7 @@ func TestNoLoopPlaybackAndButtonStates(t *testing.T) {
 	defer app.Quit()
 
 	mw := NewMainWindow(app)
-	testSVGPath, err := filepath.Abs("../../testdata/character_walk.svg")
+	testSVGPath, err := filepath.Abs("../../testdata/pendulum.svg")
 	if err != nil {
 		t.Fatalf("failed to resolve test SVG path: %v", err)
 	}
@@ -198,6 +204,9 @@ func TestNoLoopPlaybackAndButtonStates(t *testing.T) {
 	if mw.centerPanel.playPauseBtn.Importance != widget.DangerImportance {
 		t.Errorf("expected DangerImportance (Red), got %v", mw.centerPanel.playPauseBtn.Importance)
 	}
+
+	// Set speed fast so test completes in 200ms (10 frames at 20ms = 200ms)
+	mw.session.SetGlobalDuration(20)
 
 	// Disable loop
 	mw.centerPanel.loopCheck.SetChecked(false)
@@ -214,8 +223,8 @@ func TestNoLoopPlaybackAndButtonStates(t *testing.T) {
 		t.Errorf("expected SuccessImportance (Green) while playing, got %v", mw.centerPanel.playPauseBtn.Importance)
 	}
 
-	// Wait for playback to complete (100ms * 3 frames = 300ms + buffer)
-	time.Sleep(450 * time.Millisecond)
+	// Wait for playback to complete (20ms * 10 frames = 200ms + buffer)
+	time.Sleep(350 * time.Millisecond)
 
 	mw.centerPanel.mu.Lock()
 	playing := mw.centerPanel.isPlaying
@@ -225,8 +234,8 @@ func TestNoLoopPlaybackAndButtonStates(t *testing.T) {
 	if playing {
 		t.Errorf("expected playback to stop when reaching the end without loop")
 	}
-	if finalIdx != 2 {
-		t.Errorf("expected to stop on last frame (index 2), got %d", finalIdx)
+	if finalIdx != 9 {
+		t.Errorf("expected to stop on last frame (index 9), got %d", finalIdx)
 	}
 
 	// Button should automatically be back to Play and DangerImportance
@@ -254,7 +263,7 @@ func TestPingPongPlaybackAndExportUI(t *testing.T) {
 	defer app.Quit()
 
 	mw := NewMainWindow(app)
-	testSVGPath, err := filepath.Abs("../../testdata/character_walk.svg")
+	testSVGPath, err := filepath.Abs("../../testdata/pendulum.svg")
 	if err != nil {
 		t.Fatalf("failed to resolve test SVG path: %v", err)
 	}
@@ -262,9 +271,9 @@ func TestPingPongPlaybackAndExportUI(t *testing.T) {
 	mw.loadFilePath(testSVGPath)
 	mw.centerPanel.Pause()
 
-	// 1. character_walk.svg has 3 frames -> Ping-Pong should be enabled
+	// 1. pendulum.svg has 10 frames -> Ping-Pong should be enabled
 	if mw.centerPanel.pingPongCheck.Disabled() {
-		t.Errorf("expected pingPongCheck to be enabled for 3 frames")
+		t.Errorf("expected pingPongCheck to be enabled for 10 frames")
 	}
 
 	// 2. Enable Ping-Pong
@@ -273,9 +282,9 @@ func TestPingPongPlaybackAndExportUI(t *testing.T) {
 		t.Errorf("expected session ExportOptions.PingPong to be true")
 	}
 
-	// 3. Verify Twitch status and export button reflect 4 frames (3*2 - 2)
-	if !strings.Contains(mw.rightPanel.twitchStatusLabel.Text, "4 frames") {
-		t.Errorf("expected twitchStatusLabel to reflect 4 bounced frames, got '%s'", mw.rightPanel.twitchStatusLabel.Text)
+	// 3. Verify Twitch status and export button reflect 18 frames (10*2 - 2)
+	if !strings.Contains(mw.rightPanel.twitchStatusLabel.Text, "18 frames") {
+		t.Errorf("expected twitchStatusLabel to reflect 18 bounced frames, got '%s'", mw.rightPanel.twitchStatusLabel.Text)
 	}
 
 	// 4. Test bounce playback sequence
@@ -286,20 +295,19 @@ func TestPingPongPlaybackAndExportUI(t *testing.T) {
 	mw.centerPanel.mu.Unlock()
 
 	mw.centerPanel.Play()
-	// Run for 350ms at 2x speed (50ms per frame) to cycle through frames: 0 -> 1 -> 2 -> 1 -> 0
-	time.Sleep(350 * time.Millisecond)
+	time.Sleep(200 * time.Millisecond)
 	mw.centerPanel.Pause()
 
-	// 5. Edge case: load 2-frame document -> Ping-Pong must be disabled
-	multiPagePath, err := filepath.Abs("../../testdata/multipage_walk.svg")
+	// 5. Edge case: load 1-frame document -> Ping-Pong must be disabled
+	staticPath, err := filepath.Abs("../../testdata/Alert Icon.svg")
 	if err != nil {
-		t.Fatalf("failed to resolve multipage SVG path: %v", err)
+		t.Fatalf("failed to resolve Alert Icon SVG path: %v", err)
 	}
-	mw.loadFilePath(multiPagePath)
+	mw.loadFilePath(staticPath)
 	mw.centerPanel.Pause()
 
-	if len(mw.session.RenderedFrames) != 2 {
-		t.Fatalf("expected 2 frames, got %d", len(mw.session.RenderedFrames))
+	if len(mw.session.RenderedFrames) != 1 {
+		t.Fatalf("expected 1 frame for static SVG, got %d", len(mw.session.RenderedFrames))
 	}
 	if !mw.centerPanel.pingPongCheck.Disabled() {
 		t.Errorf("expected pingPongCheck to be disabled for < 3 frames")
@@ -372,7 +380,7 @@ func TestPausePlaybackModal(t *testing.T) {
 	defer app.Quit()
 
 	mw := NewMainWindow(app)
-	testSVGPath, err := filepath.Abs("../../testdata/character_walk.svg")
+	testSVGPath, err := filepath.Abs("../../testdata/pendulum.svg")
 	if err != nil {
 		t.Fatalf("failed to resolve test SVG path: %v", err)
 	}

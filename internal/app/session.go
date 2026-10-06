@@ -26,7 +26,6 @@ type Session struct {
 	Pages            []inksvg.Page
 	ExportOptions    gif.ExportOptions
 	RenderedFrames   []inksvg.RenderedFrame
-	PinnedLayers     map[string]bool
 
 	frameCache map[string][]inksvg.RenderedFrame
 	cacheMu    sync.RWMutex
@@ -36,11 +35,10 @@ type Session struct {
 // NewSession creates an empty session with default options.
 func NewSession() *Session {
 	return &Session{
-		CurrentMode:      inksvg.ModeLayers,
+		CurrentMode:      inksvg.ModeTimeline,
 		CropBoundaryMode: inksvg.BoundaryPage,
 		CropPageIndex:    0,
 		ExportOptions:    gif.DefaultOptions(),
-		PinnedLayers:     make(map[string]bool),
 		frameCache:       make(map[string][]inksvg.RenderedFrame),
 	}
 }
@@ -101,10 +99,9 @@ func (s *Session) LoadSVGData(data []byte, filename string) error {
 	s.Pages = make([]inksvg.Page, len(doc.Pages))
 	copy(s.Pages, doc.Pages)
 
-	s.CurrentMode = inksvg.ModeLayers
+	s.CurrentMode = inksvg.ModeTimeline
 	s.CropBoundaryMode = inksvg.BoundaryPage
 	s.CropPageIndex = 0
-	s.PinnedLayers = make(map[string]bool)
 
 	s.invalidateCache()
 
@@ -116,9 +113,9 @@ func (s *Session) LoadSVGData(data []byte, filename string) error {
 	return nil
 }
 
-// SetMode sets the animation mode (always inksvg.ModeLayers; pages serve as artboard crop boundaries).
+// SetMode sets the animation mode (always inksvg.ModeTimeline).
 func (s *Session) SetMode(mode inksvg.FrameMode) error {
-	s.CurrentMode = inksvg.ModeLayers
+	s.CurrentMode = inksvg.ModeTimeline
 	return s.RerenderAllFrames()
 }
 
@@ -207,24 +204,6 @@ func (s *Session) ToggleLayerActive(index int) error {
 	return nil
 }
 
-// ToggleLayerPinned toggles whether a layer is pinned as a background across all frames.
-func (s *Session) ToggleLayerPinned(index int) error {
-	if index < 0 || index >= len(s.Layers) {
-		return fmt.Errorf("invalid layer index %d", index)
-	}
-	s.Layers[index].IsPinned = !s.Layers[index].IsPinned
-	if s.Layers[index].IsPinned {
-		s.PinnedLayers[s.Layers[index].ID] = true
-	} else {
-		delete(s.PinnedLayers, s.Layers[index].ID)
-	}
-	s.invalidateCache()
-	if err := s.RerenderAllFrames(); err != nil {
-		return err
-	}
-	s.PrerenderPages()
-	return nil
-}
 
 // MoveLayer moves a layer up or down in the animation order.
 func (s *Session) MoveLayer(fromIndex, toIndex int) error {
@@ -274,7 +253,7 @@ func (s *Session) UpdateFrameDurations() {
 	updateList := func(frames []inksvg.RenderedFrame) {
 		frameIdx := 0
 		for _, layer := range s.Layers {
-			if !layer.IsActive || layer.IsPinned {
+			if !layer.IsActive {
 				continue
 			}
 			if frameIdx < len(frames) {
@@ -321,28 +300,15 @@ func (s *Session) renderFramesForBoundary(boundaryRect inksvg.Rect) ([]inksvg.Re
 	}
 	var jobs []layerJob
 
-	if s.Document.DefaultMode == inksvg.ModeTimeline {
-		for i, layer := range s.Layers {
-			if !layer.IsActive {
-				continue
-			}
-			jobs = append(jobs, layerJob{
-				frameIdx: len(jobs),
-				layerIdx: i,
-				layer:    layer,
-			})
+	for i, layer := range s.Layers {
+		if !layer.IsActive {
+			continue
 		}
-	} else {
-		for i, layer := range s.Layers {
-			if !layer.IsActive || layer.IsPinned {
-				continue
-			}
-			jobs = append(jobs, layerJob{
-				frameIdx: len(jobs),
-				layerIdx: i,
-				layer:    layer,
-			})
-		}
+		jobs = append(jobs, layerJob{
+			frameIdx: len(jobs),
+			layerIdx: i,
+			layer:    layer,
+		})
 	}
 
 	if inksvg.CustomBatchRasterizer != nil && len(jobs) > 0 {
@@ -350,13 +316,9 @@ func (s *Session) renderFramesForBoundary(boundaryRect inksvg.Rect) ([]inksvg.Re
 		var buildErr error
 		for i, j := range jobs {
 			var frameSVG []byte
-			if s.Document.DefaultMode == inksvg.ModeTimeline {
-				frameSVG, buildErr = inksvg.BuildTimelineFrameSVG(s.Document, j.layerIdx, boundaryRect)
-			} else {
-				frameSVG, buildErr = inksvg.BuildLayerFrameSVG(s.Document, j.layer.ID, s.PinnedLayers, boundaryRect)
-			}
+			frameSVG, buildErr = inksvg.BuildTimelineFrameSVG(s.Document, j.layerIdx, boundaryRect)
 			if buildErr != nil {
-				return nil, fmt.Errorf("failed to build frame for layer %s: %w", j.layer.Label, buildErr)
+				return nil, fmt.Errorf("failed to build frame %d: %w", j.frameIdx+1, buildErr)
 			}
 			svgList[i] = frameSVG
 		}
@@ -381,16 +343,9 @@ func (s *Session) renderFramesForBoundary(boundaryRect inksvg.Rect) ([]inksvg.Re
 	err := parallel.Run(len(jobs), func(idx int) error {
 		j := jobs[idx]
 		
-		var frameSVG []byte
-		var err error
-		if s.Document.DefaultMode == inksvg.ModeTimeline {
-			frameSVG, err = inksvg.BuildTimelineFrameSVG(s.Document, j.layerIdx, boundaryRect)
-		} else {
-			frameSVG, err = inksvg.BuildLayerFrameSVG(s.Document, j.layer.ID, s.PinnedLayers, boundaryRect)
-		}
-		
+		frameSVG, err := inksvg.BuildTimelineFrameSVG(s.Document, j.layerIdx, boundaryRect)
 		if err != nil {
-			return fmt.Errorf("failed to build frame for layer %s: %w", j.layer.Label, err)
+			return fmt.Errorf("failed to build frame %d: %w", j.frameIdx+1, err)
 		}
 
 		img, err := inksvg.RenderSVGToRGBA(frameSVG, renderW, renderH)
@@ -605,44 +560,24 @@ func (s *Session) RenderExportFrames() ([]gif.FrameInput, error) {
 	}
 	var jobs []layerExportJob
 
-	if s.Document.DefaultMode == inksvg.ModeTimeline {
-		for i, layer := range s.Layers {
-			if !layer.IsActive {
-				continue
-			}
-			jobs = append(jobs, layerExportJob{
-				frameIdx: len(jobs),
-				layerIdx: i,
-				layer:    layer,
-			})
+	for i, layer := range s.Layers {
+		if !layer.IsActive {
+			continue
 		}
-	} else {
-		for i, layer := range s.Layers {
-			if !layer.IsActive || layer.IsPinned {
-				continue
-			}
-			jobs = append(jobs, layerExportJob{
-				frameIdx: len(jobs),
-				layerIdx: i,
-				layer:    layer,
-			})
-		}
+		jobs = append(jobs, layerExportJob{
+			frameIdx: len(jobs),
+			layerIdx: i,
+			layer:    layer,
+		})
 	}
 
 	frameInputs := make([]gif.FrameInput, len(jobs))
 	err := parallel.Run(len(jobs), func(idx int) error {
 		j := jobs[idx]
 		
-		var frameSVG []byte
-		var err error
-		if s.Document.DefaultMode == inksvg.ModeTimeline {
-			frameSVG, err = inksvg.BuildTimelineFrameSVG(s.Document, j.layerIdx, boundaryRect)
-		} else {
-			frameSVG, err = inksvg.BuildLayerFrameSVG(s.Document, j.layer.ID, s.PinnedLayers, boundaryRect)
-		}
-		
+		frameSVG, err := inksvg.BuildTimelineFrameSVG(s.Document, j.layerIdx, boundaryRect)
 		if err != nil {
-			return fmt.Errorf("failed to build frame for layer %s: %w", j.layer.Label, err)
+			return fmt.Errorf("failed to build frame %d: %w", j.frameIdx+1, err)
 		}
 
 		rawImg, err := inksvg.RenderSVGToRGBA(frameSVG, fitW, fitH)

@@ -61,7 +61,7 @@ func TestHydrateGoldenStrokeMatch(t *testing.T) {
 		t.Fatalf("failed to parse hydrate.svg: %v", err)
 	}
 
-	frame, err := BuildLayerFrameSVG(doc, "layer1", nil, doc.GetDocumentRect())
+	frame, err := BuildTimelineFrameSVG(doc, 0, doc.GetDocumentRect())
 	if err != nil {
 		t.Fatalf("failed to build frame: %v", err)
 	}
