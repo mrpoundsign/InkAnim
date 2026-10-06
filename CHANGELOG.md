@@ -5,7 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.3.0] - Unreleased
+## [0.4.0] - 2026-10-06
+
+### Added
+- **New Vector Studio Icon**: Updated `assets/icon.svg`, high-resolution raster `assets/icon.png`, and web landing icons with a modern, production-grade vector glyph.
+- **Obsidian Slate & Electric Sky Blue Theme**: Replaced purple accents across the native Fyne GUI and web demo with the Obsidian Slate and Electric Sky Blue (`#38BDF8`) studio palette.
+- **Right-Docked Chat-Scale Inspector**: Re-architected the Twitch & Discord scale preview dock to dock cleanly on the right of the animation canvas with square preview swatches across 112px, 56px, and 28px on Twitch Dark and Twitch Light cards, expanding vertical canvas space.
+- **Cache-Control for Local Development**: Configured `Cache-Control: must-revalidate, max-age=0` in `cmd/wasm-serve` to ensure reliable `If-Modified-Since` revalidation without stale WebAssembly caching.
+
+### Changed
+- **Streamlined Timeline Motion Architecture**: Purged legacy layer cycling logic (`ModeLayers`, `ModePages`, pinned background), standardizing exclusively on declarative IAMS timeline motion.
+- **Interactive Web Demo Positioning**: Repositioned the in-browser WebAssembly edition as an interactive demo rather than a "studio", clarifying the desktop native application as the primary production tool.
+- **Replaced Legacy Samples**: Replaced `character_walk` assets across test suites and web samples with `pendulum` and `complex_motion`.
+
+### Fixed
+- **Thread-Safe Timeline Frame Rendering**: Added read-write mutex synchronization to `SVGDocument` caching (`ElementRects` and `timelineTpl`), pre-populating templates during `ParseSVG` and cloning XML attributes in `serializeNodeTokens` to eliminate concurrent map write panics during parallel frame generation.
+
+## [0.3.0] - 2026-10-05
 
 ### Added
 - **Cross-Platform Native Desktop & Web Release Builds**: Added native macOS, Linux, and Windows desktop GUI packaging to the automated release workflow using pure MinGW and macOS runners without container overhead. Added offline self-contained WebAssembly Studio archives (`InkAnim_*_web.zip`) to release artifacts alongside desktop binaries.
