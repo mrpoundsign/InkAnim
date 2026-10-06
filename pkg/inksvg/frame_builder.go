@@ -328,15 +328,25 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 	}
 
 	var tpl *timelineTemplate
+	doc.mu.RLock()
 	if doc.timelineTpl != nil {
 		tpl = doc.timelineTpl.(*timelineTemplate)
-	} else {
-		var err error
-		tpl, err = parseTimelineTemplate(doc.RawContent)
+	}
+	doc.mu.RUnlock()
+
+	if tpl == nil {
+		parsedTpl, err := parseTimelineTemplate(doc.RawContent)
 		if err != nil {
 			return nil, err
 		}
-		doc.timelineTpl = tpl
+		doc.mu.Lock()
+		if doc.timelineTpl != nil {
+			tpl = doc.timelineTpl.(*timelineTemplate)
+		} else {
+			doc.timelineTpl = parsedTpl
+			tpl = parsedTpl
+		}
+		doc.mu.Unlock()
 	}
 
 	rootElem := tpl.rootElem
@@ -543,6 +553,7 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 		token := tokens[i]
 		switch elem := token.(type) {
 		case xml.StartElement:
+			elem.Attr = append([]xml.Attr(nil), elem.Attr...)
 			// Hide the motion paths or markers themselves
 			if elem.Name.Local == "path" || elem.Name.Local == "circle" || elem.Name.Local == "rect" || elem.Name.Local == "ellipse" || elem.Name.Local == "line" || elem.Name.Local == "polygon" || elem.Name.Local == "polyline" {
 				var isMotionPath bool
