@@ -13,7 +13,7 @@
 ---
 
 ## 2. Project Overview & Mission
-**InkAnim** is an open-source desktop and WebAssembly studio application written in Go that transforms **Inkscape SVGs into optimized, production-ready animated GIFs** using declarative object motion syntax (IAMS) and classic layer cycling. It is especially tailored for Twitch streamers, emote creators, and web animators.
+**InkAnim** is an open-source desktop and WebAssembly studio application written in Go that transforms **Inkscape SVGs into optimized, production-ready animated GIFs** using declarative object motion syntax (IAMS). It is especially tailored for Twitch streamers, emote creators, and web animators.
 
 - **Primary Repository**: `mrpoundsign/InkAnim`
 - **Visual Identity**: Obsidian Slate, Chrome White & Electric Sky Blue (`#38BDF8`) theme derived from the studio icon.
@@ -40,8 +40,8 @@ InkAnim/
 │       ├── text.go       # Embedded DejaVu Sans & TrueType glyph outline converter
 │       └── types.go      # Layer, Document, and MotionConfig models
 ├── internal/
-│   ├── app/              # Core application session, layer state, boundary mode, orchestration
-│   │   ├── session.go    # Session state: Document, Layers, Mode, Duration, ExportOptions
+│   ├── app/              # Core application session, timeline state, boundary mode, orchestration
+│   │   ├── session.go    # Session state: Document, Timeline Frames, Duration, ExportOptions
 │   │   └── session_test.go
 │   ├── gif/              # GIF compilation, palette generation, twitch validation
 │   │   ├── encoder.go    # Animated GIF encoding (WriteGIFToFile, WriteGIFToWriter)
@@ -54,7 +54,7 @@ InkAnim/
 │       ├── right_export.go   # Export configuration (Twitch presets, square sizing, palette)
 │       ├── theme.go          # Obsidian & Electric Sky Blue studio theme
 │       └── ui_test.go        # Headless Fyne UI unit tests
-├── testdata/             # Sample IAMS motion and layered Inkscape SVGs
+├── testdata/             # Sample IAMS motion SVGs and fixtures
 ├── web/                  # Landing page, interactive sample gallery, and docs
 └── .git/hooks/pre-push   # Pre-push hook running `go test ./...`
 ```

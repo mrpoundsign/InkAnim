@@ -11,7 +11,6 @@ import (
 	"inkanim/internal/app"
 	"inkanim/internal/gif"
 	"inkanim/internal/prof"
-	"inkanim/pkg/inksvg"
 )
 
 var (
@@ -31,7 +30,6 @@ func run() error {
 	showVersion := flag.Bool("v", false, "Show version information")
 	inputFile := flag.String("i", "", "Input Inkscape SVG file path (required)")
 	outputFile := flag.String("o", "", "Output animated GIF file path (default: input with .gif extension)")
-	modeStr := flag.String("mode", "layers", "Frame extraction mode: 'layers' (default; 'pages' is deprecated)")
 	square := flag.Bool("square", true, "Export Square: center graphic on max(width, height) with transparent padding")
 	squareSize := flag.Int("size", 0, "Target square size (e.g. 512, max 4096). 0 uses max(width, height)")
 	width := flag.Int("width", 0, "Custom target width (if not using square mode)")
@@ -53,7 +51,7 @@ func run() error {
 	}
 
 	if *inputFile == "" {
-		fmt.Println("InkAnim CLI — Convert Inkscape SVG layers to a single animated GIF")
+		fmt.Println("InkAnim CLI — Convert Inkscape SVGs into animated GIFs using declarative object motion")
 		fmt.Println("\nUsage:")
 		flag.PrintDefaults()
 		return errors.New("missing required input file (-i)")
@@ -78,17 +76,10 @@ func run() error {
 		return fmt.Errorf("loading SVG: %w", err)
 	}
 
-	if strings.ToLower(*modeStr) == "pages" {
-		fmt.Println("Warning: -mode pages is deprecated; animation frames are extracted from layers. Pages serve as artboard crop boundaries.")
-	}
-	if err := sess.SetMode(inksvg.ModeLayers); err != nil {
-		return fmt.Errorf("setting layers mode: %w", err)
-	}
-
 	frameCount := len(sess.RenderedFrames)
-	fmt.Printf("Detected %d animation frames in %s mode.\n", frameCount, sess.CurrentMode)
+	fmt.Printf("Detected %d animation frames.\n", frameCount)
 	if frameCount == 0 {
-		return fmt.Errorf("no animation frames found in mode '%s'", sess.CurrentMode)
+		return errors.New("no animation frames found")
 	}
 
 	frameDelayMs := 100

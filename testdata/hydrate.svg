@@ -59,7 +59,7 @@
      inkscape:label="Layer 1 copy"
      inkscape:groupmode="layer"
      id="g6"
-     style="display:inline">
+     style="display:none">
     <path
        style="fill:#0000ff;stroke:#000080;stroke-width:15;stroke-linejoin:round;paint-order:stroke fill markers"
        d="M 152.04482,63.570821 43.452897,90.166944 C 15.123434,102.31294 13.889196,124.67424 16.011308,146.1564 c 3.002929,31.19076 51.383611,35.36002 62.498934,16.92391 z"
@@ -80,7 +80,7 @@
      inkscape:label="Layer 1 copy"
      inkscape:groupmode="layer"
      id="g9"
-     style="display:inline">
+     style="display:none">
     <path
        style="fill:#0000ff;stroke:#000080;stroke-width:15;stroke-linejoin:round;paint-order:stroke fill markers"
        d="M 155.85202,68.645566 45.62475,87.340694 C 16.493081,97.411917 13.649342,119.62597 14.216617,141.20524 c 0.745607,31.32611 48.69961,38.97376 61.115615,21.38731 z"

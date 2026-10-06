@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>InkAnim Studio — In-Browser WebAssembly Studio</title>
-  <meta name="description" content="Fully functional in-browser WebAssembly studio for InkAnim. Convert layered and multi-page Inkscape SVGs to animated GIFs.">
+  <meta name="description" content="Fully functional in-browser WebAssembly studio for InkAnim. Convert Inkscape SVGs with declarative motion syntax to animated GIFs.">
   <link rel="icon" type="image/png" href="icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1192,16 +1192,6 @@
         inkscapeDesc: "Resting harmonic pendulum vector graphic in Inkscape.",
         animDesc: "10-frame swinging arc bouncing with Ping-Pong loop ($2N-2$).",
         pills: ["Ping-Pong Loop", "10 Frames (18-step bounce)", "128 × 128", "Twitch Ready"]
-      },
-      character_walk: {
-        title: "🚶 Character Walk Cycle",
-        file: "character_walk.svg",
-        inkscapeImg: "../samples/character_walk_inkscape.png",
-        animImg: "../samples/character_walk.gif",
-        badge: "Layer Cycle • 4 Frames",
-        inkscapeDesc: "Layer groups in Inkscape (inkscape:groupmode='layer').",
-        animDesc: "4-frame walk cycle cycling through discrete SVG layer groups.",
-        pills: ["Layer Mode", "inkscape:groupmode='layer'", "4 Frames", "128 × 128"]
       }
     };
 
@@ -1780,12 +1770,6 @@
       onmouseleave="scheduleHidePreview()" 
       onclick="loadSampleSVG('pendulum', this)">
       🕰️ Pendulum
-    </button>
-    <button type="button" class="tool-btn tool-btn-primary" 
-      onmouseenter="showSamplePreview('character_walk', this)" 
-      onmouseleave="scheduleHidePreview()" 
-      onclick="loadSampleSVG('character_walk', this)">
-      🚶 Walk Cycle
     </button>
     <div class="tool-sep"></div>
     <button type="button" class="tool-btn" onclick="openSpeedWarningModal()" title="WebAssembly Performance & Limitations Notice">

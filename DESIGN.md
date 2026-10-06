@@ -7,7 +7,7 @@
 
 **InkAnim** is a cross-platform desktop studio and WebAssembly web application written in **Go** using the **Fyne Toolkit**. It enables designers and digital animators to convert Inkscape vector artwork into high-quality, production-ready **animated GIFs** optimized for Twitch emotes, Discord stickers, and web graphics.
 
-Unlike legacy tools that require duplicating artwork across dozens of canvases, InkAnim powers animation primarily through the **Inkscape Animation & Motion System (IAMS)**—a declarative object-level motion syntax that translates trajectories, rotations, scale transforms, fades, depth layering, and gradient sweeps into fluid multi-frame sequences. Classic frame-by-frame **layer cycling** (`inkscape:groupmode="layer"`) is also fully supported for traditional flipbook art and walk cycles.
+Unlike legacy tools that require duplicating artwork across dozens of canvases, InkAnim powers animation through the **Inkscape Animation & Motion System (IAMS)**—a declarative object-level motion syntax that translates trajectories, rotations, scale transforms, fades, depth layering, and gradient sweeps into fluid multi-frame sequences.
 
 Exporting focuses strictly on producing an optimized, compliant **single animated GIF file** (up to 4096x4096px), featuring an **"Export Square"** mode that centers artwork on transparent padding and a live **Twitch Multi-Scale Inspector** (emulating 112px, 56px, and 28px chat rendering side-by-side).
 
@@ -45,9 +45,8 @@ The InkAnim visual brand derives directly from the studio icon (`assets/icon.svg
 1. **Multi-Platform GUI**:
    - Modern, lightweight desktop interface built with **Fyne v2** and compiled to WebAssembly via WebGL.
    - Obsidian & Sky Blue studio theme with live emote-testing backgrounds (Dark Mode `#18181B`, Light Mode `#FFFFFF`, Checkerboard).
-2. **Animation Generation Systems**:
-   - **IAMS Object Motion (Primary / Modern)**: Compact motion directives attached to guide paths or groups (`Move {...}`, `Rot {...}`, `Scale {...}`, `Fade {...}`, `Depth {...}`, `Color {...}`). Synthesizes frames dynamically in memory without duplicating artwork.
-   - **Layer Cycles (Secondary / Classic)**: Sequential Inkscape layers (`inkscape:groupmode="layer"`) treated as discrete animation frames. Supports solitary frames, cumulative frames, and persistent pinned background layers.
+2. **Animation Generation System**:
+   - **IAMS Object Motion**: Compact motion directives attached to guide paths or groups (`Move {...}`, `Rot {...}`, `Scale {...}`, `Fade {...}`, `Depth {...}`, `Color {...}`). Synthesizes frames dynamically in memory without duplicating artwork.
 3. **Document & Boundary Framing**:
    - **Page Boundary**: Uses the document's native page viewBox (`<svg viewBox="...">`).
    - **Drawing Boundary**: Automatically computes the tight bounding box surrounding all visible vector paths.
@@ -75,7 +74,7 @@ The InkAnim visual brand derives directly from the studio icon (`assets/icon.svg
 |   +-----------------------+     +-------------------------------------------+   |
 |   |  pkg/inksvg Parser    |     |              Fyne GUI Player              |   |
 |   | - IAMS Motion Engine  | --> | - Frame Reorderer & Timeline              |   |
-|   | - Layer Cycle Parser  |     | - Main Canvas Preview                     |   |
+|   | - Dynamic Synthesizer |     | - Main Canvas Preview                     |   |
 |   | - Boundary Calculator |     | - Twitch Inspector (112px, 56px, 28px)    |   |
 |   +-----------------------+     +-------------------------------------------+   |
 |               |                                       |                         |
@@ -95,7 +94,6 @@ The InkAnim visual brand derives directly from the studio icon (`assets/icon.svg
 
 ### 4.1 Animation Mechanics
 
-#### A. IAMS Object & Trajectory Motion (Primary)
 Artwork remains in a single resting position. Motion paths or shape tags specify motion over a given frame range:
 ```xml
 <g id="spaceship" inkscape:label="Spaceship">
@@ -109,15 +107,6 @@ Artwork remains in a single resting position. Motion paths or shape tags specify
 - **Parsing**: `pkg/inksvg` extracts motion directives from `inkscape:label` or element tags.
 - **Synthesis**: Transforms (translation, rotation, scale, opacity, z-order) are calculated for each frame $t \in [1, N]$.
 - **In-Memory Culling**: Motion guide paths are automatically excluded from the final render.
-
-#### B. Classic Layer Cycles (Secondary)
-Inkscape layers are labeled with `inkscape:groupmode="layer"`:
-```xml
-<g inkscape:groupmode="layer" id="layer_walk_1" inkscape:label="Step 1" style="display:inline">...</g>
-<g inkscape:groupmode="layer" id="layer_walk_2" inkscape:label="Step 2" style="display:none">...</g>
-```
-- **Parsing**: The parser scans for `<g>` tags with `inkscape:groupmode="layer"`.
-- **Frame Construction**: For frame $i$, layer $i$ is set to visible while other animation layers are hidden (with pinned background layers remaining active).
 
 ---
 
@@ -140,7 +129,7 @@ The Fyne application adopts a 3-column studio workstation layout:
 | [x] 1. Frame 1 (100ms| +--------------------------------------------+ | Sizing Options:                 |
 | [x] 2. Frame 2 (100ms| [ |< ] [ > Play ] [ >| ]  Loop: [x] 10 FPS   | [x] Export Square               |
 | [x] 3. Frame 3 (100ms|                                                |     (Centers on max side: 512px)|
-| [ ] 4. BG (Pinned)   | --- Twitch Scale Emulation Preview -----------| Width:  [ 512  ] px (Max 4096)  |
+| [x] 4. Frame 4 (100ms| --- Twitch Scale Emulation Preview -----------| Width:  [ 512  ] px (Max 4096)  |
 |                      | Dark Theme:   [112px]  [56px]  [28px]          | Height: [ 512  ] px (Max 4096)  |
 | [Up] [Down] [Delete] | Light Theme:  [112px]  [56px]  [28px]          | [x] Lock Aspect Ratio           |
 |                      |                                                |                                 |
@@ -183,7 +172,7 @@ InkAnim/
 ├── web/                         # Web landing page and WebAssembly studio distribution
 │   ├── landing/                 # Responsive landing page, samples gallery & docs
 │   └── demo/                    # In-browser WebAssembly studio template
-├── testdata/                    # Sample IAMS and layered SVGs
+├── testdata/                    # Sample IAMS SVGs and test fixtures
 ├── build.sh                     # Linux/macOS build & packaging script
 └── build.ps1                    # Windows PowerShell build script
 ```

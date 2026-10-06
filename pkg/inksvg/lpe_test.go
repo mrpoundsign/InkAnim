@@ -148,10 +148,10 @@ func TestAlertIconGoldenMatch(t *testing.T) {
 		t.Fatalf("failed to parse Alert Icon.svg: %v", err)
 	}
 
-	// Build layer1 frame at native 500x500 document bounds
-	frameBytes, err := BuildLayerFrameSVG(doc, "layer1", nil, Rect{X: 0, Y: 0, Width: 500, Height: 500})
+	// Build frame at native 500x500 document bounds
+	frameBytes, err := BuildTimelineFrameSVG(doc, 0, Rect{X: 0, Y: 0, Width: 500, Height: 500})
 	if err != nil {
-		t.Fatalf("BuildLayerFrameSVG failed: %v", err)
+		t.Fatalf("BuildTimelineFrameSVG failed: %v", err)
 	}
 
 	// Render at 521x521 matching Inkscape export DPI
@@ -289,9 +289,9 @@ func TestAlertIconMiddleBoxesMatch(t *testing.T) {
 		t.Fatalf("failed to parse Alert Icon.svg: %v", err)
 	}
 
-	frameBytes, err := BuildLayerFrameSVG(doc, "layer1", nil, Rect{})
+	frameBytes, err := BuildTimelineFrameSVG(doc, 0, Rect{})
 	if err != nil {
-		t.Fatalf("BuildLayerFrameSVG failed: %v", err)
+		t.Fatalf("BuildTimelineFrameSVG failed: %v", err)
 	}
 
 	img, err := RenderSVGToRGBA(frameBytes, 521, 521)

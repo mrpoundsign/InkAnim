@@ -8,8 +8,6 @@ import (
 type FrameMode string
 
 const (
-	ModeLayers   FrameMode = "layers"
-	ModePages    FrameMode = "pages"
 	ModeTimeline FrameMode = "timeline"
 )
 
@@ -31,14 +29,13 @@ type Rect struct {
 }
 
 
-// Layer represents an Inkscape layer group in the SVG.
+// Layer represents an animation frame in the timeline.
 type Layer struct {
 	ID          string `json:"id"`
 	Label       string `json:"label"`
 	Index       int    `json:"index"`
-	Visible     bool   `json:"visible"`     // original visibility in SVG
+	Visible     bool   `json:"visible"`     // visibility in SVG
 	IsActive    bool   `json:"isActive"`    // included in current animation
-	IsPinned    bool   `json:"isPinned"`    // if true, rendered across all frames as background
 	HasOverride bool   `json:"hasOverride"` // if true, uses OverrideMs instead of global duration
 	OverrideMs  int    `json:"overrideMs"`  // per-frame override duration in milliseconds
 	DurationMs  int    `json:"durationMs"`  // effective duration in milliseconds

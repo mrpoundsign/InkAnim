@@ -142,10 +142,10 @@ func TestAlertIcon_TextRenderValidation(t *testing.T) {
 		t.Fatalf("ParseSVG failed: %v", err)
 	}
 
-	// Build layer 1 frame
-	frameBytes, err := BuildLayerFrameSVG(doc, "layer1", nil, Rect{X: 0, Y: 0, Width: 500, Height: 500})
+	// Build frame at 500x500
+	frameBytes, err := BuildTimelineFrameSVG(doc, 0, Rect{X: 0, Y: 0, Width: 500, Height: 500})
 	if err != nil {
-		t.Fatalf("BuildLayerFrameSVG failed: %v", err)
+		t.Fatalf("BuildTimelineFrameSVG failed: %v", err)
 	}
 
 	// Render layer 1 frame at 521x521

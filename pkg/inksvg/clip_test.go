@@ -103,7 +103,7 @@ func TestClipPathMaskRendering(t *testing.T) {
 		t.Fatalf("failed to parse svg: %v", err)
 	}
 
-	frameSVG, err := BuildLayerFrameSVG(doc, doc.Layers[0].ID, nil, doc.GetDocumentRect())
+	frameSVG, err := BuildTimelineFrameSVG(doc, 0, doc.GetDocumentRect())
 	if err != nil {
 		t.Fatalf("failed to build frame: %v", err)
 	}

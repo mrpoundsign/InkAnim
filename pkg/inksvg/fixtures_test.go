@@ -61,13 +61,9 @@ func TestAtomicFixtures(t *testing.T) {
 			}
 
 			// Render through full session frame building pipeline (as used by GUI preview & export)
-			layerID := ""
-			if len(doc.Layers) > 0 {
-				layerID = doc.Layers[0].ID
-			}
-			frameSVG, err := BuildLayerFrameSVG(doc, layerID, nil, doc.GetDocumentRect())
+			frameSVG, err := BuildTimelineFrameSVG(doc, 0, doc.GetDocumentRect())
 			if err != nil {
-				t.Fatalf("BuildLayerFrameSVG failed for %s: %v", entry.Name(), err)
+				t.Fatalf("BuildTimelineFrameSVG failed for %s: %v", entry.Name(), err)
 			}
 
 			actualImg, err := RenderSVGToRGBA(frameSVG, renderWidth, renderHeight)

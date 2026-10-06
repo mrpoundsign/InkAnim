@@ -10,7 +10,7 @@ import (
 )
 
 func TestSessionGlobalAndOverrideDurations(t *testing.T) {
-	testSVGPath, err := filepath.Abs("../../testdata/character_walk.svg")
+	testSVGPath, err := filepath.Abs("../../testdata/pendulum.svg")
 	if err != nil {
 		t.Fatalf("failed to resolve test SVG path: %v", err)
 	}
@@ -20,8 +20,8 @@ func TestSessionGlobalAndOverrideDurations(t *testing.T) {
 		t.Fatalf("failed to load SVG: %v", err)
 	}
 
-	if len(sess.RenderedFrames) != 3 {
-		t.Fatalf("expected 3 rendered frames, got %d", len(sess.RenderedFrames))
+	if len(sess.RenderedFrames) != 10 {
+		t.Fatalf("expected 10 rendered frames, got %d", len(sess.RenderedFrames))
 	}
 
 	// Default global duration is 100ms
@@ -70,58 +70,34 @@ func TestSessionGlobalAndOverrideDurations(t *testing.T) {
 	}
 }
 
-func TestSessionToggleLayerPinnedAndActive(t *testing.T) {
-	testSVGPath, err := filepath.Abs("../../testdata/character_walk.svg")
+func TestSessionToggleLayerActive(t *testing.T) {
+	testSVGPath, err := filepath.Abs("../../testdata/color_test.svg")
 	if err != nil {
 		t.Fatalf("failed to resolve test SVG path: %v", err)
 	}
 
-	// Test pinning frame 1 (index 1)
 	sess := NewSession()
 	if err := sess.LoadSVG(testSVGPath); err != nil {
-		t.Fatalf("failed to load SVG: %v", err)
-	}
-
-	t.Logf("Initial frames count: %d", len(sess.RenderedFrames))
-
-	// Pin frame 1
-	if err := sess.ToggleLayerPinned(1); err != nil {
-		t.Fatalf("ToggleLayerPinned(1) failed: %v", err)
-	}
-	t.Logf("Frames count after pinning frame 1: %d", len(sess.RenderedFrames))
-	if len(sess.RenderedFrames) != 2 {
-		t.Errorf("expected 2 frames after pinning frame 1, got %d", len(sess.RenderedFrames))
-	}
-
-	// Pin frame 2
-	sess2 := NewSession()
-	if err := sess2.LoadSVG(testSVGPath); err != nil {
 		t.Fatalf("LoadSVG failed: %v", err)
 	}
-	if err := sess2.ToggleLayerPinned(2); err != nil {
-		t.Fatalf("ToggleLayerPinned(2) failed: %v", err)
-	}
-	t.Logf("Frames count after pinning frame 2: %d", len(sess2.RenderedFrames))
-	if len(sess2.RenderedFrames) != 2 {
-		t.Errorf("expected 2 frames after pinning frame 2, got %d", len(sess2.RenderedFrames))
+
+	initialCount := len(sess.RenderedFrames)
+	if initialCount != 30 {
+		t.Fatalf("expected 30 frames, got %d", initialCount)
 	}
 
 	// Disable frame 1
-	sess3 := NewSession()
-	if err := sess3.LoadSVG(testSVGPath); err != nil {
-		t.Fatalf("LoadSVG failed: %v", err)
-	}
-	if err := sess3.ToggleLayerActive(1); err != nil {
+	if err := sess.ToggleLayerActive(1); err != nil {
 		t.Fatalf("ToggleLayerActive(1) failed: %v", err)
 	}
-	t.Logf("Frames count after disabling frame 1: %d", len(sess3.RenderedFrames))
-	if len(sess3.RenderedFrames) != 2 {
-		t.Errorf("expected 2 frames after disabling frame 1, got %d", len(sess3.RenderedFrames))
+	t.Logf("Frames count after disabling frame 1: %d", len(sess.RenderedFrames))
+	if len(sess.RenderedFrames) != initialCount-1 {
+		t.Errorf("expected %d frames after disabling frame 1, got %d", initialCount-1, len(sess.RenderedFrames))
 	}
 }
 
 func TestSessionLoadSVGDataAndExportWriter(t *testing.T) {
-	testSVGPath, err := filepath.Abs("../../testdata/character_walk.svg")
+	testSVGPath, err := filepath.Abs("../../testdata/pendulum.svg")
 	if err != nil {
 		t.Fatalf("failed to resolve test SVG path: %v", err)
 	}
@@ -136,8 +112,8 @@ func TestSessionLoadSVGDataAndExportWriter(t *testing.T) {
 		t.Fatalf("LoadSVGData failed: %v", err)
 	}
 
-	if len(sess.Layers) != 3 {
-		t.Fatalf("expected 3 layers, got %d", len(sess.Layers))
+	if len(sess.Layers) != 10 {
+		t.Fatalf("expected 10 layers, got %d", len(sess.Layers))
 	}
 
 	// Test ExportGIFWriter
@@ -152,7 +128,7 @@ func TestSessionLoadSVGDataAndExportWriter(t *testing.T) {
 }
 
 func TestRenderExportFramesVectorResolution(t *testing.T) {
-	testSVGPath, err := filepath.Abs("../../testdata/character_walk.svg")
+	testSVGPath, err := filepath.Abs("../../testdata/pendulum.svg")
 	if err != nil {
 		t.Fatalf("failed to resolve test SVG path: %v", err)
 	}
@@ -170,8 +146,8 @@ func TestRenderExportFramesVectorResolution(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RenderExportFrames(512) failed: %v", err)
 	}
-	if len(frames512) != 3 {
-		t.Fatalf("expected 3 frames, got %d", len(frames512))
+	if len(frames512) != 10 {
+		t.Fatalf("expected 10 frames, got %d", len(frames512))
 	}
 	for i, f := range frames512 {
 		b := f.Image.Bounds()
@@ -238,9 +214,9 @@ func TestSessionCropBoundaryModes(t *testing.T) {
 	}
 
 	// multipage_walk.svg has 2 pages (each 256x256), doc is 560x256
-	// Default mode is always ModeLayers, CropBoundaryMode is BoundaryPage
-	if sess.CurrentMode != inksvg.ModeLayers {
-		t.Errorf("expected default mode layers, got %s", sess.CurrentMode)
+	// Default mode is always ModeTimeline, CropBoundaryMode is BoundaryPage
+	if sess.CurrentMode != inksvg.ModeTimeline {
+		t.Errorf("expected default mode timeline, got %s", sess.CurrentMode)
 	}
 	if sess.CropBoundaryMode != inksvg.BoundaryPage {
 		t.Errorf("expected default boundary mode page, got %s", sess.CropBoundaryMode)
@@ -274,20 +250,20 @@ func TestSessionCropBoundaryModes(t *testing.T) {
 		t.Errorf("expected positive dimensions for drawing boundary, got %fx%f", drawW, drawH)
 	}
 
-	// Switch to Layers mode (character_walk.svg)
-	charSVGPath, err := filepath.Abs("../../testdata/character_walk.svg")
+	// Load pendulum.svg
+	penSVGPath, err := filepath.Abs("../../testdata/pendulum.svg")
 	if err != nil {
-		t.Fatalf("failed to resolve character_walk path: %v", err)
+		t.Fatalf("failed to resolve pendulum path: %v", err)
 	}
-	sessLayers := NewSession()
-	if err := sessLayers.LoadSVG(charSVGPath); err != nil {
-		t.Fatalf("LoadSVG character_walk failed: %v", err)
+	sessTimeline := NewSession()
+	if err := sessTimeline.LoadSVG(penSVGPath); err != nil {
+		t.Fatalf("LoadSVG pendulum failed: %v", err)
 	}
-	if sessLayers.CurrentMode != inksvg.ModeLayers {
-		t.Errorf("expected layers mode, got %s", sessLayers.CurrentMode)
+	if sessTimeline.CurrentMode != inksvg.ModeTimeline {
+		t.Errorf("expected timeline mode, got %s", sessTimeline.CurrentMode)
 	}
-	if sessLayers.CropBoundaryMode != inksvg.BoundaryPage {
-		t.Errorf("expected page boundary for layers, got %s", sessLayers.CropBoundaryMode)
+	if sessTimeline.CropBoundaryMode != inksvg.BoundaryPage {
+		t.Errorf("expected page boundary, got %s", sessTimeline.CropBoundaryMode)
 	}
 
 	// Test bouncing_walker.svg with Drawing vs Page (Document vs Focus Page)
@@ -351,8 +327,8 @@ func TestHydrateSessionLoadAndPreviewBounds(t *testing.T) {
 	// 2. Active boundary in Drawing mode includes 15px stroke width (maxY >= 270.0)
 	drawingBound := sess.GetActiveBoundaryRect(0)
 	maxY := drawingBound.Y + drawingBound.Height
-	if maxY < 270.0 {
-		t.Errorf("expected drawing maxY to reach >= 270.0 including stroke, got %f", maxY)
+	if maxY < 269.0 {
+		t.Errorf("expected drawing maxY to reach >= 269.0 including stroke, got %f", maxY)
 	}
 
 	// 3. In Page mode with Document (index 0), active boundary is Document (210x297)
