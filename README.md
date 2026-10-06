@@ -22,9 +22,10 @@ Use InkAnim right now in your web browser with zero installation:
 
 ## ✨ Features
 
-- **Inkscape Native Frame Extraction**:
-  - **Layers Mode**: Converts Inkscape layers (`inkscape:groupmode="layer"`) into sequential animation frames. Supports solitary frames, cumulative frames, and persistent background layers.
-  - **Pages Mode**: Isolates Inkscape 1.2+ multi-page artboards (`<inkscape:page>`) into frames.
+- **Precision Vector Animation Systems**:
+  - **IAMS Object Motion Syntax (Flagship)**: Animate complex vector art directly using declarative tags: trajectory paths (`Move`), spin (`Rot`), zoom/pulsing (`Scale`), opacity transitions (`Fade`), layer ordering (`Depth`), and gradient color sweeps (`Color`).
+  - **Classic Layer Cycling**: Converts discrete Inkscape layers (`inkscape:groupmode="layer"`) into sequential animation frames with support for solitary frames, cumulative frames, and persistent pinned backgrounds.
+  - **Artboard Framing**: Choose between native document page bounds or automatic tight drawing bounds.
 - **Export Square Mode**:
   - Automatically takes the wider/longer dimension of the SVG ($S = \max(\text{Width}, \text{Height})$) as the export resolution and centers the artwork with transparent padding.
   - Target resolution customizable up to the maximum Twitch limit of **4096 x 4096 px**.
@@ -34,7 +35,7 @@ Use InkAnim right now in your web browser with zero installation:
 - **Color & Alpha Channel Optimization**:
   - Palette quantization with clean alpha thresholding and background disposal to eliminate dark/light halo fringes.
 - **Twitch Emote Compliance Engine**:
-  - Live checks for square aspect ratio (1:1), 1MB file size limit, maximum 60 frames, and animation duration.
+  - Live checks for square aspect ratio (1:1), maximum 60 frames, and recommended animation duration.
 - **Zero-CGo Cross-Compilable CLI**:
   - In addition to the desktop GUI, a headless CLI tool (`inkanim-cli`) compiles with `CGO_ENABLED=0` to any operating system (Windows, macOS, Linux) without requiring C compilers or Docker.
 
@@ -79,14 +80,14 @@ Compile instantly on any platform:
 go build ./cmd/inkanim-cli
 ```
 
-Convert an SVG in **Layers mode** to a 512x512 square animated GIF:
+Convert an SVG with **IAMS Motion Syntax or Layers** to a 512x512 square animated GIF:
 ```bash
-inkanim-cli -i character.svg -o emote.gif -square -size 512 -fps 10
+inkanim-cli -i star_swirl.svg -o emote.gif -square -size 512 -fps 15
 ```
 
-Convert in **Pages mode**:
+Convert with dithering and ping-pong loop:
 ```bash
-inkanim-cli -i multipage.svg -o anim.gif -mode pages -square -fps 12
+inkanim-cli -i pendulum.svg -o anim.gif -square -fps 12 -dither -pingpong
 ```
 
 CLI options:
@@ -95,8 +96,6 @@ CLI options:
         Input Inkscape SVG file path (required)
   -o string
         Output animated GIF file path (default: input with .gif extension)
-  -mode string
-        Frame extraction mode: 'layers' or 'pages' (default: "layers")
   -square
         Export Square: center graphic on max(width, height) with transparent padding (default: true)
   -size int

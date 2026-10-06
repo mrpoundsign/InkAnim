@@ -365,7 +365,7 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 		p.frameLabel,
 	)
 
-	// Twitch Scale Emulation Dock
+	// Twitch Scale Emulation Dock: 3 sizes (112px, 56px, 28px) on Dark & Light backgrounds
 	p.twitch112Dark = p.newScaledImage(112)
 	p.twitch56Dark = p.newScaledImage(56)
 	p.twitch28Dark = p.newScaledImage(28)
@@ -374,44 +374,72 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 	p.twitch56Light = p.newScaledImage(56)
 	p.twitch28Light = p.newScaledImage(28)
 
-	darkLabel := widget.NewLabelWithStyle("Twitch Dark (#18181B):", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
-	darkRow := container.NewHBox(
-		darkLabel,
-		p.wrapWithBackground(p.twitch112Dark, 112, color.RGBA{R: 24, G: 24, B: 27, A: 255}),
+	darkLabel := widget.NewLabelWithStyle("Twitch Dark (#18181B)", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
+	darkSubSwatches := container.NewHBox(
 		p.wrapWithBackground(p.twitch56Dark, 56, color.RGBA{R: 24, G: 24, B: 27, A: 255}),
 		p.wrapWithBackground(p.twitch28Dark, 28, color.RGBA{R: 24, G: 24, B: 27, A: 255}),
 	)
+	darkCardContent := container.NewVBox(
+		darkLabel,
+		p.wrapWithBackground(p.twitch112Dark, 112, color.RGBA{R: 24, G: 24, B: 27, A: 255}),
+		container.NewCenter(darkSubSwatches),
+	)
+	darkCardBg := canvas.NewRectangle(color.RGBA{R: 15, G: 17, B: 21, A: 255})
+	darkCardBg.StrokeColor = color.RGBA{R: 47, G: 55, B: 69, A: 200}
+	darkCardBg.StrokeWidth = 1
+	darkCardBg.CornerRadius = 8
+	darkCard := container.NewStack(
+		darkCardBg,
+		container.NewPadded(darkCardContent),
+	)
 
-	lightLabel := widget.NewLabelWithStyle("Twitch Light (#FFFFFF):", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
-	lightRow := container.NewHBox(
-		lightLabel,
-		p.wrapWithBackground(p.twitch112Light, 112, color.RGBA{R: 255, G: 255, B: 255, A: 255}),
+	lightLabel := widget.NewLabelWithStyle("Twitch Light (#FFFFFF)", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
+	lightSubSwatches := container.NewHBox(
 		p.wrapWithBackground(p.twitch56Light, 56, color.RGBA{R: 255, G: 255, B: 255, A: 255}),
 		p.wrapWithBackground(p.twitch28Light, 28, color.RGBA{R: 255, G: 255, B: 255, A: 255}),
 	)
-
-	twitchHeader := widget.NewLabelWithStyle("Twitch Chat-Scale Inspector (112px, 56px, 28px)", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
-	p.twitchEmulationBox = container.NewVBox(
-		widget.NewSeparator(),
-		twitchHeader,
-		darkRow,
-		lightRow,
+	lightCardContent := container.NewVBox(
+		lightLabel,
+		p.wrapWithBackground(p.twitch112Light, 112, color.RGBA{R: 255, G: 255, B: 255, A: 255}),
+		container.NewCenter(lightSubSwatches),
+	)
+	lightCardBg := canvas.NewRectangle(color.RGBA{R: 15, G: 17, B: 21, A: 255})
+	lightCardBg.StrokeColor = color.RGBA{R: 47, G: 55, B: 69, A: 200}
+	lightCardBg.StrokeWidth = 1
+	lightCardBg.CornerRadius = 8
+	lightCard := container.NewStack(
+		lightCardBg,
+		container.NewPadded(lightCardContent),
 	)
 
-	mainStage := container.NewBorder(
+	inspectorHeader := widget.NewLabelWithStyle("Chat Scale", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
+	inspectorContent := container.NewVBox(
+		inspectorHeader,
+		darkCard,
+		lightCard,
+	)
+
+	p.twitchEmulationBox = container.NewBorder(
+		nil, nil,
+		widget.NewSeparator(),
 		nil,
-		playbackControls,
+		container.NewVScroll(container.NewPadded(inspectorContent)),
+	)
+
+	stageWithInspector := container.NewBorder(
 		nil,
 		nil,
+		nil,
+		p.twitchEmulationBox,
 		p.stageStack,
 	)
 
 	p.container = container.NewBorder(
 		nil,
-		p.twitchEmulationBox,
+		playbackControls,
 		nil,
 		nil,
-		mainStage,
+		stageWithInspector,
 	)
 
 	return p
@@ -447,9 +475,14 @@ func (p *CenterPreviewPanel) newScaledImage(size float32) *canvas.Image {
 }
 
 func (p *CenterPreviewPanel) wrapWithBackground(img *canvas.Image, size float32, bg color.Color) fyne.CanvasObject {
+	boxSize := size + 8
 	rect := canvas.NewRectangle(bg)
-	rect.SetMinSize(fyne.NewSize(size+8, size+8))
-	return container.NewStack(rect, container.NewCenter(img))
+	rect.SetMinSize(fyne.NewSize(boxSize, boxSize))
+	rect.CornerRadius = 4
+	rect.StrokeColor = color.RGBA{R: 71, G: 85, B: 105, A: 180} // Slate border (#475569)
+	rect.StrokeWidth = 1
+	sq := container.NewStack(rect, container.NewCenter(img))
+	return container.NewCenter(sq)
 }
 
 // Container returns the UI container for the preview.

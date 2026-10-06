@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>InkAnim — Inkscape SVG to Twitch & Discord Animated GIF Studio</title>
-  <meta name="description" content="Transform layered or multi-page Inkscape SVGs into optimized, production-ready animated GIFs for Twitch, Discord, and the web. Native desktop apps and in-browser WebAssembly studio.">
+  <meta name="description" content="Transform Inkscape SVGs into optimized, production-ready animated GIFs for Twitch, Discord, and the web using declarative motion syntax and layer cycles. Native desktop apps and in-browser WebAssembly studio.">
   <link rel="icon" type="image/png" href="icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -53,7 +53,7 @@
         <span class="gradient-text">Instant, Crisp, Animated.</span>
       </h1>
       <p class="hero-description">
-        Transform layered or multi-page Inkscape SVGs into optimized, production-ready animated GIFs in seconds. Re-rendered directly from vector curves to guarantee sharp edges at any scale.
+        Transform Inkscape SVGs into optimized, production-ready animated GIFs in seconds using declarative object motion trajectories and classic layer cycles. Re-rendered directly from vector curves for razor-sharp edges.
       </p>
       <div class="hero-buttons">
         <a href="./demo/" class="btn btn-primary btn-lg">
@@ -85,19 +85,19 @@
             <div class="twitch-chat-box">
               <div class="chat-header">
                 <span>Twitch & Discord Scale Preview</span>
-                <span>Sub-1MB Compliant</span>
+                <span>Live Emulation</span>
               </div>
               <div class="chat-previews">
                 <div class="preview-col">
-                  <img src="character_walk.gif" alt="Emote 112px" width="112" height="112">
+                  <img src="complex_motion.gif" alt="Complex Motion Emote 112px" width="112" height="112">
                   <span>112 × 112</span>
                 </div>
                 <div class="preview-col">
-                  <img src="character_walk.gif" alt="Emote 56px" width="56" height="56">
+                  <img src="complex_motion.gif" alt="Complex Motion Emote 56px" width="56" height="56">
                   <span>56 × 56</span>
                 </div>
                 <div class="preview-col">
-                  <img src="character_walk.gif" alt="Emote 28px" width="28" height="28">
+                  <img src="complex_motion.gif" alt="Complex Motion Emote 28px" width="28" height="28">
                   <span>28 × 28</span>
                 </div>
               </div>
@@ -117,10 +117,18 @@
       </div>
       <div class="features-grid">
         <div class="feature-card">
-          <div class="feature-icon">📑</div>
-          <h3 class="feature-title">Layers & Pages Modes</h3>
+          <div class="feature-icon">✨</div>
+          <h3 class="feature-title">IAMS Object Motion Syntax</h3>
           <p class="feature-desc">
-            Whether you organize frames into Inkscape layers (<code>inkscape:groupmode="layer"</code>) or modern multi-page documents, InkAnim detects and builds animation timelines effortlessly.
+            Animate vector art without duplicating canvases. Draw intuitive motion paths or add compact tags: trajectory slides, 360° spin, scale pulsing, opacity fades, depth reordering, and gradient sweeps.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">📑</div>
+          <h3 class="feature-title">Classic Layer Cycling</h3>
+          <p class="feature-desc">
+            Turn standard Inkscape layers (<code>inkscape:groupmode="layer"</code>) into sequential animation frames with solitary flipbook cycling, cumulative buildup, and pinned background support.
           </p>
         </div>
 
@@ -133,18 +141,10 @@
         </div>
 
         <div class="feature-card">
-          <div class="feature-icon">🎨</div>
-          <h3 class="feature-title">Smart Color & Palette Control</h3>
+          <div class="feature-icon">📐</div>
+          <h3 class="feature-title">Flexible Crop & Framing</h3>
           <p class="feature-desc">
-            Precise color optimization with customizable palette tiers (32 to 256 colors) and optional Floyd-Steinberg dithering for smooth, banding-free gradients.
-          </p>
-        </div>
-
-        <div class="feature-card">
-          <div class="feature-icon">✨</div>
-          <h3 class="feature-title">Declarative Motion Syntax</h3>
-          <p class="feature-desc">
-            Animate complex vector art with human-readable tags: trajectory curves, 360° spin, color shifting, scale interpolation, and 3D depth parallax.
+            Cleanly choose between your document's native page boundary or a computed tight drawing crop, keeping your layout intact without tedious artboard tweaking.
           </p>
         </div>
 
@@ -287,17 +287,17 @@
           </p>
         </div>
         <div class="feature-card">
-          <div class="feature-icon">⚖️</div>
-          <h3 class="feature-title">1MB File Size Cap</h3>
+          <div class="feature-icon">🎨</div>
+          <h3 class="feature-title">Smart Palette & Optimization</h3>
           <p class="feature-desc">
-            Real-time validation checks that the final compiled GIF remains well under Twitch's strict 1.0 MB limit, giving you instant warning if a palette reduction is needed.
+            Customizable color tiers (32 to 256 colors) and optional Floyd-Steinberg dithering deliver lightweight, clean animated GIFs tailored for online chat.
           </p>
         </div>
         <div class="feature-card">
           <div class="feature-icon">⏱️</div>
-          <h3 class="feature-title">FPS & Frame Constraints</h3>
+          <h3 class="feature-title">FPS & Duration Checks</h3>
           <p class="feature-desc">
-            Preset controls for standard emote frame rates (10–30 FPS) with automatic frame-budget warnings to avoid Twitch upload rejections.
+            Preset controls for standard emote frame rates (10–30 FPS) with live validation against Twitch's 60-frame maximum and 3-second recommended duration.
           </p>
         </div>
       </div>
