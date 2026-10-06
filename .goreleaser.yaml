@@ -38,7 +38,7 @@ archives:
       - README.md
       - DESIGN.md
       - LICENSE
-      - testdata/character_walk.svg
+      - testdata/pendulum.svg
 
 checksum:
   name_template: "checksums.txt"
