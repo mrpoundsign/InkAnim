@@ -215,6 +215,7 @@ type SVGDocument struct {
 	Gradients    map[string]SVGGradient
 	DefaultMode  FrameMode
 	ElementRects map[string]Rect
+	Migrations   []MigrationHit
 	timelineTpl  any
 	mu           sync.RWMutex
 }

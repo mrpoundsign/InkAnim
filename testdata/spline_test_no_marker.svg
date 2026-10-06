@@ -75,7 +75,7 @@
          style="fill:none;stroke:#0000ff;stroke-width:3px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1;marker-end:url(#ArrowWide)"
          d="M 75,75 C 250,-50 400,200 450,450"
          id="path_motion"
-         inkscape:label="Movement {f: 1-60; ease: in-out}" />
+         inkscape:label="Move {f: 1-60; ease: in-out}" />
     </g>
   </g>
 </svg>

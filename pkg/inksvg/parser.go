@@ -7,6 +7,7 @@ import (
 	"image"
 	"io"
 	"math"
+	"regexp"
 	"slices"
 	"sort"
 	"strconv"
@@ -68,6 +69,13 @@ func ParseSVG(data []byte) (*SVGDocument, error) {
 					}
 				}
 
+				if hits := DetectMigrations(label); len(hits) > 0 {
+					for _, h := range hits {
+						h.ElementID = id
+						doc.Migrations = append(doc.Migrations, h)
+					}
+				}
+
 				if cfg, ok := parseMotionConfig(label); ok && cfg.HasParallax {
 					doc.MotionPaths = append(doc.MotionPaths, MotionPath{
 						ID:      id + "_dist",
@@ -93,6 +101,12 @@ func ParseSVG(data []byte) (*SVGDocument, error) {
 						fill = attr.Value
 					case "style":
 						style = attr.Value
+					}
+				}
+				if hits := DetectMigrations(label); len(hits) > 0 {
+					for _, h := range hits {
+						h.ElementID = id
+						doc.Migrations = append(doc.Migrations, h)
 					}
 				}
 				if cfg, ok := parseMotionConfig(label); ok {
@@ -749,120 +763,26 @@ func parseDimension(s string) float64 {
 	return v * scale
 }
 
-func parseMotionConfig(label string) (MotionConfig, bool) {
-	var configType string
-	var contentStart int
+var directiveRe = regexp.MustCompile(`(?i)\b(move|rot|scale|scal|fade|show|hide|depth|camera|distance|dist|color)\s*\{`)
 
-	lower := strings.ToLower(label)
-	if idx := strings.Index(lower, "move"); idx != -1 {
-		rest := strings.TrimLeft(label[idx+4:], " \t")
-		if strings.HasPrefix(rest, "{") {
-			configType = "move"
-			contentStart = idx + 4 + (len(label[idx+4:]) - len(rest)) + 1
-		}
-	}
-	if configType == "" {
-		if idx := strings.Index(lower, "rot"); idx != -1 {
-			rest := strings.TrimLeft(label[idx+3:], " \t")
-			if strings.HasPrefix(rest, "{") {
-				configType = "rot"
-				contentStart = idx + 3 + (len(label[idx+3:]) - len(rest)) + 1
-			}
-		}
-	}
-	if configType == "" {
-		if idx := strings.Index(lower, "scale"); idx != -1 {
-			rest := strings.TrimLeft(label[idx+5:], " \t")
-			if strings.HasPrefix(rest, "{") {
-				configType = "scale"
-				contentStart = idx + 5 + (len(label[idx+5:]) - len(rest)) + 1
-			}
-		}
-	}
-	if configType == "" {
-		if idx := strings.Index(lower, "scal"); idx != -1 {
-			rest := strings.TrimLeft(label[idx+4:], " \t")
-			if strings.HasPrefix(rest, "{") {
-				configType = "scale"
-				contentStart = idx + 4 + (len(label[idx+4:]) - len(rest)) + 1
-			}
-		}
-	}
-	if configType == "" {
-		if idx := strings.Index(lower, "fade"); idx != -1 {
-			rest := strings.TrimLeft(label[idx+4:], " \t")
-			if strings.HasPrefix(rest, "{") {
-				configType = "fade"
-				contentStart = idx + 4 + (len(label[idx+4:]) - len(rest)) + 1
-			}
-		}
-	}
-	if configType == "" {
-		if idx := strings.Index(lower, "show"); idx != -1 {
-			rest := strings.TrimLeft(label[idx+4:], " \t")
-			if strings.HasPrefix(rest, "{") {
-				configType = "show"
-				contentStart = idx + 4 + (len(label[idx+4:]) - len(rest)) + 1
-			}
-		}
-	}
-	if configType == "" {
-		if idx := strings.Index(lower, "hide"); idx != -1 {
-			rest := strings.TrimLeft(label[idx+4:], " \t")
-			if strings.HasPrefix(rest, "{") {
-				configType = "hide"
-				contentStart = idx + 4 + (len(label[idx+4:]) - len(rest)) + 1
-			}
-		}
-	}
-	if configType == "" {
-		if idx := strings.Index(lower, "depth"); idx != -1 {
-			rest := strings.TrimLeft(label[idx+5:], " \t")
-			if strings.HasPrefix(rest, "{") {
-				configType = "depth"
-				contentStart = idx + 5 + (len(label[idx+5:]) - len(rest)) + 1
-			}
-		}
-	}
-	if configType == "" {
-		if idx := strings.Index(lower, "camera"); idx != -1 {
-			rest := strings.TrimLeft(label[idx+6:], " \t")
-			if strings.HasPrefix(rest, "{") {
-				configType = "camera"
-				contentStart = idx + 6 + (len(label[idx+6:]) - len(rest)) + 1
-			}
-		}
-	}
-	if configType == "" {
-		if idx := strings.Index(lower, "distance"); idx != -1 {
-			rest := strings.TrimLeft(label[idx+8:], " \t")
-			if strings.HasPrefix(rest, "{") {
-				configType = "dist"
-				contentStart = idx + 8 + (len(label[idx+8:]) - len(rest)) + 1
-			}
-		}
-	}
-	if configType == "" {
-		if idx := strings.Index(lower, "dist"); idx != -1 {
-			rest := strings.TrimLeft(label[idx+4:], " \t")
-			if strings.HasPrefix(rest, "{") {
-				configType = "dist"
-				contentStart = idx + 4 + (len(label[idx+4:]) - len(rest)) + 1
-			}
-		}
-	}
-	if configType == "" {
-		if idx := strings.Index(lower, "color"); idx != -1 {
-			rest := strings.TrimLeft(label[idx+5:], " \t")
-			if strings.HasPrefix(rest, "{") {
-				configType = "color"
-				contentStart = idx + 5 + (len(label[idx+5:]) - len(rest)) + 1
-			}
-		}
-	}
-	if configType == "" {
+func parseMotionConfig(label string) (MotionConfig, bool) {
+	label = migrateLabel(label)
+	loc := directiveRe.FindStringSubmatchIndex(label)
+	if loc == nil {
 		return MotionConfig{}, false
 	}
+
+	rawType := strings.ToLower(label[loc[2]:loc[3]])
+	var configType string
+	switch rawType {
+	case "scal":
+		configType = "scale"
+	case "distance":
+		configType = "dist"
+	default:
+		configType = rawType
+	}
+	contentStart := loc[1]
 
 	endIdx := strings.Index(label[contentStart:], "}")
 	if endIdx == -1 {

@@ -7,6 +7,7 @@ set -euo pipefail
 #   ./build.sh cli      # Build Pure-Go CLI into build/
 #   ./build.sh gui      # Build Desktop GUI into build/
 #   ./build.sh gui-win  # Build Desktop GUI for Windows via MinGW into build/
+#   ./build.sh ext-win  # Build Inkscape extension for Windows into build/
 #   ./build.sh wasm       # Package WebAssembly demo into build/gh-pages
 #   ./build.sh wasm-check # Verify WebAssembly compilation
 #   ./build.sh test       # Run unit tests
@@ -63,6 +64,31 @@ build_gui_win() {
     echo "==> Building inkanim Desktop GUI for Windows (via MinGW)..."
     CC=x86_64-w64-mingw32-gcc CGO_ENABLED=1 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-H windowsgui -s -w" -o "$BUILD_DIR/inkanim.exe" ./cmd/inkanim
     echo "✓ Successfully built $BUILD_DIR/inkanim.exe"
+}
+
+build_ext_win() {
+    echo "==> Building Inkscape extension for Windows (via MinGW)..."
+    local ext_dir="$BUILD_DIR/inkscape-ext/windows-amd64"
+    local bin_dir="$ext_dir/bin"
+    mkdir -p "$bin_dir"
+
+    CC=x86_64-w64-mingw32-gcc CGO_ENABLED=1 GOOS=windows GOARCH=amd64 \
+        go build -trimpath -ldflags="-H windowsgui -s -w -extldflags=-mwindows" \
+        -o "$bin_dir/inkanim-ext.exe" ./cmd/inkanim-ext
+
+    cp "$ROOT_DIR"/extensions/inkscape/*.inx "$ext_dir/"
+
+    local zip_file="$BUILD_DIR/inkanim-inkscape-extension_dev_windows_amd64.zip"
+    rm -f "$zip_file"
+    if command -v zip &>/dev/null; then
+        (cd "$ext_dir" && zip -r "$zip_file" .)
+    else
+        python3 -c "import shutil; shutil.make_archive('$BUILD_DIR/inkanim-inkscape-extension_dev_windows_amd64', 'zip', '$ext_dir')"
+    fi
+
+    echo "✓ Extension package created:"
+    ls -lh "$bin_dir/inkanim-ext.exe"
+    ls -lh "$zip_file"
 }
 
 verify_wasm() {
@@ -172,6 +198,9 @@ case "$TARGET" in
     gui-win)
         build_gui_win
         ;;
+    ext-win)
+        build_ext_win
+        ;;
     wasm)
         build_wasm
         ;;
@@ -197,7 +226,7 @@ case "$TARGET" in
         clean_artifacts
         ;;
     *)
-        echo "Unknown target: $TARGET. Available: all, cli, gui, gui-win, wasm, serve, test, test-update-golden, lint, cross, clean"
+        echo "Unknown target: $TARGET. Available: all, cli, gui, gui-win, ext-win, wasm, serve, test, test-update-golden, lint, cross, clean"
         exit 1
         ;;
 esac

@@ -8,10 +8,16 @@
 #   .\build.ps1 -Target cross  # Cross-compile CLI for Windows, Linux, macOS
 #   .\build.ps1 -Target check  # Run goreleaser check
 #   .\build.ps1 -Target clean  # Clean build artifacts
+#   .\build.ps1 -Target ext-win # Build Inkscape extension package for Windows
+#   .\build.ps1 -Target ext-win -Install # Build and install extension to Inkscape
+#   .\build.ps1 -Install       # Build and install Inkscape extension
+#   .\build.ps1 -Install -NoBuild # Install existing package without rebuilding
 
 param(
-    [ValidateSet("all", "gui", "cli", "wasm", "serve", "test", "lint", "cross", "check", "clean")]
-    [string]$Target = "all"
+    [ValidateSet("all", "gui", "cli", "wasm", "wasm-check", "serve", "test", "test-update-golden", "lint", "cross", "check", "clean", "ext-win")]
+    [string]$Target = "all",
+    [switch]$Install,
+    [switch]$NoBuild
 )
 
 $ErrorActionPreference = "Stop"
@@ -74,6 +80,87 @@ function Build-GUI {
         Write-Host "[OK] Successfully built $outPath" -ForegroundColor Green
     } else {
         Write-Error "Failed to build inkanim.exe."
+    }
+}
+
+function Build-ExtWin {
+    Write-Host "`n==> Building inkanim-ext for Windows (with CGo)..." -ForegroundColor Cyan
+    if (-not $ZigExe) {
+        Write-Warning "Zig compiler not found. Attempting build with default system C compiler..."
+        $env:CGO_ENABLED = "1"
+    } else {
+        Write-Host "Using Zig C compiler: $ZigExe" -ForegroundColor DarkGray
+        $env:CGO_ENABLED = "1"
+        $env:CC = "zig cc"
+    }
+    $extDir = Join-Path $BuildDir "inkscape-ext\windows-amd64"
+    $binDir = Join-Path $extDir "bin"
+    if (-not (Test-Path $binDir)) { New-Item -ItemType Directory -Path $binDir -Force | Out-Null }
+
+    $outExe = Join-Path $binDir "inkanim-ext.exe"
+    $env:GOOS = "windows"
+    $env:GOARCH = "amd64"
+    & $GoExe build -trimpath -ldflags="-H windowsgui -s -w -extldflags=-mwindows" -o $outExe ./cmd/inkanim-ext
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Failed to build inkanim-ext.exe."
+    }
+
+    Copy-Item (Join-Path $PSScriptRoot "extensions\inkscape\*.inx") $extDir -Force
+
+    $zipFile = Join-Path $BuildDir "inkanim-inkscape-extension_dev_windows_amd64.zip"
+    if (Test-Path $zipFile) { Remove-Item $zipFile -Force }
+    Compress-Archive -Path (Join-Path $extDir "*") -DestinationPath $zipFile
+
+    Write-Host "[OK] Successfully built extension package:" -ForegroundColor Green
+    Write-Host "     Binary: $outExe"
+    Write-Host "     Zip:    $zipFile"
+}
+
+function Install-ExtWin {
+    $zipFile = Join-Path $BuildDir "inkanim-inkscape-extension_dev_windows_amd64.zip"
+    if (-not (Test-Path $zipFile)) {
+        Write-Host "Extension package not found. Building first..." -ForegroundColor DarkGray
+        Build-ExtWin
+    }
+
+    Write-Host "`n==> Installing InkAnim extension for Inkscape (Windows)..." -ForegroundColor Cyan
+
+    $inkscapeProc = Get-Process inkscape -ErrorAction SilentlyContinue
+    if ($inkscapeProc) {
+        Write-Warning "Inkscape is currently running. You must restart Inkscape for extension updates to take effect."
+    }
+
+    $extBaseDir = Join-Path $env:APPDATA "inkscape\extensions"
+    if (-not (Test-Path $extBaseDir)) {
+        New-Item -ItemType Directory -Path $extBaseDir -Force | Out-Null
+    }
+
+    $targetDir = Join-Path $extBaseDir "inkanim"
+    if (Test-Path $targetDir) {
+        Write-Host "Cleaning existing extension files in $targetDir..." -ForegroundColor DarkGray
+        Remove-Item (Join-Path $targetDir "*") -Recurse -Force -ErrorAction SilentlyContinue
+    } else {
+        New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+    }
+
+    Write-Host "Extracting extension package to $targetDir..." -ForegroundColor DarkGray
+    Expand-Archive -Path $zipFile -DestinationPath $targetDir -Force
+
+    $inxPath = Join-Path $targetDir "spike_editor.inx"
+    $exePath = Join-Path $targetDir "bin\inkanim-ext.exe"
+
+    if ((Test-Path $inxPath) -and (Test-Path $exePath)) {
+        $exeItem = Get-Item $exePath
+        $sizeMB = [math]::Round($exeItem.Length / 1MB, 2)
+        Write-Host "[OK] Inkscape extension installed successfully!" -ForegroundColor Green
+        Write-Host "     Extension Manifest: $inxPath"
+        Write-Host "     Binary:             $exePath ($sizeMB MB)"
+        Write-Host "`n==> Next steps:" -ForegroundColor Yellow
+        Write-Host "    1. Restart Inkscape (if open)." -ForegroundColor Yellow
+        Write-Host "    2. Select an object in Inkscape." -ForegroundColor Yellow
+        Write-Host "    3. Launch via: Extensions -> InkAnim -> Spike: Motion Editor`n" -ForegroundColor Yellow
+    } else {
+        Write-Error "Extension installation verification failed: required files missing in $targetDir."
     }
 }
 
@@ -223,6 +310,16 @@ function Clean-Artifacts {
     Write-Host "[OK] Cleaned." -ForegroundColor Green
 }
 
+if ($Install) {
+    if ($NoBuild) {
+        Install-ExtWin
+        exit 0
+    }
+    if (-not $PSBoundParameters.ContainsKey('Target')) {
+        $Target = "ext-win"
+    }
+}
+
 switch ($Target) {
     "all"                 { Run-Lint; Run-Tests; Verify-WASM; Build-CLI; Build-GUI }
     "gui"                 { Build-GUI }
@@ -236,5 +333,10 @@ switch ($Target) {
     "cross"               { Cross-Compile-CLI }
     "check"               { Run-Check }
     "clean"               { Clean-Artifacts }
+    "ext-win"             { Build-ExtWin }
+}
+
+if ($Install) {
+    Install-ExtWin
 }
 
