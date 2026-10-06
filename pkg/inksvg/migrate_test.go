@@ -68,10 +68,10 @@ func TestMigration_MovementLegacyFixture(t *testing.T) {
 	}
 	legacyHash := sha256.Sum256(legacyBytes)
 
-	currentPath := filepath.Join("..", "..", "testdata", "spline_test.svg")
+	currentPath := filepath.Join("..", "..", "testdata", "migrations", "movement_current.svg")
 	currentBytes, err := os.ReadFile(currentPath)
 	if err != nil {
-		t.Fatalf("failed to read current spline_test.svg: %v", err)
+		t.Fatalf("failed to read movement_current.svg: %v", err)
 	}
 
 	legacyDoc, err := ParseSVG(legacyBytes)

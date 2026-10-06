@@ -3,12 +3,15 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/test"
 	"fyne.io/fyne/v2/widget"
+
+	"inkanim/internal/ext/doctree"
 )
 
 func TestTreeActualRendering(t *testing.T) {
@@ -69,3 +72,37 @@ func TestTreeActualRendering(t *testing.T) {
 		t.Errorf("expected g_rocket to be an open branch")
 	}
 }
+
+func TestEditorState_ComputePatchedSVG(t *testing.T) {
+	splinePath := filepath.Join("..", "..", "testdata", "spline_test.svg")
+	data, err := os.ReadFile(splinePath)
+	if err != nil {
+		t.Fatalf("failed to read spline_test.svg: %v", err)
+	}
+
+	state, err := NewEditorState(data, splinePath, nil)
+	if err != nil {
+		t.Fatalf("NewEditorState failed: %v", err)
+	}
+
+	rectNode := state.NodeMap["rect_rocket"]
+	if rectNode == nil {
+		t.Fatalf("expected rect_rocket in NodeMap")
+	}
+
+	// Add a directive
+	rectNode.Directives = append(rectNode.Directives, doctree.Directive{
+		Type:   "Scale",
+		Params: "f: 1-10; from: 1; to: 2",
+		Raw:    "Scale {f: 1-10; from: 1; to: 2}",
+	})
+	state.ModifiedIDs["rect_rocket"] = true
+
+	patched := state.ComputePatchedSVG()
+	patchedStr := string(patched)
+
+	if !strings.Contains(patchedStr, `inkscape:label="rect_rocket Scale {f: 1-10; from: 1; to: 2}"`) {
+		t.Errorf("patched SVG does not contain expected label, got:\n%s", patchedStr)
+	}
+}
+

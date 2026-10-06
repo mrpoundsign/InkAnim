@@ -62,6 +62,7 @@ type CenterPreviewPanel struct {
 	loopCheck          *widget.Check
 	pingPongCheck      *widget.Check
 	cropGuidesCheck    *widget.Check
+	motionLinesCheck   *widget.Check
 	wysiwygCheck       *widget.Check
 	inspectorCheck     *widget.Check
 	twitchEmulationBox *fyne.Container
@@ -296,6 +297,17 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 	})
 	p.cropGuidesCheck.Checked = true
 
+	p.motionLinesCheck = widget.NewCheck("Motion Lines", func(checked bool) {
+		p.mu.Lock()
+		if p.session != nil {
+			_ = p.session.SetShowMotionLines(checked)
+		}
+		p.rebuildCachedFramesLocked()
+		p.renderCurrentFrameLocked()
+		p.mu.Unlock()
+	})
+	p.motionLinesCheck.Checked = false
+
 	speedSelect := widget.NewSelect([]string{"0.25x", "0.5x", "1x", "1.5x", "2x"}, func(s string) {
 		p.mu.Lock()
 		defer p.mu.Unlock()
@@ -355,6 +367,7 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 		widget.NewLabel("BG:"),
 		p.bgSelect,
 		p.cropGuidesCheck,
+		p.motionLinesCheck,
 		p.wysiwygCheck,
 		p.inspectorCheck,
 	)

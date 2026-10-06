@@ -7,10 +7,10 @@ import (
 )
 
 func TestParseTree_SplineTest(t *testing.T) {
-	splinePath := filepath.Join("..", "..", "..", "testdata", "spline_test.svg")
-	data, err := os.ReadFile(splinePath)
+	fixturePath := filepath.Join("..", "..", "..", "testdata", "migrations", "movement_current.svg")
+	data, err := os.ReadFile(fixturePath)
 	if err != nil {
-		t.Fatalf("failed to read spline_test.svg: %v", err)
+		t.Fatalf("failed to read fixture: %v", err)
 	}
 
 	roots, nodeMap, err := ParseTree(data)

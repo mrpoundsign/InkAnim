@@ -213,11 +213,12 @@ type SVGDocument struct {
 	MotionPaths  []MotionPath
 	CameraPath   *MotionPath
 	Gradients    map[string]SVGGradient
-	DefaultMode  FrameMode
-	ElementRects map[string]Rect
-	Migrations   []MigrationHit
-	timelineTpl  any
-	mu           sync.RWMutex
+	DefaultMode     FrameMode
+	ElementRects    map[string]Rect
+	Migrations      []MigrationHit
+	ShowMotionLines bool
+	timelineTpl     any
+	mu              sync.RWMutex
 }
 
 // GetElementRect returns the bounding rectangle of the specified element by ID,
