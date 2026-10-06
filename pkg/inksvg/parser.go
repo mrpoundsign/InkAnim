@@ -767,198 +767,144 @@ var directiveRe = regexp.MustCompile(`(?i)\b(move|rot|scale|scal|fade|show|hide|
 
 func parseMotionConfig(label string) (MotionConfig, bool) {
 	label = migrateLabel(label)
-	loc := directiveRe.FindStringSubmatchIndex(label)
-	if loc == nil {
+	locs := directiveRe.FindAllStringSubmatchIndex(label, -1)
+	if len(locs) == 0 {
 		return MotionConfig{}, false
 	}
 
-	rawType := strings.ToLower(label[loc[2]:loc[3]])
-	var configType string
-	switch rawType {
-	case "scal":
-		configType = "scale"
-	case "distance":
-		configType = "dist"
-	default:
-		configType = rawType
-	}
-	contentStart := loc[1]
-
-	endIdx := strings.Index(label[contentStart:], "}")
-	if endIdx == -1 {
-		return MotionConfig{}, false
-	}
-	configStr := label[contentStart : contentStart+endIdx]
-
-	// Normalize whitespace around colons so "k : v" becomes "k:v"
-	var cleaned strings.Builder
-	runes := []rune(configStr)
-	for i := 0; i < len(runes); i++ {
-		r := runes[i]
-		if r == ':' {
-			str := strings.TrimRight(cleaned.String(), " \t")
-			cleaned.Reset()
-			cleaned.WriteString(str)
-			cleaned.WriteRune(':')
-			for i+1 < len(runes) && (runes[i+1] == ' ' || runes[i+1] == '\t') {
-				i++
-			}
-		} else {
-			cleaned.WriteRune(r)
-		}
-	}
-	configStr = cleaned.String()
-
-	parts := strings.FieldsFunc(configStr, func(r rune) bool {
-		return r == ';' || r == ',' || unicode.IsSpace(r)
-	})
-
-	config := DefaultMotionConfig(configType)
-
+	config := DefaultMotionConfig("")
+	var firstType string
+	var hasMove bool
 	var foundF bool
-	var hasExplicitFrom bool
+	var matchedAny bool
 
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if part == "" {
-			continue
+	for _, loc := range locs {
+		rawType := strings.ToLower(label[loc[2]:loc[3]])
+		var configType string
+		switch rawType {
+		case "scal":
+			configType = "scale"
+		case "distance":
+			configType = "dist"
+		default:
+			configType = rawType
 		}
-		if part == "rev" || part == "reverse" {
-			config.Reverse = true
-			continue
+
+		if firstType == "" {
+			firstType = configType
 		}
-		if part == "pingpong" {
-			config.IsPingPong = true
-			continue
+		if configType == "move" {
+			hasMove = true
 		}
-		if part == "fixed" {
-			config.ParallaxFactor = 0.0
+		if configType == "color" {
+			config.IsColor = true
+		}
+		if configType == "camera" {
+			config.IsCamera = true
+		}
+		if configType == "dist" {
 			config.HasParallax = true
+		}
+		if configType == "depth" {
+			config.HasDepth = true
+		}
+		if configType == "fade" {
+			config.HasOpacity = true
+		}
+		if configType == "show" || configType == "hide" {
+			config.HasVisibility = true
+			config.VisibilityState = configType
+		}
+
+		contentStart := loc[1]
+		endIdx := strings.Index(label[contentStart:], "}")
+		if endIdx == -1 {
 			continue
 		}
-		kv := strings.SplitN(part, ":", 2)
-		if len(kv) != 2 {
-			continue
-		}
-		k := strings.TrimSpace(kv[0])
-		v := strings.TrimSpace(kv[1])
-		switch k {
-		case "ease":
-			config.Ease = v
-		case "t":
-			config.Type = v
-		case "pingpong":
-			config.IsPingPong = (v == "true" || v == "1" || v == "yes")
-		case "target":
-			vLower := strings.ToLower(v)
-			if vLower == "stroke" || vLower == "all" {
-				config.ColorTarget = vLower
+		matchedAny = true
+		configStr := label[contentStart : contentStart+endIdx]
+
+		// Normalize whitespace around colons so "k : v" becomes "k:v"
+		var cleaned strings.Builder
+		runes := []rune(configStr)
+		for i := 0; i < len(runes); i++ {
+			r := runes[i]
+			if r == ':' {
+				str := strings.TrimRight(cleaned.String(), " \t")
+				cleaned.Reset()
+				cleaned.WriteString(str)
+				cleaned.WriteRune(':')
+				for i+1 < len(runes) && (runes[i+1] == ' ' || runes[i+1] == '\t') {
+					i++
+				}
 			} else {
-				config.ColorTarget = "fill"
+				cleaned.WriteRune(r)
 			}
-		case "r", "repeat":
-			if vInt, err := strconv.Atoi(v); err == nil && vInt > 0 {
-				config.ColorRepeat = vInt
+		}
+		configStr = cleaned.String()
+
+		parts := strings.FieldsFunc(configStr, func(r rune) bool {
+			return r == ';' || r == ',' || unicode.IsSpace(r)
+		})
+
+		var hasExplicitFrom bool
+
+		for _, part := range parts {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
 			}
-		case "rev", "reverse":
-			config.Reverse = (v == "true" || v == "1" || v == "yes")
-		case "factor":
-			if vFloat, err := strconv.ParseFloat(v, 64); err == nil {
-				config.ParallaxFactor = vFloat
-				config.HasParallax = true
+			if part == "rev" || part == "reverse" {
+				config.Reverse = true
+				continue
 			}
-		case "fixed":
-			vLower := strings.ToLower(v)
-			if vLower == "true" || vLower == "yes" || vLower == "1" || vLower == "" {
+			if part == "pingpong" {
+				config.IsPingPong = true
+				continue
+			}
+			if part == "fixed" {
 				config.ParallaxFactor = 0.0
 				config.HasParallax = true
+				continue
 			}
-		case "opacity":
-			if vFloat, err := strconv.ParseFloat(strings.TrimSuffix(v, "%"), 64); err == nil {
-				if vFloat > 1.0 {
-					vFloat /= 100.0
-				}
-				if vFloat < 0.0 {
-					vFloat = 0.0
-				} else if vFloat > 1.0 {
-					vFloat = 1.0
-				}
-				config.OpacityTo = vFloat
-				if !hasExplicitFrom {
-					config.OpacityFrom = vFloat
-				}
-				config.HasOpacity = true
+			kv := strings.SplitN(part, ":", 2)
+			if len(kv) != 2 {
+				continue
 			}
-		case "visibility", "state":
-			vLower := strings.ToLower(v)
-			if vLower == "show" || vLower == "hide" {
-				config.VisibilityState = vLower
-				config.HasVisibility = true
-			}
-		case "z", "depth":
-			if configType == "dist" {
+			k := strings.TrimSpace(kv[0])
+			v := strings.TrimSpace(kv[1])
+			switch k {
+			case "ease":
+				config.Ease = v
+			case "t":
+				config.Type = v
+			case "pingpong":
+				config.IsPingPong = (v == "true" || v == "1" || v == "yes")
+			case "target":
+				vLower := strings.ToLower(v)
+				if vLower == "stroke" || vLower == "all" {
+					config.ColorTarget = vLower
+				} else {
+					config.ColorTarget = "fill"
+				}
+			case "r", "repeat":
+				if vInt, err := strconv.Atoi(v); err == nil && vInt > 0 {
+					config.ColorRepeat = vInt
+				}
+			case "rev", "reverse":
+				config.Reverse = (v == "true" || v == "1" || v == "yes")
+			case "factor":
 				if vFloat, err := strconv.ParseFloat(v, 64); err == nil {
-					config.ParallaxFactor = 1.0 / (1.0 + vFloat*0.01)
+					config.ParallaxFactor = vFloat
 					config.HasParallax = true
 				}
-			} else {
-				cleanV := strings.TrimPrefix(v, "+")
-				if zInt, err := strconv.Atoi(cleanV); err == nil {
-					config.DepthOffset = zInt
-					config.HasDepth = true
+			case "fixed":
+				vLower := strings.ToLower(v)
+				if vLower == "true" || vLower == "yes" || vLower == "1" || vLower == "" {
+					config.ParallaxFactor = 0.0
+					config.HasParallax = true
 				}
-			}
-		case "scale":
-			if vFloat, err := strconv.ParseFloat(v, 64); err == nil {
-				config.ScaleToX = vFloat
-				config.ScaleToY = vFloat
-			}
-		case "scale-x", "x":
-			if vFloat, err := strconv.ParseFloat(v, 64); err == nil {
-				config.ScaleToX = vFloat
-			}
-		case "scale-y", "y":
-			if vFloat, err := strconv.ParseFloat(v, 64); err == nil {
-				config.ScaleToY = vFloat
-			}
-		case "from":
-			switch configType {
-			case "fade":
-				if vFloat, err := strconv.ParseFloat(strings.TrimSuffix(v, "%"), 64); err == nil {
-					if vFloat > 1.0 {
-						vFloat /= 100.0
-					}
-					if vFloat < 0.0 {
-						vFloat = 0.0
-					} else if vFloat > 1.0 {
-						vFloat = 1.0
-					}
-					config.OpacityFrom = vFloat
-					hasExplicitFrom = true
-					config.HasOpacity = true
-				}
-			case "rot":
-				if vFloat, err := strconv.ParseFloat(strings.TrimSuffix(v, "deg"), 64); err == nil {
-					config.RotationFrom = vFloat
-					config.HasRotationRange = true
-				}
-			default:
-				if vFloat, err := strconv.ParseFloat(v, 64); err == nil {
-					config.ScaleFromX = vFloat
-					config.ScaleFromY = vFloat
-				}
-			}
-		case "from-x":
-			if vFloat, err := strconv.ParseFloat(v, 64); err == nil {
-				config.ScaleFromX = vFloat
-			}
-		case "from-y":
-			if vFloat, err := strconv.ParseFloat(v, 64); err == nil {
-				config.ScaleFromY = vFloat
-			}
-		case "to":
-			switch configType {
-			case "fade":
+			case "opacity":
 				if vFloat, err := strconv.ParseFloat(strings.TrimSuffix(v, "%"), 64); err == nil {
 					if vFloat > 1.0 {
 						vFloat /= 100.0
@@ -969,73 +915,171 @@ func parseMotionConfig(label string) (MotionConfig, bool) {
 						vFloat = 1.0
 					}
 					config.OpacityTo = vFloat
+					if !hasExplicitFrom {
+						config.OpacityFrom = vFloat
+					}
 					config.HasOpacity = true
 				}
-			case "rot":
-				if vFloat, err := strconv.ParseFloat(strings.TrimSuffix(v, "deg"), 64); err == nil {
-					config.RotationTo = vFloat
-					config.HasRotationRange = true
+			case "visibility", "state":
+				vLower := strings.ToLower(v)
+				if vLower == "show" || vLower == "hide" {
+					config.VisibilityState = vLower
+					config.HasVisibility = true
 				}
-			default:
+			case "z", "depth":
+				if configType == "dist" {
+					if vFloat, err := strconv.ParseFloat(v, 64); err == nil {
+						config.ParallaxFactor = 1.0 / (1.0 + vFloat*0.01)
+						config.HasParallax = true
+					}
+				} else {
+					cleanV := strings.TrimPrefix(v, "+")
+					if zInt, err := strconv.Atoi(cleanV); err == nil {
+						config.DepthOffset = zInt
+						config.HasDepth = true
+					}
+				}
+			case "scale":
 				if vFloat, err := strconv.ParseFloat(v, 64); err == nil {
 					config.ScaleToX = vFloat
 					config.ScaleToY = vFloat
 				}
-			}
-		case "to-x":
-			if vFloat, err := strconv.ParseFloat(v, 64); err == nil {
-				config.ScaleToX = vFloat
-			}
-		case "to-y":
-			if vFloat, err := strconv.ParseFloat(v, 64); err == nil {
-				config.ScaleToY = vFloat
-			}
-		case "angle":
-			if deg, err := strconv.ParseFloat(v, 64); err == nil {
-				if configType == "color" {
-					config.ColorAngle = deg
-					config.HasColorAngle = true
-				} else {
-					config.RotationAngle = deg
+			case "scale-x", "x":
+				if vFloat, err := strconv.ParseFloat(v, 64); err == nil {
+					config.ScaleToX = vFloat
 				}
-			}
-		case "dir":
-			config.RotationDir = strings.ToLower(v)
-		case "orient":
-			config.OrientPath = (v == "true" || v == "1" || v == "yes")
-		case "pivot":
-			vLower := strings.ToLower(v)
-			if vLower == "center" || vLower == "" {
-				config.PivotType = "center"
-			} else if vLower == "path-start" {
-				config.PivotType = "path-start"
-			} else if strings.HasPrefix(v, "#") {
-				config.PivotType = "node"
-				config.PivotNodeID = strings.TrimPrefix(v, "#")
-			} else if angle, err := strconv.ParseFloat(v, 64); err == nil {
-				config.PivotType = "edge"
-				config.PivotEdgeAngle = angle
-			}
-		case "f":
-			foundF = true
-			if v == "all" {
-				config.IsAll = true
-			} else {
-				rangeParts := strings.Split(v, "-")
-				if len(rangeParts) == 2 {
-					start, _ := strconv.Atoi(rangeParts[0])
-					end, _ := strconv.Atoi(rangeParts[1])
-					config.StartFrame = start
-					config.EndFrame = end
-				} else if len(rangeParts) == 1 {
-					singleF, err := strconv.Atoi(rangeParts[0])
-					if err == nil && singleF > 0 {
-						config.StartFrame = singleF
-						config.EndFrame = singleF
+			case "scale-y", "y":
+				if vFloat, err := strconv.ParseFloat(v, 64); err == nil {
+					config.ScaleToY = vFloat
+				}
+			case "from":
+				switch configType {
+				case "fade":
+					if vFloat, err := strconv.ParseFloat(strings.TrimSuffix(v, "%"), 64); err == nil {
+						if vFloat > 1.0 {
+							vFloat /= 100.0
+						}
+						if vFloat < 0.0 {
+							vFloat = 0.0
+						} else if vFloat > 1.0 {
+							vFloat = 1.0
+						}
+						config.OpacityFrom = vFloat
+						hasExplicitFrom = true
+						config.HasOpacity = true
+					}
+				case "rot":
+					if vFloat, err := strconv.ParseFloat(strings.TrimSuffix(v, "deg"), 64); err == nil {
+						config.RotationFrom = vFloat
+						config.HasRotationRange = true
+					}
+				default:
+					if vFloat, err := strconv.ParseFloat(v, 64); err == nil {
+						config.ScaleFromX = vFloat
+						config.ScaleFromY = vFloat
+					}
+				}
+			case "from-x":
+				if vFloat, err := strconv.ParseFloat(v, 64); err == nil {
+					config.ScaleFromX = vFloat
+				}
+			case "from-y":
+				if vFloat, err := strconv.ParseFloat(v, 64); err == nil {
+					config.ScaleFromY = vFloat
+				}
+			case "to":
+				switch configType {
+				case "fade":
+					if vFloat, err := strconv.ParseFloat(strings.TrimSuffix(v, "%"), 64); err == nil {
+						if vFloat > 1.0 {
+							vFloat /= 100.0
+						}
+						if vFloat < 0.0 {
+							vFloat = 0.0
+						} else if vFloat > 1.0 {
+							vFloat = 1.0
+						}
+						config.OpacityTo = vFloat
+						config.HasOpacity = true
+					}
+				case "rot":
+					if vFloat, err := strconv.ParseFloat(strings.TrimSuffix(v, "deg"), 64); err == nil {
+						config.RotationTo = vFloat
+						config.HasRotationRange = true
+					}
+				default:
+					if vFloat, err := strconv.ParseFloat(v, 64); err == nil {
+						config.ScaleToX = vFloat
+						config.ScaleToY = vFloat
+					}
+				}
+			case "to-x":
+				if vFloat, err := strconv.ParseFloat(v, 64); err == nil {
+					config.ScaleToX = vFloat
+				}
+			case "to-y":
+				if vFloat, err := strconv.ParseFloat(v, 64); err == nil {
+					config.ScaleToY = vFloat
+				}
+			case "angle":
+				if deg, err := strconv.ParseFloat(v, 64); err == nil {
+					if configType == "color" {
+						config.ColorAngle = deg
+						config.HasColorAngle = true
+					} else {
+						config.RotationAngle = deg
+					}
+				}
+			case "dir":
+				config.RotationDir = strings.ToLower(v)
+			case "orient":
+				config.OrientPath = (v == "true" || v == "1" || v == "yes")
+			case "pivot":
+				vLower := strings.ToLower(v)
+				if vLower == "center" || vLower == "" {
+					config.PivotType = "center"
+				} else if vLower == "path-start" {
+					config.PivotType = "path-start"
+				} else if strings.HasPrefix(v, "#") {
+					config.PivotType = "node"
+					config.PivotNodeID = strings.TrimPrefix(v, "#")
+				} else if angle, err := strconv.ParseFloat(v, 64); err == nil {
+					config.PivotType = "edge"
+					config.PivotEdgeAngle = angle
+				}
+			case "f":
+				foundF = true
+				if v == "all" {
+					config.IsAll = true
+				} else {
+					rangeParts := strings.Split(v, "-")
+					if len(rangeParts) == 2 {
+						start, _ := strconv.Atoi(rangeParts[0])
+						end, _ := strconv.Atoi(rangeParts[1])
+						config.StartFrame = start
+						config.EndFrame = end
+						config.IsAll = false
+					} else if len(rangeParts) == 1 {
+						singleF, err := strconv.Atoi(rangeParts[0])
+						if err == nil && singleF > 0 {
+							config.StartFrame = singleF
+							config.EndFrame = singleF
+							config.IsAll = false
+						}
 					}
 				}
 			}
 		}
+	}
+
+	if !matchedAny {
+		return MotionConfig{}, false
+	}
+
+	if hasMove {
+		config.Type = "move"
+	} else if config.Type == "" {
+		config.Type = firstType
 	}
 
 	if !foundF {
