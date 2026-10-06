@@ -1,25 +1,30 @@
 :root {
-  --bg-primary: #09090b;
-  --bg-secondary: #121216;
-  --bg-card: rgba(24, 24, 29, 0.72);
-  --bg-card-hover: rgba(32, 32, 39, 0.85);
+  --bg-primary: #020203;
+  --bg-secondary: #0a0a0c;
+  --bg-card: rgba(20, 20, 22, 0.75);
+  --bg-card-hover: rgba(30, 41, 59, 0.85);
   --border-color: rgba(255, 255, 255, 0.08);
-  --border-glow: rgba(145, 70, 255, 0.35);
-  --accent-purple: #9146ff;
-  --accent-purple-light: #a970ff;
-  --accent-purple-glow: rgba(145, 70, 255, 0.45);
-  --accent-cyan: #00f5d4;
-  --accent-cyan-glow: rgba(0, 245, 212, 0.3);
-  --text-main: #f4f4f6;
-  --text-muted: #a1a1aa;
-  --text-dim: #71717a;
+  --border-glow: rgba(56, 189, 248, 0.35);
+  --accent-blue: #38bdf8;
+  --accent-blue-light: #7dd3fc;
+  --accent-blue-dark: #0284c7;
+  --accent-blue-glow: rgba(56, 189, 248, 0.4);
+  --accent-cyan: #38bdf8;
+  --accent-cyan-glow: rgba(56, 189, 248, 0.25);
+  /* Backwards compatibility aliases for existing selectors */
+  --accent-purple: var(--accent-blue);
+  --accent-purple-light: var(--accent-blue-light);
+  --accent-purple-glow: var(--accent-blue-glow);
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --text-dim: #64748b;
   --font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
   --radius-lg: 16px;
   --radius-md: 12px;
   --radius-sm: 8px;
-  --shadow-card: 0 10px 30px -10px rgba(0, 0, 0, 0.6);
-  --shadow-glow: 0 0 40px -10px var(--accent-purple-glow);
+  --shadow-card: 0 10px 30px -10px rgba(0, 0, 0, 0.8);
+  --shadow-glow: 0 0 40px -10px var(--accent-blue-glow);
 }
 
 *, *::before, *::after {
@@ -50,7 +55,7 @@ body {
   left: 20%;
   width: 600px;
   height: 600px;
-  background: radial-gradient(circle, rgba(145, 70, 255, 0.18) 0%, rgba(9, 9, 11, 0) 70%);
+  background: radial-gradient(circle, rgba(56, 189, 248, 0.14) 0%, rgba(2, 2, 3, 0) 70%);
   border-radius: 50%;
   pointer-events: none;
   z-index: 0;
@@ -62,7 +67,7 @@ body {
   right: -100px;
   width: 500px;
   height: 500px;
-  background: radial-gradient(circle, rgba(0, 245, 212, 0.1) 0%, rgba(9, 9, 11, 0) 70%);
+  background: radial-gradient(circle, rgba(2, 132, 199, 0.12) 0%, rgba(2, 2, 3, 0) 70%);
   border-radius: 50%;
   pointer-events: none;
   z-index: 0;
@@ -161,15 +166,17 @@ body {
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, var(--accent-purple) 0%, #772ce8 100%);
-  color: #fff;
-  box-shadow: 0 4px 20px var(--accent-purple-glow);
+  background: linear-gradient(135deg, var(--accent-blue) 0%, var(--accent-blue-dark) 100%);
+  color: #020203;
+  font-weight: 700;
+  box-shadow: 0 4px 20px var(--accent-blue-glow);
 }
 
 .btn-primary:hover {
   transform: translateY(-2px);
-  box-shadow: 0 6px 28px rgba(145, 70, 255, 0.6);
-  background: linear-gradient(135deg, var(--accent-purple-light) 0%, var(--accent-purple) 100%);
+  box-shadow: 0 6px 28px rgba(56, 189, 248, 0.6);
+  background: linear-gradient(135deg, var(--accent-blue-light) 0%, var(--accent-blue) 100%);
+  color: #020203;
 }
 
 .btn-secondary {

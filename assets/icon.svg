@@ -1,0 +1,146 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Deep Obsidian Tile Background -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#141416"/>
+      <stop offset="50%" stop-color="#0a0a0c"/>
+      <stop offset="100%" stop-color="#020203"/>
+    </linearGradient>
+
+    <!-- Border: High-contrast Chrome Metallic to Sky Blue -->
+    <linearGradient id="borderGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="35%" stop-color="#94a3b8"/>
+      <stop offset="65%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#ffffff"/>
+    </linearGradient>
+
+    <linearGradient id="layerGrad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#64748b" stop-opacity="0.30"/>
+      <stop offset="100%" stop-color="#1e293b" stop-opacity="0.10"/>
+    </linearGradient>
+
+    <linearGradient id="layerGrad2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#94a3b8" stop-opacity="0.45"/>
+      <stop offset="100%" stop-color="#334155" stop-opacity="0.15"/>
+    </linearGradient>
+
+    <linearGradient id="canvasBorder" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="50%" stop-color="#64748b"/>
+      <stop offset="100%" stop-color="#38bdf8"/>
+    </linearGradient>
+
+    <linearGradient id="starGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="40%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#0284c7"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background App Tile -->
+  <rect x="16" y="16" width="480" height="480" rx="116" ry="116" fill="url(#bgGrad)"/>
+  <rect x="16" y="16" width="480" height="480" rx="116" ry="116" fill="none" stroke="url(#borderGrad)" stroke-width="5" stroke-opacity="0.9"/>
+
+  <!-- Composition: Zoomed by ~1.18x -->
+  <g id="pure-animation-layers" transform="translate(256, 256) scale(1.18)">
+    <!-- Layer 1 (Bottom Sheet) -->
+    <g transform="rotate(13)">
+      <rect x="-140" y="-160" width="280" height="320" rx="24" ry="24"
+            fill="url(#layerGrad1)" stroke="#475569" stroke-width="3" stroke-dasharray="10 8" stroke-opacity="0.85"/>
+      <!-- Registration Marks -->
+      <circle cx="-116" cy="-120" r="8" fill="#64748b" opacity="0.7"/>
+      <circle cx="-116" cy="0" r="8" fill="#64748b" opacity="0.7"/>
+      <circle cx="-116" cy="120" r="8" fill="#64748b" opacity="0.7"/>
+      <!-- S-curve ghost 1 passing through middle -->
+      <path d="M -100 80 C -50 100, -30 20, 0 0 C 30 -20, 50 -100, 100 -80" fill="none" stroke="#64748b" stroke-width="6" opacity="0.4" stroke-linecap="round"/>
+      <!-- Ghost star 1 (shifted slightly back along path) -->
+      <polygon points="-24,-30 -20,-18 -8,-14 -20,-10 -24,2 -28,-10 -40,-14 -28,-18" fill="#64748b" opacity="0.45"/>
+    </g>
+
+    <!-- Layer 2 (Middle Sheet) -->
+    <g transform="rotate(6.5)">
+      <rect x="-145" y="-165" width="290" height="330" rx="24" ry="24"
+            fill="url(#layerGrad2)" stroke="#94a3b8" stroke-width="3.5" stroke-opacity="0.9"/>
+      <!-- Registration Marks -->
+      <circle cx="-120" cy="-125" r="8" fill="#cbd5e1" opacity="0.85"/>
+      <circle cx="-120" cy="0" r="8" fill="#cbd5e1" opacity="0.85"/>
+      <circle cx="-120" cy="125" r="8" fill="#cbd5e1" opacity="0.85"/>
+      <!-- S-curve ghost 2 passing through middle -->
+      <path d="M -105 85 C -55 105, -30 20, 0 0 C 30 -20, 55 -105, 105 -85" fill="none" stroke="#cbd5e1" stroke-width="7" opacity="0.6" stroke-linecap="round"/>
+      <!-- Ghost star 2 (approaching center) -->
+      <polygon points="-12,-16 -8,-4 4,0 -8,4 -12,16 -16,4 -28,0 -16,-4" fill="#cbd5e1" opacity="0.65"/>
+    </g>
+
+    <!-- Layer 3 (Foreground Active Studio Canvas) -->
+    <g>
+      <rect x="-150" y="-170" width="300" height="340" rx="24" ry="24"
+            fill="#0f1115" fill-opacity="0.98" stroke="url(#canvasBorder)" stroke-width="4"/>
+
+      <!-- Vector Grid Points -->
+      <g fill="#475569" opacity="0.65">
+        <circle cx="-100" cy="-110" r="3.5"/><circle cx="-50" cy="-110" r="3.5"/><circle cx="0" cy="-110" r="3.5"/><circle cx="50" cy="-110" r="3.5"/><circle cx="100" cy="-110" r="3.5"/>
+        <circle cx="-100" cy="-55" r="3.5"/><circle cx="-50" cy="-55" r="3.5"/><circle cx="0" cy="-55" r="3.5"/><circle cx="50" cy="-55" r="3.5"/><circle cx="100" cy="-55" r="3.5"/>
+        <circle cx="-100" cy="0" r="3.5"/><circle cx="-50" cy="0" r="3.5"/><circle cx="50" cy="0" r="3.5"/><circle cx="100" cy="0" r="3.5"/>
+        <circle cx="-100" cy="55" r="3.5"/><circle cx="-50" cy="55" r="3.5"/><circle cx="0" cy="55" r="3.5"/><circle cx="50" cy="55" r="3.5"/><circle cx="100" cy="55" r="3.5"/>
+        <circle cx="-100" cy="110" r="3.5"/><circle cx="-50" cy="110" r="3.5"/><circle cx="0" cy="110" r="3.5"/><circle cx="50" cy="110" r="3.5"/><circle cx="100" cy="110" r="3.5"/>
+      </g>
+
+      <!-- Tangent Handle Arms (From origin & destination anchors) -->
+      <line x1="-110" y1="90" x2="-55" y2="120" stroke="#38bdf8" stroke-width="3" stroke-dasharray="6 6"/>
+      <line x1="110" y1="-90" x2="55" y2="-120" stroke="#38bdf8" stroke-width="3" stroke-dasharray="6 6"/>
+
+      <!-- Tangent Control Knots -->
+      <rect x="-62" y="113" width="15" height="15" fill="#38bdf8" stroke="#ffffff" stroke-width="2" transform="rotate(45 -55 120)"/>
+      <rect x="48" y="-127" width="15" height="15" fill="#38bdf8" stroke="#ffffff" stroke-width="2" transform="rotate(45 55 -120)"/>
+
+      <!-- Dynamic S-Curve Trajectory (Centered through (0, 0)) -->
+      <path d="M -110 90 C -55 120, -35 25, 0 0 C 35 -25, 55 -120, 110 -90" fill="none" stroke="#38bdf8" stroke-width="13" stroke-linecap="round" stroke-opacity="0.35"/>
+      <path d="M -110 90 C -55 120, -35 25, 0 0 C 35 -25, 55 -120, 110 -90" fill="none" stroke="#38bdf8" stroke-width="9" stroke-linecap="round" stroke-opacity="0.75"/>
+      <path d="M -110 90 C -55 120, -35 25, 0 0 C 35 -25, 55 -120, 110 -90" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round"/>
+      
+      <!-- Starting & Ending Anchor Nodes -->
+      <circle cx="-110" cy="90" r="13" fill="#38bdf8" opacity="0.4"/>
+      <circle cx="-110" cy="90" r="9" fill="#ffffff" stroke="#0f172a" stroke-width="3"/>
+
+      <circle cx="110" cy="-90" r="13" fill="#38bdf8" opacity="0.4"/>
+      <circle cx="110" cy="-90" r="9" fill="#ffffff" stroke="#0f172a" stroke-width="3"/>
+
+      <!-- ================= BOLD HERO STAR IN MOTION (CENTERED AT 0, 0) ================= -->
+      <!-- Situated dead center in the canvas, breaking across layers -->
+      <g transform="translate(0, 0) scale(2)">
+        <!-- Vector Halo Rings -->
+        <circle cx="0" cy="0" r="34" fill="#38bdf8" fill-opacity="0.15"/>
+        <circle cx="0" cy="0" r="22" fill="#38bdf8" fill-opacity="0.25"/>
+
+        <!-- Outer Sky Blue Vector Star -->
+        <path d="M 0 -32 
+                 C 3.5 -10, 10 -3.5, 32 0 
+                 C 10 3.5, 3.5 10, 0 32 
+                 C -3.5 10, -10 3.5, -32 0 
+                 C -10 -3.5, -3.5 -10, 0 -32 Z"
+              fill="url(#starGrad)"/>
+
+        <!-- Diagonal Sparkle Cross -->
+        <path d="M 0 -19 
+                 C 2 -5.5, 5.5 -2, 19 0 
+                 C 5.5 2, 2 5.5, 0 19 
+                 C -2 5.5, -5.5 2, -19 0 
+                 C -5.5 -2, -2 -5.5, 0 -19 Z"
+              fill="#ffffff" fill-opacity="0.9" transform="rotate(45)"/>
+
+        <!-- Inner Pure White Core Star -->
+        <path d="M 0 -22 
+                 C 2.5 -7, 7 -2.5, 22 0 
+                 C 7 2.5, 2.5 7, 0 22 
+                 C -2.5 7, -7 2.5, -22 0 
+                 C -7 -2.5, -2.5 -7, 0 -22 Z"
+              fill="#ffffff"/>
+
+        <!-- Brilliant Center Core -->
+        <circle cx="0" cy="0" r="4" fill="#38bdf8"/>
+        <circle cx="0" cy="0" r="2" fill="#ffffff"/>
+      </g>
+    </g>
+  </g>
+</svg>

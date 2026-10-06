@@ -14,10 +14,11 @@
 
   <style>
     :root {
-      --accent-purple: #9146ff;
-      --accent-purple-hover: #a970ff;
-      --bg-dark: #0e0e11;
-      --text-light: #f4f4f6;
+      --accent-purple: #38bdf8;
+      --accent-purple-hover: #7dd3fc;
+      --accent-blue-dark: #0284c7;
+      --bg-dark: #020203;
+      --text-light: #f8fafc;
     }
 
     body {
@@ -39,13 +40,13 @@
       align-items: center;
       justify-content: center;
       min-height: 100vh;
-      background: radial-gradient(circle at center, #18181f 0%, #09090b 100%);
+      background: radial-gradient(circle at center, #0a0a0c 0%, #020203 100%);
     }
 
     .loader-card {
-      background: rgba(24, 24, 29, 0.85);
-      border: 1px solid rgba(145, 70, 255, 0.3);
-      box-shadow: 0 12px 40px -10px rgba(0, 0, 0, 0.8), 0 0 30px -10px rgba(145, 70, 255, 0.35);
+      background: rgba(20, 20, 22, 0.88);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      box-shadow: 0 12px 40px -10px rgba(0, 0, 0, 0.9), 0 0 30px -10px rgba(56, 189, 248, 0.3);
       border-radius: 20px;
       padding: 40px;
       max-width: 400px;
@@ -59,7 +60,7 @@
       height: 80px;
       border-radius: 18px;
       margin-bottom: 16px;
-      box-shadow: 0 8px 24px rgba(145, 70, 255, 0.4);
+      box-shadow: 0 8px 24px rgba(56, 189, 248, 0.35);
     }
 
     .app-title {
@@ -114,18 +115,18 @@
       display: flex;
       align-items: center;
       gap: 12px;
-      background: rgba(18, 18, 23, 0.88);
+      background: rgba(10, 10, 12, 0.92);
       backdrop-filter: blur(20px);
-      border: 1px solid rgba(145, 70, 255, 0.35);
+      border: 1px solid rgba(56, 189, 248, 0.35);
       border-radius: 9999px;
       padding: 8px 18px;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.7), 0 0 20px rgba(145, 70, 255, 0.25);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8), 0 0 20px rgba(56, 189, 248, 0.2);
       transition: all 0.3s ease;
     }
 
     #studio-toolbar:hover {
       border-color: var(--accent-purple);
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8), 0 0 28px rgba(145, 70, 255, 0.45);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.9), 0 0 28px rgba(56, 189, 248, 0.35);
     }
 
     .tool-btn {
@@ -146,19 +147,22 @@
     }
 
     .tool-btn:hover {
-      background: rgba(145, 70, 255, 0.25);
+      background: rgba(56, 189, 248, 0.2);
       border-color: var(--accent-purple);
       color: #fff;
       transform: translateY(-1px);
     }
 
     .tool-btn-primary {
-      background: linear-gradient(135deg, var(--accent-purple) 0%, #772ce8 100%);
+      background: linear-gradient(135deg, var(--accent-purple) 0%, var(--accent-blue-dark) 100%);
       border-color: transparent;
+      color: #020203;
+      font-weight: 700;
     }
 
     .tool-btn-primary:hover {
       background: linear-gradient(135deg, var(--accent-purple-hover) 0%, var(--accent-purple) 100%);
+      color: #020203;
     }
 
     .tool-sep {
@@ -182,12 +186,12 @@
       z-index: 15000;
       width: 700px;
       max-width: 95vw;
-      background: rgba(18, 18, 23, 0.98);
+      background: rgba(10, 10, 12, 0.98);
       backdrop-filter: blur(24px);
-      border: 1px solid rgba(145, 70, 255, 0.45);
+      border: 1px solid rgba(56, 189, 248, 0.35);
       border-radius: 20px;
       padding: 20px;
-      box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.95), 0 0 36px rgba(145, 70, 255, 0.35);
+      box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.95), 0 0 36px rgba(56, 189, 248, 0.25);
       opacity: 0;
       pointer-events: none;
       transition: opacity 0.2s ease, transform 0.2s ease;

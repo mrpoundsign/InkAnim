@@ -38,7 +38,7 @@ func ValidateTwitchEmote(frameCount int, totalDurationMs int, width, height int)
 		res.Errors = append(res.Errors, fmt.Sprintf("Frame count %d exceeds Twitch maximum of 60 frames", frameCount))
 		res.IsValid = false
 	} else if frameCount > 45 {
-		res.Warnings = append(res.Warnings, fmt.Sprintf("High frame count: %d frames - keep file size under 1MB", frameCount))
+		res.Warnings = append(res.Warnings, fmt.Sprintf("High frame count: %d frames (approaching 60 frame cap)", frameCount))
 	}
 
 	// 5. Total animation duration (recommended <= 3000 ms)

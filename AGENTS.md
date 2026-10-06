@@ -13,9 +13,10 @@
 ---
 
 ## 2. Project Overview & Mission
-**InkAnim** is an open-source, desktop and WebAssembly studio application written in Go that transforms layered or multi-page **Inkscape SVGs into optimized, production-ready animated GIFs**. It is especially tailored for Twitch streamers, emote creators, and web animators.
+**InkAnim** is an open-source desktop and WebAssembly studio application written in Go that transforms **Inkscape SVGs into optimized, production-ready animated GIFs** using declarative object motion syntax (IAMS) and classic layer cycling. It is especially tailored for Twitch streamers, emote creators, and web animators.
 
 - **Primary Repository**: `mrpoundsign/InkAnim`
+- **Visual Identity**: Obsidian Slate, Chrome White & Electric Sky Blue (`#38BDF8`) theme derived from the studio icon.
 - **Stack**: Go 1.27.0, [Fyne v2](https://fyne.io/) (v2.8.1 GUI toolkit with WebGL/WASM support), standard library imaging/gif with Floyd-Steinberg dithering and neural/median-cut color quantization.
 - **Targets**:
   - Native Desktop (Windows `inkanim.exe`, Linux, macOS `InkAnim.app`)
@@ -32,14 +33,14 @@ InkAnim/
 │   ├── inkanim/          # Primary GUI desktop & WASM entry point (main.go)
 │   └── inkanim-cli/      # Headless CLI for batch processing & automated export
 ├── pkg/
-│   └── inksvg/           # Decoupled, pure-Go Inkscape SVG preprocessor, parser & rasterizer
+│   └── inksvg/           # Decoupled, pure-Go Inkscape SVG preprocessor, IAMS parser & rasterizer
 │       ├── preprocess.go # XML stream preprocessor (paint-order, text-to-path, LPE, rect rx/ry)
-│       ├── parser.go     # SVG XML parser (inkscape:groupmode="layer", sodipodi, pages)
-│       ├── renderer.go   # Rasterization of SVG layers into RGBA frame images
+│       ├── parser.go     # SVG XML parser & IAMS motion directive evaluator
+│       ├── renderer.go   # Rasterization of SVG frames into RGBA images
 │       ├── text.go       # Embedded DejaVu Sans & TrueType glyph outline converter
-│       └── types.go      # Layer, Page, and Document models
+│       └── types.go      # Layer, Document, and MotionConfig models
 ├── internal/
-│   ├── app/              # Core application session, layer state, mode, orchestration
+│   ├── app/              # Core application session, layer state, boundary mode, orchestration
 │   │   ├── session.go    # Session state: Document, Layers, Mode, Duration, ExportOptions
 │   │   └── session_test.go
 │   ├── gif/              # GIF compilation, palette generation, twitch validation
@@ -48,13 +49,13 @@ InkAnim/
 │   │   └── twitch.go     # Twitch emote specifications & validation checks
 │   └── ui/               # Fyne GUI components
 │       ├── main_window.go    # Top header, window layout, drag-and-drop, file loading
-│       ├── left_frames.go    # Animation frames list, mode toggle (Layers/Pages), speed, pin BG
+│       ├── left_frames.go    # Animation frames list, crop boundary toggle (Page/Drawing), speed
 │       ├── center_preview.go # Animation playback engine, canvas preview, twitch scale preview
 │       ├── right_export.go   # Export configuration (Twitch presets, square sizing, palette)
-│       ├── theme.go          # Dark Twitch studio aesthetic styling
+│       ├── theme.go          # Obsidian & Electric Sky Blue studio theme
 │       └── ui_test.go        # Headless Fyne UI unit tests
-├── testdata/             # Sample multi-layer and multi-page Inkscape SVGs
-├── wasm/                 # Generated WebAssembly artifacts (index.html, inkanim.wasm, etc.)
+├── testdata/             # Sample IAMS motion and layered Inkscape SVGs
+├── web/                  # Landing page, interactive sample gallery, and docs
 └── .git/hooks/pre-push   # Pre-push hook running `go test ./...`
 ```
 
