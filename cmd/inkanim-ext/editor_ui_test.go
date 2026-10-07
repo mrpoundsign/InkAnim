@@ -42,6 +42,11 @@ func TestTreeActualRendering(t *testing.T) {
 			findTree(s.Leading)
 			findTree(s.Trailing)
 		}
+		if tabs, ok := co.(*container.AppTabs); ok {
+			for _, item := range tabs.Items {
+				findTree(item.Content)
+			}
+		}
 		if c, ok := co.(*fyne.Container); ok {
 			for _, child := range c.Objects {
 				findTree(child)

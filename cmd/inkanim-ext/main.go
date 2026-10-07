@@ -6,6 +6,7 @@ import (
 
 	"fyne.io/fyne/v2/app"
 
+	"inkanim/assets"
 	"inkanim/internal/ext/inkscapeargs"
 	"inkanim/internal/ui"
 )
@@ -55,6 +56,7 @@ func run() error {
 	}
 
 	a := app.NewWithID("com.mrpoundsign.inkanim.ext")
+	a.SetIcon(assets.AppIcon)
 	a.Settings().SetTheme(&ui.StudioTheme{})
 
 	ShowEditorWindow(a, editorState)

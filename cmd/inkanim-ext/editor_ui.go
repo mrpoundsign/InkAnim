@@ -16,6 +16,7 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
+	"inkanim/assets"
 	"inkanim/internal/app"
 	"inkanim/internal/ext/doctree"
 	"inkanim/internal/ext/params"
@@ -202,6 +203,7 @@ func NewEditorState(data []byte, inputPath string, selectedIDs []string) (*Edito
 // ShowEditorWindow displays the interactive Motion Editor window with live preview.
 func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 	w := a.NewWindow("InkAnim Motion Studio")
+	w.SetIcon(assets.AppIcon)
 	w.Resize(fyne.NewSize(1200, 720))
 
 	// Live Animation Preview Session
