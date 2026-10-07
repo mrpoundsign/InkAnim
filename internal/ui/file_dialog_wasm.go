@@ -230,6 +230,10 @@ func (p *RightExportPanel) PromptExport() {
 			body.Call("removeChild", a)
 			js.Global().Get("URL").Call("revokeObjectURL", url)
 
+			if p.onExportSuccess != nil {
+				p.onExportSuccess("emote.gif")
+			}
+
 			d := dialog.NewInformation("Export Succeeded",
 				fmt.Sprintf("Successfully exported animated GIF:\nemote.gif\n\nFile Size: %0.2f KB", float64(sizeBytes)/1024.0),
 				p.parentWindow)

@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0-beta] - 2026-10-07
+
+### Added
+- **Inkscape Motion Studio Extension (`inkanim-ext`)**:
+  - Native Inkscape extension launching an interactive desktop Motion Studio directly from Inkscape menus (`Extensions -> InkAnim -> Motion Editor`) ([#98](https://github.com/mrpoundsign/InkAnim/issues/98)).
+  - Full-height tabbed studio layout on the left featuring dedicated **Layers & Motion**, **Frames**, and **Export** tabs alongside uninterrupted live animation preview.
+  - Interactive SVG document tree inspecting layers, groups, paths, and shapes with real-time IAMS directive badges (`✦`) and instant node selection.
+  - Dedicated parameter inspector widgets for timing (start/end frame ranges, "All Frames" toggle), playback (easing curves, repeat, ping-pong, reverse), and type-specific motion parameters (Rot degrees/direction/pivot, Scale, Move orient/pivot, Fade, Color, Dist, Depth).
+  - Built-in Motion Preset Library offering one-click animation templates (Spin 360°, Gentle Bob, Pulse/Throb, Pop-In, Slide In/Out, Fade In/Out, Camera Push/Pull, Color Cycle).
+  - Spatial ping-pong for translation trajectories, automatic anchor detection for grouped paths (`d=""`), and tangent calculation fallback at spline endpoints.
+  - Integrated animated GIF export and frame duration overrides directly within Inkscape without external tools.
+- **Clamp-and-Hold Pose Preservation**: Objects automatically hold their final evaluated transform state after a motion sequence concludes instead of snapping back to their base document pose ([#98](https://github.com/mrpoundsign/InkAnim/issues/98)).
+
+### Changed
+- **IAMS Motion Syntax Modernization**:
+  - Standardized rotation directives on `deg` syntax, introducing automated migration on SVG load for legacy `angle` and `from/to` parameters ([#98](https://github.com/mrpoundsign/InkAnim/issues/98)).
+  - Added automated migration of legacy `Motion` syntax to `Move` ([#98](https://github.com/mrpoundsign/InkAnim/issues/98)).
+- **UI Typography & Playback Control Polish**:
+  - Proportional typography scaling across the Studio theme (75% text, headings, captions, and inline icons) for a compact desktop layout.
+  - Elevated button background contrast to Slate-800 (`#1E293B`) for crisp definition against Obsidian Slate (`#0A0A0C`).
+  - Added vector media icons and explicit labels across playback controls (`Step Back`, `Step Forward`, `Play`, `Pause`).
+
 ## [0.4.0] - 2026-10-06
 
 ### Added

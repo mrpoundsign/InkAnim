@@ -40,7 +40,7 @@ func run() error {
 	logDebug("Parsed request: Mode=%s, IDs=%v, InputPath=%s", req.Mode, req.IDs, req.InputPath)
 
 	if req.Mode != "editor" {
-		return fmt.Errorf("unsupported mode %q: only editor mode is supported in this spike", req.Mode)
+		return fmt.Errorf("unsupported mode %q: only editor mode is supported", req.Mode)
 	}
 
 	data, err := os.ReadFile(req.InputPath)
