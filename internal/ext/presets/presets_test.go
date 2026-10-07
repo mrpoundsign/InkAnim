@@ -45,7 +45,7 @@ func TestPresets_GenerateAnchorElement(t *testing.T) {
 	if !strings.Contains(dotElem, `cx="100.50"`) || !strings.Contains(dotElem, `cy="200.75"`) {
 		t.Errorf("expected coordinates (100.50, 200.75), got: %s", dotElem)
 	}
-	if !strings.Contains(dotElem, `inkscape:label="Spin: Rot {f: 1-20; angle: 360}"`) {
+	if !strings.Contains(dotElem, `inkscape:label="Spin: Rot {f: 1-20; deg: 360}"`) {
 		t.Errorf("expected preset label in anchor element, got: %s", dotElem)
 	}
 

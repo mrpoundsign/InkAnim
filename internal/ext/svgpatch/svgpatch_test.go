@@ -140,7 +140,7 @@ func TestInsertChild(t *testing.T) {
   <g id="self_closing" inkscape:label="Empty Group"/>
 </svg>`)
 
-	childDot := `<circle id="layer1_anchor" cx="5" cy="5" r="1" style="fill:none;stroke:none" inkscape:label="Spin: Rot {f: 1-20; angle: 360}"/>`
+	childDot := `<circle id="layer1_anchor" cx="5" cy="5" r="1" style="fill:none;stroke:none" inkscape:label="Spin: Rot {f: 1-20; deg: 360}"/>`
 
 	// Insert into regular group
 	patched, err := InsertChild(svg, "layer1", childDot)

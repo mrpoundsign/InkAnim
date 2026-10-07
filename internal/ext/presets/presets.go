@@ -21,7 +21,7 @@ func AllPresets() []Preset {
 			Name:        "Spin",
 			Description: "Continuous 360° rotation around center",
 			Type:        "Rot",
-			Directives:  "Rot {f: 1-20; angle: 360}",
+			Directives:  "Rot {f: 1-20; deg: 360}",
 			NeedsAnchor: true,
 			PathType:    "circle",
 		},
@@ -48,7 +48,7 @@ func AllPresets() []Preset {
 			Name:        "Shake",
 			Description: "Rapid subtle vibration and wobble",
 			Type:        "Rot",
-			Directives:  "Rot {f: 1-10; angle: 8; pingpong}",
+			Directives:  "Rot {f: 1-10; deg: 8; pingpong}",
 			NeedsAnchor: true,
 			PathType:    "circle",
 		},
@@ -99,14 +99,14 @@ func (p Preset) DirectivesForFrames(totalFrames int) string {
 	}
 	switch p.ID {
 	case "spin":
-		return fmt.Sprintf("Rot {f: 1-%d; angle: 360}", totalFrames)
+		return fmt.Sprintf("Rot {f: 1-%d; deg: 360}", totalFrames)
 	case "pulse":
 		return fmt.Sprintf("Scale {f: 1-%d; from: 1.0; to: 1.25; pingpong}", totalFrames)
 	case "float":
 		return fmt.Sprintf("Move {f: 1-%d; ease: in-out; pingpong}", totalFrames)
 	case "shake":
 		r := max(totalFrames/5, 2)
-		return fmt.Sprintf("Rot {f: 1-%d; angle: 8; pingpong; r: %d}", totalFrames, r)
+		return fmt.Sprintf("Rot {f: 1-%d; deg: 8; pingpong; r: %d}", totalFrames, r)
 	case "fade_in":
 		return fmt.Sprintf("Fade {f: 1-%d; from: 0; to: 1}", totalFrames)
 	case "fade_out":

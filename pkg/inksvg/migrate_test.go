@@ -41,6 +41,38 @@ func TestMigrateLabel(t *testing.T) {
 			input: "Motions",
 			want:  "Motions",
 		},
+		{
+			input: "Rot {f: 13-24; ease: in-out; from: 0; to: 180; pivot: center}",
+			want:  "Rot {f: 13-24; ease: in-out; deg: 180; pivot: center}",
+		},
+		{
+			input: "Rot {f: 25-36; from: 180; to: 180; pivot: center}",
+			want:  "Rot {f: 25-36; deg: 0; pivot: center}",
+		},
+		{
+			input: "Rot {f: 37-48; ease: in-out; from: 180; to: 0; pivot: center}",
+			want:  "Rot {f: 37-48; ease: in-out; deg: -180; pivot: center}",
+		},
+		{
+			input: "Rot {angle: 360}",
+			want:  "Rot {deg: 360}",
+		},
+		{
+			input: "Rot {f: 10-20; angle: 180}",
+			want:  "Rot {f: 10-20; deg: 180}",
+		},
+		{
+			input: "Color { f: 1-60; angle: -45; r: 4; target: stroke }",
+			want:  "Color { f: 1-60; deg: -45; r: 4; target: stroke }",
+		},
+		{
+			input: "Scale {f: 1-20; from: 1.0; to: 1.25; pingpong}",
+			want:  "Scale {f: 1-20; from: 1.0; to: 1.25; pingpong}",
+		},
+		{
+			input: "Fade {f: 1-20; from: 0; to: 1}",
+			want:  "Fade {f: 1-20; from: 0; to: 1}",
+		},
 	}
 
 	for _, tt := range tests {

@@ -19,7 +19,7 @@ func (m *StudioTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant)
 	case theme.ColorNameInputBackground:
 		return color.RGBA{R: 30, G: 41, B: 59, A: 255} // Elevated Slate-800 #1E293B
 	case theme.ColorNameButton:
-		return color.RGBA{R: 20, G: 20, B: 22, A: 255} // Dark Charcoal #141416
+		return color.RGBA{R: 30, G: 41, B: 59, A: 255} // Elevated Slate-800 #1E293B (visible against Obsidian background)
 	case theme.ColorNamePrimary:
 		return color.RGBA{R: 56, G: 189, B: 248, A: 255} // Electric Sky Blue #38BDF8
 	case theme.ColorNameHeaderBackground:
@@ -61,6 +61,16 @@ func (m *StudioTheme) Size(name fyne.ThemeSizeName) float32 {
 	switch name {
 	case theme.SizeNameSeparatorThickness:
 		return 3.0 // Bold, high-visibility 3px active tab indicator line
+	case theme.SizeNameText:
+		return theme.DefaultTheme().Size(name) * 0.75
+	case theme.SizeNameHeadingText:
+		return theme.DefaultTheme().Size(name) * 0.75
+	case theme.SizeNameSubHeadingText:
+		return theme.DefaultTheme().Size(name) * 0.75
+	case theme.SizeNameCaptionText:
+		return theme.DefaultTheme().Size(name) * 0.75
+	case theme.SizeNameInlineIcon:
+		return theme.DefaultTheme().Size(name) * 0.75
 	default:
 		return theme.DefaultTheme().Size(name)
 	}

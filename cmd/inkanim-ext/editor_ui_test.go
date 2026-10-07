@@ -151,7 +151,7 @@ func TestEditorState_ApplyPreset(t *testing.T) {
 	if !strings.Contains(svgStr, `<circle id="g_rocket_spin"`) {
 		t.Errorf("SVG does not contain anchor circle: %s", svgStr)
 	}
-	if !strings.Contains(svgStr, `inkscape:label="Spin: Rot {f: 1-20; angle: 360}"`) {
+	if !strings.Contains(svgStr, `inkscape:label="Spin: Rot {f: 1-20; deg: 360}"`) {
 		t.Errorf("SVG does not contain prefixed preset label: %s", svgStr)
 	}
 
@@ -241,5 +241,162 @@ func TestEditorState_ApplyPreset(t *testing.T) {
 	}
 }
 
+func TestBuildDirectiveWidgetCard(t *testing.T) {
+	_ = test.NewApp()
 
+	dir := &doctree.Directive{
+		Type:   "Rot",
+		Params: "f: 1-20; angle: 45; ease: in-out; pingpong",
+		Raw:    "Rot {f: 1-20; angle: 45; ease: in-out; pingpong}",
+	}
 
+	var modifiedCalled bool
+	onModified := func() {
+		modifiedCalled = true
+	}
+	var deleteCalled bool
+	onDelete := func() {
+		deleteCalled = true
+	}
+
+	cardObj := buildDirectiveWidgetCard(dir, 20, onModified, onDelete)
+	card, ok := cardObj.(*fyne.Container)
+	if !ok {
+		t.Fatalf("expected card to be *fyne.Container")
+	}
+
+	// Find the angle entry inside card
+	var angleEntry *widget.Entry
+	var allFramesCheck *widget.Check
+	var deleteBtn *widget.Button
+
+	var walk func(co fyne.CanvasObject)
+	walk = func(co fyne.CanvasObject) {
+		if co == nil {
+			return
+		}
+		if e, ok := co.(*widget.Entry); ok {
+			if e.Text == "45" {
+				angleEntry = e
+			}
+		}
+		if ch, ok := co.(*widget.Check); ok {
+			if ch.Text == "All Frames" {
+				allFramesCheck = ch
+			}
+		}
+		if btn, ok := co.(*widget.Button); ok {
+			if btn.Importance == widget.DangerImportance {
+				deleteBtn = btn
+			}
+		}
+		if c, ok := co.(*fyne.Container); ok {
+			for _, child := range c.Objects {
+				walk(child)
+			}
+		}
+		if b, ok := co.(*container.Scroll); ok {
+			walk(b.Content)
+		}
+	}
+	walk(card)
+
+	if angleEntry == nil {
+		t.Fatalf("angle entry not found")
+	}
+	if allFramesCheck == nil {
+		t.Fatalf("allFramesCheck not found")
+	}
+	if deleteBtn == nil {
+		t.Fatalf("deleteBtn not found")
+	}
+
+	// Test modifying degrees
+	angleEntry.SetText("90")
+	if !modifiedCalled {
+		t.Errorf("expected onModified to be called when angle changed")
+	}
+	if !strings.Contains(dir.Params, "deg: 90") {
+		t.Errorf("expected dir.Params to contain 'deg: 90', got %q", dir.Params)
+	}
+
+	// Test checking All Frames
+	modifiedCalled = false
+	allFramesCheck.SetChecked(true)
+	if !modifiedCalled {
+		t.Errorf("expected onModified to be called when All Frames toggled")
+	}
+	if !strings.Contains(dir.Params, "f: all") {
+		t.Errorf("expected dir.Params to contain 'f: all', got %q", dir.Params)
+	}
+
+	// Test delete button
+	deleteBtn.Tapped(&fyne.PointEvent{})
+	if !deleteCalled {
+		t.Errorf("expected onDelete to be called when delete button tapped")
+	}
+
+	// Test Depth: has frames, but no playback controls
+	depthDir := &doctree.Directive{
+		Type:   "Depth",
+		Params: "f: 1-10; order: 2",
+		Raw:    "Depth {f: 1-10; order: 2}",
+	}
+	depthCard := buildDirectiveWidgetCard(depthDir, 20, func() {}, func() {}).(*fyne.Container)
+	var depthHasFrames, depthHasEase bool
+	walk = func(co fyne.CanvasObject) {
+		if co == nil {
+			return
+		}
+		if ch, ok := co.(*widget.Check); ok && ch.Text == "All Frames" {
+			depthHasFrames = true
+		}
+		if ch, ok := co.(*widget.Check); ok && ch.Text == "Ping-Pong" {
+			depthHasEase = true
+		}
+		if c, ok := co.(*fyne.Container); ok {
+			for _, child := range c.Objects {
+				walk(child)
+			}
+		}
+	}
+	walk(depthCard)
+	if !depthHasFrames {
+		t.Errorf("expected Depth card to include frames row")
+	}
+	if depthHasEase {
+		t.Errorf("expected Depth card to NOT include playback/ease row")
+	}
+
+	// Test Dist: has neither frames nor playback controls
+	distDir := &doctree.Directive{
+		Type:   "Dist",
+		Params: "factor: 0.5",
+		Raw:    "Dist {factor: 0.5}",
+	}
+	distCard := buildDirectiveWidgetCard(distDir, 20, func() {}, func() {}).(*fyne.Container)
+	var distHasFrames, distHasEase bool
+	walk = func(co fyne.CanvasObject) {
+		if co == nil {
+			return
+		}
+		if ch, ok := co.(*widget.Check); ok && ch.Text == "All Frames" {
+			distHasFrames = true
+		}
+		if ch, ok := co.(*widget.Check); ok && ch.Text == "Ping-Pong" {
+			distHasEase = true
+		}
+		if c, ok := co.(*fyne.Container); ok {
+			for _, child := range c.Objects {
+				walk(child)
+			}
+		}
+	}
+	walk(distCard)
+	if distHasFrames {
+		t.Errorf("expected Dist card to NOT include frames row")
+	}
+	if distHasEase {
+		t.Errorf("expected Dist card to NOT include playback/ease row")
+	}
+}

@@ -12,6 +12,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	xdraw "golang.org/x/image/draw"
 
@@ -260,15 +261,15 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 	p.frameLabel = widget.NewLabelWithStyle("Frame: 0 / 0", fyne.TextAlignCenter, fyne.TextStyle{})
 	p.frameLabel.Truncation = fyne.TextTruncateEllipsis
 
-	p.playPauseBtn = widget.NewButton("Play", func() {
+	p.playPauseBtn = widget.NewButtonWithIcon("Play", theme.MediaPlayIcon(), func() {
 		p.TogglePlay()
 	})
 	p.playPauseBtn.Importance = widget.DangerImportance
 
-	prevBtn := widget.NewButton("◀ Step", func() {
+	prevBtn := widget.NewButtonWithIcon("Step Back", theme.MediaSkipPreviousIcon(), func() {
 		p.StepFrame(-1)
 	})
-	nextBtn := widget.NewButton("Step ▶", func() {
+	nextBtn := widget.NewButtonWithIcon("Step Forward", theme.MediaSkipNextIcon(), func() {
 		p.StepFrame(1)
 	})
 
@@ -600,6 +601,7 @@ func (p *CenterPreviewPanel) pauseLocked() {
 	if btn != nil {
 		fyne.Do(func() {
 			btn.SetText("Play")
+			btn.SetIcon(theme.MediaPlayIcon())
 			btn.Importance = widget.DangerImportance
 			btn.Refresh()
 		})
@@ -646,6 +648,7 @@ func (p *CenterPreviewPanel) playLocked() {
 	if btn != nil {
 		fyne.Do(func() {
 			btn.SetText("Pause")
+			btn.SetIcon(theme.MediaPauseIcon())
 			btn.Importance = widget.SuccessImportance
 			btn.Refresh()
 		})
