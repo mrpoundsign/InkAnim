@@ -146,7 +146,7 @@ function Install-ExtWin {
     Write-Host "Extracting extension package to $targetDir..." -ForegroundColor DarkGray
     Expand-Archive -Path $zipFile -DestinationPath $targetDir -Force
 
-    $inxPath = Join-Path $targetDir "spike_editor.inx"
+    $inxPath = Join-Path $targetDir "motion_editor.inx"
     $exePath = Join-Path $targetDir "bin\inkanim-ext.exe"
 
     if ((Test-Path $inxPath) -and (Test-Path $exePath)) {
@@ -158,7 +158,7 @@ function Install-ExtWin {
         Write-Host "`n==> Next steps:" -ForegroundColor Yellow
         Write-Host "    1. Restart Inkscape (if open)." -ForegroundColor Yellow
         Write-Host "    2. Select an object in Inkscape." -ForegroundColor Yellow
-        Write-Host "    3. Launch via: Extensions -> InkAnim -> Spike: Motion Editor`n" -ForegroundColor Yellow
+        Write-Host "    3. Launch via: Extensions -> InkAnim -> Motion Editor`n" -ForegroundColor Yellow
     } else {
         Write-Error "Extension installation verification failed: required files missing in $targetDir."
     }

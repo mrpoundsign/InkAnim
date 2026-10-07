@@ -101,6 +101,9 @@ func (p *RightExportPanel) PromptExport() {
 				d.SetOnClosed(resume)
 				d.Show()
 			} else {
+				if p.onExportSuccess != nil {
+					p.onExportSuccess(filename)
+				}
 				d := dialog.NewInformation("Export Succeeded",
 					fmt.Sprintf("Successfully exported single animated GIF:\n%s\n\nFile Size: %0.2f KB",
 						filepath.Base(filename), float64(sizeBytes)/1024.0),

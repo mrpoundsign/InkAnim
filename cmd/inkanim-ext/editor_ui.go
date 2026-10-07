@@ -11,6 +11,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -234,6 +235,11 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 				preview.Play()
 			}
 		}
+	})
+
+	hasExported := false
+	rightPanel.SetOnExportSuccess(func(outputPath string) {
+		hasExported = true
 	})
 
 	var previewTimer *time.Timer
@@ -621,6 +627,68 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 	mainSplit := container.NewHSplit(sidebarTabs, preview.Container())
 	mainSplit.SetOffset(0.55)
 
+	handleCloseRequest := func() {
+		if len(state.ModifiedIDs) == 0 {
+			cleanupPlayback()
+			state.Result = state.SVGData
+			state.Applied = false
+			w.Close()
+			a.Quit()
+			return
+		}
+
+		var message string
+		if hasExported {
+			message = "You have exported an animated GIF, but your motion changes have not been applied to your Inkscape document yet.\n\nWould you like to apply your changes to the document before closing?"
+		} else {
+			message = fmt.Sprintf("You have unapplied motion changes on %d element(s).\n\nWould you like to apply your changes to your Inkscape document before closing?", len(state.ModifiedIDs))
+		}
+
+		var d *dialog.CustomDialog
+
+		applyAndClose := widget.NewButtonWithIcon("Apply & Close", theme.ConfirmIcon(), func() {
+			d.Hide()
+			cleanupPlayback()
+			state.Result = state.ComputePatchedSVG()
+			state.Applied = true
+			w.Close()
+			a.Quit()
+		})
+		applyAndClose.Importance = widget.HighImportance
+
+		discardChanges := widget.NewButtonWithIcon("Discard Changes", theme.DeleteIcon(), func() {
+			d.Hide()
+			cleanupPlayback()
+			state.Result = state.SVGData
+			state.Applied = false
+			w.Close()
+			a.Quit()
+		})
+		discardChanges.Importance = widget.DangerImportance
+
+		keepEditing := widget.NewButton("Keep Editing", func() {
+			d.Hide()
+		})
+
+		dialogButtons := container.NewHBox(
+			layout.NewSpacer(),
+			keepEditing,
+			discardChanges,
+			applyAndClose,
+		)
+
+		dialogContent := container.NewVBox(
+			widget.NewLabel(message),
+			widget.NewSeparator(),
+			dialogButtons,
+		)
+
+		d = dialog.NewCustomWithoutButtons("Unapplied Motion Changes", dialogContent, w)
+		d.Show()
+	}
+
+	w.SetCloseIntercept(handleCloseRequest)
+
 	// Bottom action buttons
 	applyBtn := widget.NewButtonWithIcon("Apply Changes", theme.ConfirmIcon(), func() {
 		cleanupPlayback()
@@ -632,11 +700,7 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 	applyBtn.Importance = widget.HighImportance
 
 	cancelBtn := widget.NewButtonWithIcon("Cancel", theme.CancelIcon(), func() {
-		cleanupPlayback()
-		state.Result = state.SVGData
-		state.Applied = false
-		w.Close()
-		a.Quit()
+		handleCloseRequest()
 	})
 
 	bottomBar := container.NewHBox(

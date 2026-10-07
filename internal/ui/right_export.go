@@ -38,6 +38,7 @@ type RightExportPanel struct {
 
 	onOptionsChange func()
 	pausePlayback   func() func()
+	onExportSuccess func(outputPath string)
 }
 
 // NewRightExportPanel constructs the export settings panel.
@@ -235,6 +236,11 @@ func (p *RightExportPanel) Container() *container.Scroll {
 // Refresh re-validates export specifications and updates status.
 func (p *RightExportPanel) Refresh() {
 	p.validateTwitch()
+}
+
+// SetOnExportSuccess registers a callback invoked when an animated GIF is successfully exported.
+func (p *RightExportPanel) SetOnExportSuccess(fn func(outputPath string)) {
+	p.onExportSuccess = fn
 }
 
 func (p *RightExportPanel) syncOptions() {
