@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>v0.5.0-beta — Inkscape Motion Studio Extension | InkAnim</title>
+  <meta name="description" content="Try the v0.5.0-beta release of InkAnim featuring the native Inkscape Motion Studio desktop extension, visual parameter inspector, motion presets, and clamp-and-hold poses.">
+  <link rel="icon" type="image/png" href="../icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../style.css">
+  <style>
+    .beta-page-hero {
+      padding: 60px 0 40px;
+      text-align: center;
+      position: relative;
+    }
+    .beta-release-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px;
+      border-radius: 9999px;
+      background: rgba(56, 189, 248, 0.15);
+      border: 1px solid rgba(56, 189, 248, 0.4);
+      color: #38bdf8;
+      font-size: 0.85rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      margin-bottom: 20px;
+    }
+    .beta-features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 24px;
+      margin: 48px 0;
+    }
+    .beta-feature-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      padding: 32px 28px;
+      transition: all 0.3s ease;
+    }
+    .beta-feature-card:hover {
+      border-color: rgba(56, 189, 248, 0.4);
+      transform: translateY(-3px);
+      box-shadow: 0 12px 30px -10px rgba(56, 189, 248, 0.2);
+    }
+    .beta-feature-icon {
+      font-size: 2.2rem;
+      margin-bottom: 16px;
+    }
+    .beta-feature-card h3 {
+      font-size: 1.25rem;
+      color: #fff;
+      margin-bottom: 10px;
+    }
+    .beta-feature-card p {
+      color: var(--text-muted);
+      font-size: 0.92rem;
+      line-height: 1.6;
+      margin: 0;
+    }
+    .install-steps {
+      background: linear-gradient(135deg, rgba(30, 41, 59, 0.7), rgba(15, 23, 42, 0.9));
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      border-radius: var(--radius-md);
+      padding: 36px;
+      margin: 40px 0;
+    }
+    .install-step-list {
+      list-style: none;
+      padding: 0;
+      margin: 24px 0 0;
+      counter-reset: step-counter;
+    }
+    .install-step-item {
+      position: relative;
+      padding-left: 54px;
+      margin-bottom: 24px;
+    }
+    .install-step-item::before {
+      counter-increment: step-counter;
+      content: counter(step-counter);
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: rgba(56, 189, 248, 0.2);
+      border: 1px solid rgba(56, 189, 248, 0.4);
+      color: #38bdf8;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 1rem;
+    }
+    .install-step-item h4 {
+      font-size: 1.1rem;
+      color: #fff;
+      margin-bottom: 6px;
+    }
+    .install-step-item p {
+      color: var(--text-muted);
+      font-size: 0.92rem;
+      line-height: 1.6;
+      margin: 0;
+    }
+    .feedback-banner {
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.03);
+      border-radius: var(--radius-md);
+      padding: 28px 32px;
+      text-align: center;
+      margin-bottom: 60px;
+    }
+    .platform-support-badges {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 28px;
+    }
+    .platform-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      border-radius: 9999px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: #cbd5e1;
+      font-size: 0.85rem;
+      font-weight: 500;
+    }
+    .platform-downloads-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 12px;
+      margin: 12px 0 16px;
+    }
+    .platform-download-item {
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid rgba(56, 189, 248, 0.2);
+      border-radius: var(--radius-sm);
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .os-tag {
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: #38bdf8;
+    }
+    .platform-download-item code {
+      font-size: 0.78rem;
+      font-family: var(--font-mono);
+      color: #e2e8f0;
+      word-break: break-all;
+    }
+    .path-guide {
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: var(--radius-sm);
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .path-guide-row {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .path-os {
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: #94a3b8;
+    }
+    .path-code {
+      font-size: 0.82rem;
+      font-family: var(--font-mono);
+      color: #38bdf8;
+      background: rgba(56, 189, 248, 0.08);
+      padding: 4px 8px;
+      border-radius: 4px;
+      word-break: break-all;
+    }
+    .beta-hero-preview {
+      max-width: 980px;
+      margin: 40px auto 0;
+      position: relative;
+    }
+    .beta-preview-window {
+      background: #09090b;
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      box-shadow: 0 20px 50px -15px rgba(56, 189, 248, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.05);
+    }
+    .beta-window-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 16px;
+      background: rgba(15, 23, 42, 0.95);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .beta-window-dots {
+      display: flex;
+      gap: 6px;
+    }
+    .beta-window-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+    .dot-red { background: #ef4444; }
+    .dot-yellow { background: #f59e0b; }
+    .dot-green { background: #10b981; }
+    .beta-window-title {
+      font-size: 0.82rem;
+      font-family: var(--font-mono);
+      color: #94a3b8;
+    }
+    .beta-preview-img {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+    .beta-walkthrough-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 24px;
+      margin: 32px 0 60px;
+    }
+    .beta-walkthrough-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      transition: all 0.3s ease;
+      display: flex;
+      flex-direction: column;
+    }
+    .beta-walkthrough-card:hover {
+      border-color: rgba(56, 189, 248, 0.45);
+      transform: translateY(-4px);
+      box-shadow: 0 16px 36px -12px rgba(56, 189, 248, 0.25);
+    }
+    .beta-walkthrough-thumb {
+      background: #09090b;
+      border-bottom: 1px solid var(--border-color);
+      aspect-ratio: 16 / 11;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    .beta-walkthrough-thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transition: transform 0.4s ease;
+    }
+    .beta-walkthrough-card:hover .beta-walkthrough-thumb img {
+      transform: scale(1.03);
+    }
+    .beta-walkthrough-body {
+      padding: 24px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+    .beta-walkthrough-step {
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: #38bdf8;
+      margin-bottom: 6px;
+    }
+    .beta-walkthrough-body h3 {
+      font-size: 1.15rem;
+      color: #fff;
+      margin-bottom: 8px;
+    }
+    .beta-walkthrough-body p {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      line-height: 1.55;
+      margin: 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="bg-glow-1"></div>
+  <div class="bg-glow-2"></div>
+
+  <!-- Navigation Bar -->
+  <nav class="navbar">
+    <div class="container nav-container">
+      <a href="../" class="brand">
+        <img src="../icon.png" alt="InkAnim Logo" class="brand-icon">
+        <span class="brand-gradient">InkAnim</span>
+      </a>
+      <ul class="nav-links">
+        <li><a href="../" class="nav-link">Home</a></li>
+        <li><a href="../docs/" class="nav-link">Documentation</a></li>
+        <li><a href="#preview" class="nav-link">Screenshots</a></li>
+        <li><a href="#features" class="nav-link">What's New</a></li>
+        <li><a href="#install" class="nav-link">Installation</a></li>
+        <li><a href="../demo/" class="nav-link">Web Demo</a></li>
+      </ul>
+      <div class="nav-actions">
+        <a href="https://github.com/mrpoundsign/InkAnim" target="_blank" rel="noopener noreferrer" class="btn btn-secondary">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+          GitHub
+        </a>
+        <a href="https://github.com/mrpoundsign/InkAnim/releases/tag/v0.5.0-beta" target="_blank" rel="noopener noreferrer" class="btn btn-primary">
+          <span>⚡ Download v0.5.0-beta</span>
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Beta Hero -->
+  <header class="beta-page-hero">
+    <div class="container">
+      <div class="beta-release-pill">
+        🧪 Preview Release · Version 0.5.0-beta
+      </div>
+      <h1 class="hero-title" style="margin-bottom: 16px;">
+        Inkscape Motion Studio Extension
+      </h1>
+      <p class="hero-description" style="max-width: 680px; margin: 0 auto 32px;">
+        Animate vector objects, test easing curves, and export optimized Twitch GIFs directly inside Inkscape.
+      </p>
+      <div class="platform-support-badges">
+        <span class="platform-badge">🪟 Windows (x64 / ARM64)</span>
+        <span class="platform-badge">🍎 macOS / OS X (Apple Silicon & Intel)</span>
+        <span class="platform-badge">🐧 Linux (x86_64 / ARM64)</span>
+      </div>
+
+      <div class="hero-buttons" style="justify-content: center; margin-bottom: 24px;">
+        <a href="https://github.com/mrpoundsign/InkAnim/releases/tag/v0.5.0-beta" target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-lg">
+          <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          Download v0.5.0-beta on GitHub
+        </a>
+        <a href="https://github.com/mrpoundsign/InkAnim/blob/main/CHANGELOG.md#050-beta---2026-10-07" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-lg">
+          📖 Full Changelog
+        </a>
+      </div>
+
+      <!-- Hero Screenshot Preview Window -->
+      <div id="preview" class="beta-hero-preview">
+        <div class="beta-preview-window">
+          <div class="beta-window-bar">
+            <div class="beta-window-dots">
+              <span class="beta-window-dot dot-red"></span>
+              <span class="beta-window-dot dot-yellow"></span>
+              <span class="beta-window-dot dot-green"></span>
+            </div>
+            <div class="beta-window-title">Inkscape &mdash; Extensions &rarr; InkAnim &rarr; Motion Editor</div>
+            <div style="width: 42px;"></div>
+          </div>
+          <img src="images/ext_studio.png" alt="InkAnim Motion Studio Extension Window" class="beta-preview-img">
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Features Section -->
+  <main class="container" id="features">
+    <div class="section-header" style="text-align: center; margin-bottom: 24px;">
+      <div class="section-subtitle">What's in v0.5.0-beta</div>
+      <h2 class="section-title">Built for Emote Animators in Inkscape</h2>
+    </div>
+
+    <div class="beta-features-grid">
+      <div class="beta-feature-card">
+        <div class="beta-feature-icon">🧩</div>
+        <h3>Native Inkscape Extension</h3>
+        <p>Launch the studio directly from your canvas via <code>Extensions &rarr; InkAnim &rarr; Motion Editor</code>. Selected objects are automatically highlighted and ready to animate.</p>
+      </div>
+
+      <div class="beta-feature-card">
+        <div class="beta-feature-icon">📑</div>
+        <h3>Full-Height Tabbed Studio</h3>
+        <p>Three dedicated full-height workspaces: <strong>Layers &amp; Motion</strong> for inspecting objects and directives, <strong>Frames</strong> for timing and crop boundaries, and <strong>Export</strong> for GIF generation.</p>
+      </div>
+
+      <div class="beta-feature-card">
+        <div class="beta-feature-icon">🎛️</div>
+        <h3>Visual Parameter Inspector</h3>
+        <p>No manual syntax typing required. Tweak frame ranges, easing curves, repeats, ping-pong, rotation angles, pivot anchors, scale, fade, and color shifts with dedicated UI widgets.</p>
+      </div>
+
+      <div class="beta-feature-card">
+        <div class="beta-feature-icon">🪄</div>
+        <h3>Motion Preset Library</h3>
+        <p>Apply one-click motion animations including Spin 360°, Gentle Bob, Pulse/Throb, Pop-In, Slide In/Out, Fade In/Out, Camera Push/Pull, and Color Cycling.</p>
+      </div>
+
+      <div class="beta-feature-card">
+        <div class="beta-feature-icon">⚓</div>
+        <h3>Clamp-and-Hold Poses</h3>
+        <p>Objects automatically maintain their final evaluated transform state after a motion sequence concludes instead of snapping back to their base document pose.</p>
+      </div>
+
+      <div class="beta-feature-card">
+        <div class="beta-feature-icon">🛡️</div>
+        <h3>Unapplied Changes Safety Guard</h3>
+        <p>Context-aware confirmation dialog prevents accidental loss of motion directives if you close or cancel after exporting an animated GIF.</p>
+      </div>
+    </div>
+
+    <!-- Screenshot Walkthrough -->
+    <section class="beta-walkthrough-section" style="margin: 40px 0 60px;">
+      <div class="section-header" style="text-align: center; margin-bottom: 32px;">
+        <div class="section-subtitle">Visual Tour</div>
+        <h2 class="section-title">See the Extension in Action</h2>
+        <p style="color: var(--text-muted); font-size: 1.02rem; max-width: 620px; margin: 0 auto;">
+          Experience a streamlined vector animation workflow designed directly within Inkscape.
+        </p>
+      </div>
+
+      <div class="beta-walkthrough-grid">
+        <!-- 1. Menu -->
+        <div class="beta-walkthrough-card">
+          <div class="beta-walkthrough-thumb">
+            <img src="images/ext_menu.png" alt="Inkscape Extensions Menu" loading="lazy">
+          </div>
+          <div class="beta-walkthrough-body">
+            <span class="beta-walkthrough-step">Step 1 · Canvas Integration</span>
+            <h3>Launch from Inkscape Menu</h3>
+            <p>Access the editor directly via <code>Extensions &rarr; InkAnim &rarr; Motion Editor</code>. Selected canvas elements are automatically identified and focused.</p>
+          </div>
+        </div>
+
+        <!-- 2. Studio -->
+        <div class="beta-walkthrough-card">
+          <div class="beta-walkthrough-thumb">
+            <img src="images/ext_studio.png" alt="InkAnim Tabbed Studio" loading="lazy">
+          </div>
+          <div class="beta-walkthrough-body">
+            <span class="beta-walkthrough-step">Step 2 · Object Hierarchy</span>
+            <h3>Interactive Layers &amp; Motion</h3>
+            <p>Browse layers, paths, and groups with active motion badges (<code>[Move]</code>, <code>[Scale]</code>). Easily inspect directives and target shapes with zero guesswork.</p>
+          </div>
+        </div>
+
+        <!-- 3. Presets -->
+        <div class="beta-walkthrough-card">
+          <div class="beta-walkthrough-thumb">
+            <img src="images/ext_presets.png" alt="Motion Presets Dropdown" loading="lazy">
+          </div>
+          <div class="beta-walkthrough-body">
+            <span class="beta-walkthrough-step">Step 3 · Motion Controls</span>
+            <h3>Visual Presets &amp; Parameters</h3>
+            <p>Select from built-in presets including Spin, Pulse, Float, Shake, Fade, and Blink, and dial in easing curves, ping-pong, and repeats with UI widgets.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Installation Guide -->
+    <section id="install" class="install-steps">
+      <h3 style="color: #fff; font-size: 1.5rem; margin-bottom: 8px;">How to Install the Extension</h3>
+      <p style="color: var(--text-muted); font-size: 0.95rem;">Follow these quick steps to add the Motion Editor to your Inkscape installation on Windows, macOS, or Linux:</p>
+
+      <ul class="install-step-list">
+        <li class="install-step-item">
+          <h4>Download the Extension Package for Your OS</h4>
+          <p style="margin-bottom: 12px;">Grab the archive matching your platform from <a href="https://github.com/mrpoundsign/InkAnim/releases/tag/v0.5.0-beta" target="_blank" rel="noopener noreferrer" style="color: #38bdf8; font-weight: 600;">GitHub Releases</a>:</p>
+          <div class="platform-downloads-grid">
+            <div class="platform-download-item">
+              <span class="os-tag">🪟 Windows (x64)</span>
+              <code>InkAnim_v0.5.0-beta_inkscape-extension_windows_amd64.zip</code>
+            </div>
+            <div class="platform-download-item">
+              <span class="os-tag">🍎 macOS / OS X (Apple Silicon)</span>
+              <code>InkAnim_v0.5.0-beta_inkscape-extension_darwin_arm64.zip</code>
+            </div>
+            <div class="platform-download-item">
+              <span class="os-tag">🍎 macOS / OS X (Intel x86_64)</span>
+              <code>InkAnim_v0.5.0-beta_inkscape-extension_darwin_amd64.zip</code>
+            </div>
+            <div class="platform-download-item">
+              <span class="os-tag">🐧 Linux (x86_64)</span>
+              <code>InkAnim_v0.5.0-beta_inkscape-extension_linux_amd64.zip</code>
+            </div>
+          </div>
+        </li>
+        <li class="install-step-item">
+          <h4>Extract into Your Inkscape Extensions Directory</h4>
+          <p style="margin-bottom: 12px;">Extract the archive contents into an <code>inkanim/</code> subfolder inside your Inkscape user extensions directory:</p>
+          <div class="path-guide">
+            <div class="path-guide-row">
+              <span class="path-os">🪟 Windows:</span>
+              <code class="path-code">%APPDATA%\inkscape\extensions\inkanim\</code>
+            </div>
+            <div class="path-guide-row">
+              <span class="path-os">🍎 macOS:</span>
+              <code class="path-code">~/Library/Application Support/org.inkscape.Inkscape/config/inkscape/extensions/inkanim/</code>
+            </div>
+            <div class="path-guide-row">
+              <span class="path-os">🐧 Linux:</span>
+              <code class="path-code">~/.config/inkscape/extensions/inkanim/</code>
+            </div>
+          </div>
+          <p style="margin-top: 12px; font-size: 0.88rem; color: #94a3b8;">
+            💡 <em>On macOS and Linux, verify execution permission after extracting:</em> <code style="color: #38bdf8;">chmod +x inkanim-ext</code>
+          </p>
+        </li>
+        <li class="install-step-item">
+          <h4>Launch in Inkscape</h4>
+          <p>Restart Inkscape, open or draw your vector artwork, and launch via <code>Extensions &rarr; InkAnim &rarr; Motion Editor</code>.</p>
+        </li>
+      </ul>
+    </section>
+
+    <!-- Feedback Banner -->
+    <div class="feedback-banner">
+      <h4 style="color: #fff; font-size: 1.25rem; margin-bottom: 8px;">Help Us Shape the Final Release</h4>
+      <p style="color: var(--text-muted); font-size: 0.92rem; max-width: 600px; margin: 0 auto 16px;">
+        As a beta tester, your feedback is critical. If you discover an edge case or have suggestions for new presets or easing tools, let us know!
+      </p>
+      <a href="https://github.com/mrpoundsign/InkAnim/issues" target="_blank" rel="noopener noreferrer" class="btn btn-secondary">
+        💬 Open a GitHub Issue
+      </a>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container footer-content">
+      <div>
+        <strong>InkAnim</strong> — Open source under the MIT License.
+      </div>
+      <div class="footer-links">
+        <a href="../">Home</a>
+        <a href="../docs/">Documentation</a>
+        <a href="../demo/">Web Demo</a>
+        <a href="https://github.com/mrpoundsign/InkAnim" target="_blank" rel="noopener noreferrer">GitHub</a>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>
