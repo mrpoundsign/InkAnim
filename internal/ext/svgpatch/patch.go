@@ -170,3 +170,103 @@ func SetAttr(data []byte, elementID, attrSpace, attrLocal, value string) ([]byte
 
 	return data, fmt.Errorf("element %q not found", elementID)
 }
+
+// InsertChild inserts childXML into the parent element identified by parentID
+// immediately before the parent's closing tag without re-serializing untouched portions of the document.
+func InsertChild(data []byte, parentID string, childXML string) ([]byte, error) {
+	dec := xml.NewDecoder(bytes.NewReader(data))
+	var prevOffset int64
+	var targetDepth int
+	var insideTarget bool
+	var parentTag string
+
+	for {
+		tok, err := dec.Token()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return data, fmt.Errorf("xml decoding error: %w", err)
+		}
+
+		currOffset := dec.InputOffset()
+
+		switch elem := tok.(type) {
+		case xml.StartElement:
+			if !insideTarget {
+				for _, attr := range elem.Attr {
+					if attr.Name.Local == "id" && attr.Value == parentID {
+						insideTarget = true
+						targetDepth = 1
+						parentTag = elem.Name.Local
+
+						// Check if the element is self-closing (<tag ... />)
+						segment := data[prevOffset:currOffset]
+						relStart := bytes.IndexByte(segment, '<')
+						if relStart != -1 {
+							tagBytes := segment[relStart:]
+							if bytes.HasSuffix(bytes.TrimSpace(tagBytes), []byte("/>")) {
+								slashIdx := bytes.LastIndexByte(tagBytes, '/')
+								replaceStart := int(prevOffset) + relStart + slashIdx
+								replaceEnd := int(currOffset)
+								trimmedChild := strings.TrimSpace(childXML)
+								replacement := fmt.Sprintf(">\n    %s\n  </%s>", trimmedChild, parentTag)
+
+								res := make([]byte, 0, len(data)+len(replacement)-(replaceEnd-replaceStart))
+								res = append(res, data[:replaceStart]...)
+								res = append(res, []byte(replacement)...)
+								res = append(res, data[replaceEnd:]...)
+								return res, nil
+							}
+						}
+						break
+					}
+				}
+			} else {
+				targetDepth++
+			}
+
+		case xml.EndElement:
+			if insideTarget {
+				targetDepth--
+				if targetDepth == 0 {
+					// We reached the closing tag of parentID, e.g. </g>
+					segment := data[prevOffset:currOffset]
+					relClose := bytes.LastIndex(segment, []byte("</"))
+					if relClose == -1 {
+						return data, fmt.Errorf("failed to locate closing tag for parent %q", parentID)
+					}
+					closeTagStart := int(prevOffset) + relClose
+
+					// Detect existing indent of closing tag
+					lineStart := bytes.LastIndexByte(data[:closeTagStart], '\n')
+					indent := "  "
+					if lineStart != -1 {
+						indent = string(data[lineStart+1 : closeTagStart])
+					}
+
+					trimmedChild := strings.TrimSpace(childXML)
+					var toInsert string
+					// If preceding characters before closeTagStart are whitespace after a newline,
+					// replace or insert cleanly:
+					if lineStart != -1 && strings.TrimSpace(string(data[lineStart+1:closeTagStart])) == "" {
+						toInsert = fmt.Sprintf("  %s\n%s", trimmedChild, indent)
+					} else {
+						toInsert = fmt.Sprintf("\n  %s\n%s", trimmedChild, indent)
+					}
+
+					res := make([]byte, 0, len(data)+len(toInsert))
+					res = append(res, data[:closeTagStart]...)
+					res = append(res, []byte(toInsert)...)
+					res = append(res, data[closeTagStart:]...)
+					return res, nil
+				}
+			}
+		}
+
+		prevOffset = currOffset
+	}
+
+	return data, fmt.Errorf("parent element %q not found", parentID)
+}
+

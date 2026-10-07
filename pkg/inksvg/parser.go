@@ -871,6 +871,7 @@ func parseMotionConfigs(label string) []MotionConfig {
 				}
 			case "r", "repeat":
 				if vInt, err := strconv.Atoi(v); err == nil && vInt > 0 {
+					config.Repeat = vInt
 					config.ColorRepeat = vInt
 				}
 			case "rev", "reverse":

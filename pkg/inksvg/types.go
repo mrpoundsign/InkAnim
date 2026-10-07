@@ -118,7 +118,8 @@ type MotionConfig struct {
 	HasParallax     bool    // true if Dist directive parsed
 	IsColor         bool    // true if Color directive parsed
 	IsPingPong      bool    // true if pingpong: true
-	ColorRepeat     int     // repetitions across frame range (default 1)
+	Repeat          int     // repetitions across frame range (default 1)
+	ColorRepeat     int     // legacy alias for Repeat
 	HasColorAngle   bool    // true if angle specified for Color
 	ColorAngle      float64 // degrees for gradient sweep
 	ColorTarget     string  // "fill", "stroke", or "all" (default "fill")
@@ -148,6 +149,7 @@ func DefaultMotionConfig(configType string) MotionConfig {
 		ParallaxFactor: 1.0,
 		ColorTarget:    "fill",
 		ColorRepeat:    1,
+		Repeat:         1,
 	}
 	switch configType {
 	case "camera":

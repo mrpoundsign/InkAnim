@@ -27,6 +27,8 @@ type DocNode struct {
 	Directives  []Directive
 	LabelPrefix string // text before any motion directive (e.g. "Fade In: ")
 	LabelSuffix string // text after all motion directives (e.g. " · Preset")
+	ParentID    string
+	Parent      *DocNode
 	Children    []*DocNode
 }
 
@@ -210,6 +212,8 @@ func ParseTree(svgData []byte) ([]*DocNode, map[string]*DocNode, error) {
 			}
 
 			if parent != nil {
+				node.Parent = parent
+				node.ParentID = parent.ID
 				parent.Children = append(parent.Children, node)
 			} else {
 				roots = append(roots, node)

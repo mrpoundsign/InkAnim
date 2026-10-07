@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -14,8 +15,10 @@ import (
 
 	"inkanim/internal/app"
 	"inkanim/internal/ext/doctree"
+	"inkanim/internal/ext/presets"
 	"inkanim/internal/ext/svgpatch"
 	"inkanim/internal/ui"
+	"inkanim/pkg/inksvg"
 )
 
 var motionTypeDefaults = map[string]string{
@@ -70,6 +73,87 @@ func (s *EditorState) ComputePatchedSVG() []byte {
 	}
 	return patchedData
 }
+
+// ApplyPreset applies a motion preset to the active node. If the active node is a group,
+// or a child drawing shape without existing directives, an anchor element (dot or path)
+// centered on the target is automatically generated and inserted into the group.
+func (s *EditorState) ApplyPreset(p presets.Preset) (string, error) {
+	if s.ActiveNode == nil {
+		return "", errors.New("no active node selected")
+	}
+
+	targetNode := s.ActiveNode
+	isGroup := targetNode.IsGroup || targetNode.IsLayer
+
+	// If target is an ordinary non-group shape that doesn't have directives,
+	// anchor to its parent group if available to avoid culling the user's artwork.
+	if !isGroup && !targetNode.HasDirectives() && targetNode.ParentID != "" {
+		if parent := s.NodeMap[targetNode.ParentID]; parent != nil {
+			targetNode = parent
+			isGroup = true
+		}
+	}
+
+	if isGroup {
+		// Calculate center of target from SVG geometry and detect total frames
+		doc, err := inksvg.ParseSVG(s.ComputePatchedSVG())
+		var cx, cy float64
+		totalFrames := 20
+		if err == nil {
+			if len(doc.Layers) > 0 {
+				totalFrames = len(doc.Layers)
+			}
+			measureID := s.ActiveNode.ID
+			rect := doc.GetElementRect(measureID)
+			cx = rect.X + rect.Width/2.0
+			cy = rect.Y + rect.Height/2.0
+		}
+
+		// Generate unique anchor ID
+		baseID := fmt.Sprintf("%s_%s", targetNode.ID, p.ID)
+		anchorID := baseID
+		counter := 2
+		for s.NodeMap[anchorID] != nil {
+			anchorID = fmt.Sprintf("%s_%d", baseID, counter)
+			counter++
+		}
+
+		childXML := p.GenerateAnchorElement(anchorID, cx, cy, totalFrames)
+		patched, err := svgpatch.InsertChild(s.ComputePatchedSVG(), targetNode.ID, childXML)
+		if err != nil {
+			return "", fmt.Errorf("failed to insert anchor element: %w", err)
+		}
+
+		s.SVGData = patched
+		s.ModifiedIDs = make(map[string]bool)
+
+		// Refresh doctree
+		roots, nodeMap, err := doctree.ParseTree(s.SVGData)
+		if err != nil {
+			return "", fmt.Errorf("failed to re-parse tree: %w", err)
+		}
+		s.Roots = roots
+		s.NodeMap = nodeMap
+		if newAnchor := nodeMap[anchorID]; newAnchor != nil {
+			s.ActiveNode = newAnchor
+		}
+		return anchorID, nil
+	}
+
+	// Applying preset directly to an existing anchor or directive-carrying shape
+	totalFrames := 20
+	if doc, err := inksvg.ParseSVG(s.ComputePatchedSVG()); err == nil && len(doc.Layers) > 0 {
+		totalFrames = len(doc.Layers)
+	}
+	label := p.FormatLabelForFrames(totalFrames)
+	prefix, directives, suffix := doctree.ParseDirectives(label)
+	targetNode.LabelPrefix = prefix
+	targetNode.Directives = directives
+	targetNode.LabelSuffix = suffix
+	s.ModifiedIDs[targetNode.ID] = true
+	return targetNode.ID, nil
+}
+
 
 // NewEditorState initializes the editor model from SVG data and CLI parameters.
 func NewEditorState(data []byte, inputPath string, selectedIDs []string) (*EditorState, error) {
@@ -161,8 +245,10 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 	// Inspector container
 	inspectorCard := container.NewStack()
 
+	var tree *widget.Tree
 	var refreshTree func()
-	refreshInspector := func() {
+	var refreshInspector func()
+	refreshInspector = func() {
 		node := state.ActiveNode
 		if node == nil {
 			emptyNotice := container.NewCenter(widget.NewLabel("Select an object from the document tree to view and edit its motions."))
@@ -307,11 +393,72 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 
 		addBar := container.NewBorder(nil, nil, nil, addMotionBtn, addMotionSelect)
 
+		// Preset Selection
+		presetList := presets.AllPresets()
+		presetNames := make([]string, len(presetList))
+		for i, p := range presetList {
+			presetNames[i] = p.Name
+		}
+
+		presetSelect := widget.NewSelect(presetNames, nil)
+		presetSelect.PlaceHolder = "Select a motion preset..."
+		presetDescLabel := widget.NewLabelWithStyle("", fyne.TextAlignLeading, fyne.TextStyle{Italic: true})
+
+		applyPresetBtn := widget.NewButtonWithIcon("Apply Preset", theme.MediaPlayIcon(), func() {
+			sel := presetSelect.Selected
+			if sel == "" {
+				return
+			}
+			p, ok := presets.FindPreset(sel)
+			if !ok {
+				return
+			}
+			anchorID, err := state.ApplyPreset(p)
+			if err != nil {
+				return
+			}
+			updatePreview()
+			updateStatus()
+			refreshTree()
+			if tree != nil {
+				if node.IsGroup || node.IsLayer {
+					tree.OpenBranch(node.ID)
+				} else if node.ParentID != "" {
+					tree.OpenBranch(node.ParentID)
+				}
+				tree.Select(anchorID)
+			}
+			refreshInspector()
+			schedulePreviewUpdate()
+		})
+		applyPresetBtn.Importance = widget.HighImportance
+
+		presetSelect.OnChanged = func(sel string) {
+			if p, ok := presets.FindPreset(sel); ok {
+				info := p.Description
+				if node.IsGroup || node.IsLayer || (!node.HasDirectives() && node.ParentID != "") {
+					info += " (auto-adds anchor object to group)"
+				}
+				presetDescLabel.SetText(info)
+			} else {
+				presetDescLabel.SetText("")
+			}
+		}
+
+		presetBar := container.NewBorder(nil, nil, nil, applyPresetBtn, presetSelect)
+		presetBox := container.NewVBox(
+			presetBar,
+			presetDescLabel,
+		)
+
 		updatePreview()
 
 		content := container.NewVBox(
 			headerBox,
-			widget.NewLabelWithStyle("Label Prefix", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+			widget.NewLabelWithStyle("Motion Presets", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+			presetBox,
+			widget.NewSeparator(),
+			widget.NewLabelWithStyle("Object Name / Label Prefix", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 			prefixEntry,
 			widget.NewSeparator(),
 			widget.NewLabelWithStyle("Motion Directives", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
@@ -329,7 +476,7 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 	}
 
 	// Build Tree widget
-	tree := widget.NewTree(
+	tree = widget.NewTree(
 		func(uid string) []string {
 			if uid == "" {
 				uids := make([]string, len(state.Roots))

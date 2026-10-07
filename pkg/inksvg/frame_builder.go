@@ -400,6 +400,13 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 		if doc.CameraPath.Config.Reverse {
 			t = 1.0 - t
 		}
+		if doc.CameraPath.Config.IsPingPong {
+			if t <= 0.5 {
+				t *= 2.0
+			} else {
+				t = (1.0 - t) * 2.0
+			}
+		}
 		if x, y, err := EvaluatePathAt(doc.CameraPath.PathData, t); err == nil {
 			camX = x
 			camY = y
@@ -727,10 +734,34 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 						if duration > 0 {
 							progress = float64(frame1Idx-startF) / float64(duration)
 						}
-						easedProgress := ApplyEasing(progress, mp.Config.Ease)
+
+						r := mp.Config.Repeat
+						if r < 1 {
+							r = mp.Config.ColorRepeat
+						}
+						if r < 1 {
+							r = 1
+						}
+
+						cycleP := progress * float64(r)
+						var fraction float64
+						if progress >= 1.0 {
+							fraction = 1.0
+						} else {
+							fraction = cycleP - math.Floor(cycleP)
+						}
+
+						easedProgress := ApplyEasing(fraction, mp.Config.Ease)
 						t := easedProgress
 						if mp.Config.Reverse {
 							t = 1.0 - easedProgress
+						}
+						if mp.Config.IsPingPong {
+							if t <= 0.5 {
+								t *= 2.0
+							} else {
+								t = (1.0 - t) * 2.0
+							}
 						}
 
 						// Evaluate translation (only for Move, not Rot or Scale)
