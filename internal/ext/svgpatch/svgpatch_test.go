@@ -131,3 +131,62 @@ func TestSetAttr_CRLF(t *testing.T) {
 		t.Errorf("GetAttr on CRLF patched = (%q, %v)", val, ok)
 	}
 }
+
+func TestInsertChild(t *testing.T) {
+	svg := []byte(`<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape">
+  <g id="layer1" inkscape:label="Layer 1">
+    <rect id="r1" width="10" height="10"/>
+  </g>
+  <g id="self_closing" inkscape:label="Empty Group"/>
+</svg>`)
+
+	childDot := `<circle id="layer1_anchor" cx="5" cy="5" r="1" style="fill:none;stroke:none" inkscape:label="Spin: Rot {f: 1-20; angle: 360}"/>`
+
+	// Insert into regular group
+	patched, err := InsertChild(svg, "layer1", childDot)
+	if err != nil {
+		t.Fatalf("InsertChild on layer1 failed: %v", err)
+	}
+	if !strings.Contains(string(patched), "layer1_anchor") {
+		t.Fatalf("patched SVG does not contain inserted child ID: %s", string(patched))
+	}
+	// Parse with inksvg
+	doc, err := inksvg.ParseSVG(patched)
+	if err != nil {
+		t.Fatalf("failed to parse patched SVG: %v", err)
+	}
+	var foundAnchor bool
+	for _, mp := range doc.MotionPaths {
+		if mp.ID == "layer1_anchor" {
+			foundAnchor = true
+			if mp.GroupID != "layer1" {
+				t.Errorf("expected anchor GroupID 'layer1', got %q", mp.GroupID)
+			}
+			if mp.Config.Type != "rot" || mp.Config.RotationAngle != 360 {
+				t.Errorf("unexpected anchor config: %+v", mp.Config)
+			}
+		}
+	}
+	if !foundAnchor {
+		t.Errorf("inserted anchor motion path not found in parsed doc")
+	}
+
+	// Insert into self-closing group
+	patchedSelfClosing, err := InsertChild(svg, "self_closing", childDot)
+	if err != nil {
+		t.Fatalf("InsertChild on self_closing failed: %v", err)
+	}
+	if !strings.Contains(string(patchedSelfClosing), "layer1_anchor") {
+		t.Fatalf("patched SVG does not contain inserted child ID: %s", string(patchedSelfClosing))
+	}
+	if !strings.Contains(string(patchedSelfClosing), "</g>") {
+		t.Fatalf("patched SVG does not contain closing </g>: %s", string(patchedSelfClosing))
+	}
+
+	// Non-existent parent ID
+	_, err = InsertChild(svg, "non_existent_id", childDot)
+	if err == nil {
+		t.Errorf("expected error for non-existent parent, got nil")
+	}
+}
+

@@ -2783,6 +2783,116 @@ func TestBuildTimelineFrameSVG_ShowMotionLines(t *testing.T) {
 	}
 }
 
+func TestBuildTimelineFrameSVG_SpatialPingPong(t *testing.T) {
+	svgContent := `<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape">
+  <g id="boxGroup" inkscape:groupmode="layer" inkscape:label="Box">
+    <rect id="box" x="10" y="10" width="20" height="20" fill="red"/>
+    <circle id="rotMod" cx="20" cy="20" r="1" inkscape:label="Rot {f: 1-11; angle: 90; pingpong}"/>
+    <circle id="scaleMod" cx="20" cy="20" r="1" inkscape:label="Scale {f: 1-11; from: 1.0; to: 2.0; pingpong}"/>
+  </g>
+</svg>`
+
+	doc, err := ParseSVG([]byte(svgContent))
+	if err != nil {
+		t.Fatalf("ParseSVG failed: %v", err)
+	}
+
+	// Frame 0 (frame 1): progress = 0.0 -> no rotation, no scale
+	f0, err := BuildTimelineFrameSVG(doc, 0, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("f0 failed: %v", err)
+	}
+	f0Str := string(f0)
+	if strings.Contains(f0Str, "rotate(") {
+		t.Errorf("f0 expected no rotation at start, got: %s", f0Str)
+	}
+	if strings.Contains(f0Str, "scale(") {
+		t.Errorf("f0 expected no scale at start, got: %s", f0Str)
+	}
+
+	// Frame 5 (frame 6, exact midpoint of 11 frames): progress = 0.5 -> t = 1.0
+	// Rotation should be peak 90°, Scale should be peak 2.0
+	f5, err := BuildTimelineFrameSVG(doc, 5, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("f5 failed: %v", err)
+	}
+	f5Str := string(f5)
+	if !strings.Contains(f5Str, "rotate(90.000000") {
+		t.Errorf("f5 expected rotate(90), got: %s", f5Str)
+	}
+	if !strings.Contains(f5Str, "scale(2.000000, 2.000000)") {
+		t.Errorf("f5 expected scale(2.0, 2.0), got: %s", f5Str)
+	}
+
+	// Frame 10 (frame 11, end of pingpong): progress = 1.0 -> t = 0.0
+	// Returns to 0° rotation and 1.0 scale
+	f10, err := BuildTimelineFrameSVG(doc, 10, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("f10 failed: %v", err)
+	}
+	f10Str := string(f10)
+	if strings.Contains(f10Str, "rotate(") {
+		t.Errorf("f10 expected no rotation at end of pingpong, got: %s", f10Str)
+	}
+	if strings.Contains(f10Str, "scale(") {
+		t.Errorf("f10 expected no scale at end of pingpong, got: %s", f10Str)
+	}
+}
+
+func TestBuildTimelineFrameSVG_SpatialRepeatAndPingPong(t *testing.T) {
+	// 20 frames total (1 to 21), Rot with r: 2 and pingpong across all 20 frames
+	svgContent := `<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape">
+  <g id="boxGroup" inkscape:groupmode="layer" inkscape:label="Box">
+    <rect id="box" x="10" y="10" width="20" height="20" fill="red"/>
+    <circle id="shakeMod" cx="20" cy="20" r="1" inkscape:label="Rot {f: 1-21; angle: 8; pingpong; r: 2}"/>
+  </g>
+</svg>`
+
+	doc, err := ParseSVG([]byte(svgContent))
+	if err != nil {
+		t.Fatalf("ParseSVG failed: %v", err)
+	}
+
+	// Cycle 1: frames 0 to 10 (f1 to f11).
+	// Midpoint of cycle 1 is frame 5 (f6): peak rotation 8°
+	f5, err := BuildTimelineFrameSVG(doc, 5, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("f5 failed: %v", err)
+	}
+	if !strings.Contains(string(f5), "rotate(8.000000") {
+		t.Errorf("f5 expected rotate(8), got: %s", string(f5))
+	}
+
+	// End of cycle 1 / start of cycle 2 is frame 10 (f11): rotation returns to 0°
+	f10, err := BuildTimelineFrameSVG(doc, 10, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("f10 failed: %v", err)
+	}
+	if strings.Contains(string(f10), "rotate(") {
+		t.Errorf("f10 expected 0° rotation between repeat cycles, got: %s", string(f10))
+	}
+
+	// Midpoint of cycle 2 is frame 15 (f16): peak rotation 8°
+	f15, err := BuildTimelineFrameSVG(doc, 15, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("f15 failed: %v", err)
+	}
+	if !strings.Contains(string(f15), "rotate(8.000000") {
+		t.Errorf("f15 expected rotate(8), got: %s", string(f15))
+	}
+
+	// End of cycle 2 is frame 20 (f21): rotation returns to 0°
+	f20, err := BuildTimelineFrameSVG(doc, 20, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("f20 failed: %v", err)
+	}
+	if strings.Contains(string(f20), "rotate(") {
+		t.Errorf("f20 expected 0° rotation at end of cycle 2, got: %s", string(f20))
+	}
+}
+
+
+
 
 
 

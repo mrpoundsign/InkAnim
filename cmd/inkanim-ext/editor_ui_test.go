@@ -12,6 +12,8 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"inkanim/internal/ext/doctree"
+	"inkanim/internal/ext/presets"
+	"inkanim/pkg/inksvg"
 )
 
 func TestTreeActualRendering(t *testing.T) {
@@ -105,4 +107,139 @@ func TestEditorState_ComputePatchedSVG(t *testing.T) {
 		t.Errorf("patched SVG does not contain expected label, got:\n%s", patchedStr)
 	}
 }
+
+func TestEditorState_ApplyPreset(t *testing.T) {
+	splinePath := filepath.Join("..", "..", "testdata", "spline_test.svg")
+	data, err := os.ReadFile(splinePath)
+	if err != nil {
+		t.Fatalf("failed to read spline_test.svg: %v", err)
+	}
+
+	state, err := NewEditorState(data, splinePath, []string{"g_rocket"})
+	if err != nil {
+		t.Fatalf("NewEditorState failed: %v", err)
+	}
+
+	// 1. Apply Spin preset to group "g_rocket"
+	spinPreset, ok := presets.FindPreset("spin")
+	if !ok {
+		t.Fatalf("spin preset not found")
+	}
+
+	anchorID, err := state.ApplyPreset(spinPreset)
+	if err != nil {
+		t.Fatalf("ApplyPreset failed: %v", err)
+	}
+	if anchorID != "g_rocket_spin" {
+		t.Errorf("expected anchor ID 'g_rocket_spin', got %q", anchorID)
+	}
+
+	// Verify new anchor node in tree
+	anchorNode := state.NodeMap[anchorID]
+	if anchorNode == nil {
+		t.Fatalf("anchor node %q not found in state.NodeMap", anchorID)
+	}
+	if state.ActiveNode != anchorNode {
+		t.Errorf("expected state.ActiveNode to be new anchor node")
+	}
+	if anchorNode.LabelPrefix != "Spin:" {
+		t.Errorf("expected LabelPrefix 'Spin:', got %q", anchorNode.LabelPrefix)
+	}
+
+	// Verify anchor circle in SVGData
+	svgStr := string(state.SVGData)
+	if !strings.Contains(svgStr, `<circle id="g_rocket_spin"`) {
+		t.Errorf("SVG does not contain anchor circle: %s", svgStr)
+	}
+	if !strings.Contains(svgStr, `inkscape:label="Spin: Rot {f: 1-20; angle: 360}"`) {
+		t.Errorf("SVG does not contain prefixed preset label: %s", svgStr)
+	}
+
+	// Parse with inksvg to confirm motion path evaluation
+	doc, err := inksvg.ParseSVG(state.SVGData)
+	if err != nil {
+		t.Fatalf("ParseSVG on SVGData failed: %v", err)
+	}
+	var foundRot bool
+	for _, mp := range doc.MotionPaths {
+		if mp.ID == "g_rocket_spin" {
+			foundRot = true
+			if mp.GroupID != "g_rocket" {
+				t.Errorf("expected mp.GroupID == 'g_rocket', got %q", mp.GroupID)
+			}
+			if mp.Config.Type != "rot" || mp.Config.RotationAngle != 360 {
+				t.Errorf("unexpected mp.Config: %+v", mp.Config)
+			}
+		}
+	}
+	if !foundRot {
+		t.Errorf("anchor motion path g_rocket_spin not found in parsed doc")
+	}
+
+	// 2. Apply Float preset (creates vertical bob path)
+	state.ActiveNode = state.NodeMap["g_rocket"]
+	floatPreset, ok := presets.FindPreset("float")
+	if !ok {
+		t.Fatalf("float preset not found")
+	}
+	floatAnchorID, err := state.ApplyPreset(floatPreset)
+	if err != nil {
+		t.Fatalf("ApplyPreset float failed: %v", err)
+	}
+	if floatAnchorID != "g_rocket_float" {
+		t.Errorf("expected float anchor ID 'g_rocket_float', got %q", floatAnchorID)
+	}
+	if !strings.Contains(string(state.SVGData), `<path id="g_rocket_float"`) {
+		t.Errorf("SVG does not contain float motion path")
+	}
+
+	// 3. Apply preset when selecting a child artwork shape inside layer1 (e.g. "path6")
+	state.ActiveNode = state.NodeMap["path6"]
+	if state.ActiveNode == nil {
+		t.Fatalf("path6 not found in state.NodeMap")
+	}
+	pulsePreset, ok := presets.FindPreset("pulse")
+	if !ok {
+		t.Fatalf("pulse preset not found")
+	}
+	pulseAnchorID, err := state.ApplyPreset(pulsePreset)
+	if err != nil {
+		t.Fatalf("ApplyPreset pulse on shape failed: %v", err)
+	}
+	// It should anchor to layer1
+	if !strings.HasPrefix(pulseAnchorID, "layer1_") {
+		t.Errorf("expected anchor on parent layer1, got %q", pulseAnchorID)
+	}
+	// Artwork path6 must retain its own ID and not be overwritten
+	if state.NodeMap["path6"] == nil {
+		t.Errorf("path6 was removed or corrupted")
+	}
+
+	// 4. Apply Shake preset: must adapt to 20 frames with pingpong and repeat
+	state.ActiveNode = state.NodeMap["g_rocket"]
+	shakePreset, ok := presets.FindPreset("shake")
+	if !ok {
+		t.Fatalf("shake preset not found")
+	}
+	shakeAnchorID, err := state.ApplyPreset(shakePreset)
+	if err != nil {
+		t.Fatalf("ApplyPreset shake failed: %v", err)
+	}
+	shakeNode := state.NodeMap[shakeAnchorID]
+	if shakeNode == nil {
+		t.Fatalf("expected shake anchor node %q", shakeAnchorID)
+	}
+	shakeLabel := shakeNode.FormatLabel()
+	if !strings.Contains(shakeLabel, "f: 1-20") {
+		t.Errorf("expected shake to adapt to 20 frames, got %q", shakeLabel)
+	}
+	if !strings.Contains(shakeLabel, "pingpong") {
+		t.Errorf("expected shake to have pingpong, got %q", shakeLabel)
+	}
+	if !strings.Contains(shakeLabel, "r: 4") {
+		t.Errorf("expected shake to have r: 4 for 20 frames, got %q", shakeLabel)
+	}
+}
+
+
 
