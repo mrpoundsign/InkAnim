@@ -448,12 +448,99 @@ body {
   line-height: 1.55;
 }
 
+/* Beta Release Highlight Box */
+.beta-box {
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.75), rgba(15, 23, 42, 0.95));
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-radius: var(--radius-md);
+  padding: 28px 32px;
+  margin-bottom: 36px;
+  box-shadow: 0 10px 30px -10px rgba(56, 189, 248, 0.2);
+  transition: all 0.3s ease;
+}
+
+.beta-box:hover {
+  border-color: rgba(56, 189, 248, 0.6);
+  box-shadow: 0 12px 35px -8px rgba(56, 189, 248, 0.3);
+}
+
+.beta-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.beta-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 4px 12px;
+  border-radius: 9999px;
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+
+.beta-tag {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #94a3b8;
+}
+
+.beta-body {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 32px;
+  flex-wrap: wrap;
+}
+
+.beta-text {
+  flex: 1 1 500px;
+}
+
+.beta-text h3 {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 8px;
+}
+
+.beta-text p {
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.beta-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 /* Downloads Section */
 .download-cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 24px;
   margin-bottom: 40px;
+}
+
+.download-card-beta {
+  border-color: rgba(56, 189, 248, 0.35);
+}
+
+.download-card-beta:hover {
+  border-color: rgba(56, 189, 248, 0.65);
+  box-shadow: 0 10px 30px -10px rgba(56, 189, 248, 0.3);
 }
 
 .download-card {
