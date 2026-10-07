@@ -104,6 +104,13 @@ jobs:
           test -n "$WIN_EXE" || (echo "Windows exe not found" && exit 1)
           mv "$WIN_EXE" "gui-dist/InkAnim_${TAG}_windows_amd64.exe"
 
+          echo "Packaging Linux amd64 Inkscape extension..."
+          chmod +x ./build.sh
+          TAG="$TAG" OUTPUT_DIR="$PWD/gui-dist" ./build.sh ext-linux
+
+          echo "Cross-compiling Windows amd64 Inkscape extension..."
+          TAG="$TAG" OUTPUT_DIR="$PWD/gui-dist" ./build.sh ext-win
+
       - name: Upload GUI Artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -137,6 +144,10 @@ jobs:
 
           fyne package -os darwin -app-id com.inkanim.studio -name InkAnim -icon "$PWD/assets/icon.png" -src ./cmd/inkanim
           zip -r "gui-dist/InkAnim_${TAG}_darwin_all.zip" InkAnim.app
+
+          echo "Building and packaging macOS Inkscape extension..."
+          chmod +x ./build.sh
+          TAG="$TAG" OUTPUT_DIR="$PWD/gui-dist" ./build.sh ext-darwin
 
       - name: Upload GUI Artifacts
         uses: actions/upload-artifact@v4

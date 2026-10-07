@@ -6,18 +6,23 @@ set -euo pipefail
 #   ./build.sh          # Run tests and build CLI & GUI into build/
 #   ./build.sh cli      # Build Pure-Go CLI into build/
 #   ./build.sh gui      # Build Desktop GUI into build/
-#   ./build.sh gui-win  # Build Desktop GUI for Windows via MinGW into build/
-#   ./build.sh ext-win  # Build Inkscape extension for Windows into build/
+#   ./build.sh gui-win    # Build Desktop GUI for Windows via MinGW into build/
+#   ./build.sh ext-win    # Build Inkscape extension for Windows into build/
+#   ./build.sh ext-linux  # Build Inkscape extension for Linux into build/
+#   ./build.sh ext-darwin # Build Inkscape extension for macOS into build/
+#   ./build.sh ext-all    # Build all available Inkscape extensions
 #   ./build.sh wasm       # Package WebAssembly demo into build/gh-pages
 #   ./build.sh wasm-check # Verify WebAssembly compilation
 #   ./build.sh test       # Run unit tests
-#   ./build.sh cross    # Cross-compile CLI for multiple targets
-#   ./build.sh clean    # Clean build outputs
+#   ./build.sh cross      # Cross-compile CLI for multiple targets
+#   ./build.sh clean      # Clean build outputs
 
 TARGET="${1:-all}"
+TAG="${TAG:-snapshot}"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD_DIR="$ROOT_DIR/build"
-mkdir -p "$BUILD_DIR"
+OUTPUT_DIR="${OUTPUT_DIR:-$BUILD_DIR}"
+mkdir -p "$BUILD_DIR" "$OUTPUT_DIR"
 
 if ! command -v go &>/dev/null; then
     if [ -x "/usr/local/go/bin/go" ]; then
@@ -66,30 +71,154 @@ build_gui_win() {
     echo "✓ Successfully built $BUILD_DIR/inkanim.exe"
 }
 
+package_zip() {
+    local ext_dir="$1"
+    local zip_file="$2"
+    rm -f "$zip_file"
+    mkdir -p "$(dirname "$zip_file")"
+    if command -v zip &>/dev/null; then
+        (cd "$ext_dir" && zip -q -r "$zip_file" .)
+    else
+        python3 -c "
+import os, stat, zipfile
+ext_dir = os.path.abspath('$ext_dir')
+zip_file = os.path.abspath('$zip_file')
+with zipfile.ZipFile(zip_file, 'w', zipfile.ZIP_DEFLATED) as zf:
+    for root, dirs, files in os.walk(ext_dir):
+        for f in files:
+            full = os.path.join(root, f)
+            rel = os.path.relpath(full, ext_dir).replace('\\\\', '/')
+            st = os.stat(full)
+            zi = zipfile.ZipInfo(rel)
+            zi.external_attr = (st.st_mode & 0xFFFF) << 16
+            with open(full, 'rb') as fp:
+                zf.writestr(zi, fp.read())
+"
+    fi
+}
+
+package_tar_xz() {
+    local ext_dir="$1"
+    local tar_file="$2"
+    rm -f "$tar_file"
+    mkdir -p "$(dirname "$tar_file")"
+    tar -cJf "$tar_file" -C "$ext_dir" .
+}
+
+prepare_ext_bundle() {
+    local target_dir="$1"
+    local bin_cmd="$2"
+    mkdir -p "$target_dir"
+    cp "$ROOT_DIR"/extensions/inkscape/*.inx "$target_dir/"
+    cp "$ROOT_DIR"/assets/icon.png "$target_dir/"
+
+    for inx_file in "$target_dir"/*.inx; do
+        if [ "$(uname -s)" = "Darwin" ]; then
+            sed -i '' "s|<command location=\"inx\">.*</command>|<command location=\"inx\">$bin_cmd</command>|g" "$inx_file"
+        else
+            sed -i "s|<command location=\"inx\">.*</command>|<command location=\"inx\">$bin_cmd</command>|g" "$inx_file"
+        fi
+    done
+}
+
 build_ext_win() {
     echo "==> Building Inkscape extension for Windows (via MinGW)..."
     local ext_dir="$BUILD_DIR/inkscape-ext/windows-amd64"
     local bin_dir="$ext_dir/bin"
+    rm -rf "$ext_dir"
     mkdir -p "$bin_dir"
 
     CC=x86_64-w64-mingw32-gcc CGO_ENABLED=1 GOOS=windows GOARCH=amd64 \
         go build -trimpath -ldflags="-H windowsgui -s -w -extldflags=-mwindows" \
         -o "$bin_dir/inkanim-ext.exe" ./cmd/inkanim-ext
 
-    cp "$ROOT_DIR"/extensions/inkscape/*.inx "$ext_dir/"
-    cp "$ROOT_DIR"/assets/icon.png "$ext_dir/"
+    prepare_ext_bundle "$ext_dir" "bin/inkanim-ext.exe"
 
-    local zip_file="$BUILD_DIR/inkanim-inkscape-extension_dev_windows_amd64.zip"
-    rm -f "$zip_file"
-    if command -v zip &>/dev/null; then
-        (cd "$ext_dir" && zip -r "$zip_file" .)
-    else
-        python3 -c "import shutil; shutil.make_archive('$BUILD_DIR/inkanim-inkscape-extension_dev_windows_amd64', 'zip', '$ext_dir')"
-    fi
+    local zip_file="$OUTPUT_DIR/InkAnim_${TAG}_inkscape-extension_windows_amd64.zip"
+    package_zip "$ext_dir" "$zip_file"
 
-    echo "✓ Extension package created:"
+    echo "✓ Windows extension package created:"
     ls -lh "$bin_dir/inkanim-ext.exe"
     ls -lh "$zip_file"
+}
+
+build_ext_linux() {
+    echo "==> Building Inkscape extension for Linux..."
+    local ext_dir="$BUILD_DIR/inkscape-ext/linux-amd64"
+    local bin_dir="$ext_dir/bin"
+    rm -rf "$ext_dir"
+    mkdir -p "$bin_dir"
+
+    CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \
+        go build -trimpath -ldflags="-s -w" \
+        -o "$bin_dir/inkanim-ext" ./cmd/inkanim-ext
+
+    chmod +x "$bin_dir/inkanim-ext"
+    prepare_ext_bundle "$ext_dir" "bin/inkanim-ext"
+
+    local tar_file="$OUTPUT_DIR/InkAnim_${TAG}_inkscape-extension_linux_amd64.tar.xz"
+    package_tar_xz "$ext_dir" "$tar_file"
+
+    echo "✓ Linux extension package created:"
+    ls -lh "$bin_dir/inkanim-ext"
+    ls -lh "$tar_file"
+}
+
+build_ext_darwin() {
+    echo "==> Building Inkscape extension for macOS..."
+    if [ "$(uname -s)" != "Darwin" ]; then
+        echo "Error: ext-darwin requires building on macOS (Darwin) due to CGO/Fyne toolchain requirements."
+        exit 1
+    fi
+
+    local ext_dir="$BUILD_DIR/inkscape-ext/darwin-all"
+    local bin_dir="$ext_dir/bin"
+    local tmp_dir="$BUILD_DIR/ext-darwin-tmp"
+    rm -rf "$ext_dir" "$tmp_dir"
+    mkdir -p "$bin_dir" "$tmp_dir"
+
+    local built_universal=false
+    echo "  -> Compiling arm64..."
+    if CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o "$tmp_dir/inkanim-ext-arm64" ./cmd/inkanim-ext 2>/dev/null; then
+        echo "  -> Compiling amd64..."
+        if CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o "$tmp_dir/inkanim-ext-amd64" ./cmd/inkanim-ext 2>/dev/null; then
+            if command -v lipo &>/dev/null; then
+                echo "  -> Creating universal binary via lipo..."
+                lipo -create -output "$bin_dir/inkanim-ext" "$tmp_dir/inkanim-ext-arm64" "$tmp_dir/inkanim-ext-amd64"
+                built_universal=true
+            fi
+        fi
+    fi
+
+    if [ "$built_universal" != "true" ]; then
+        echo "  -> Fallback: Compiling for host macOS architecture..."
+        CGO_ENABLED=1 go build -trimpath -ldflags="-s -w" -o "$bin_dir/inkanim-ext" ./cmd/inkanim-ext
+    fi
+    rm -rf "$tmp_dir"
+
+    chmod +x "$bin_dir/inkanim-ext"
+    prepare_ext_bundle "$ext_dir" "bin/inkanim-ext"
+
+    local zip_file="$OUTPUT_DIR/InkAnim_${TAG}_inkscape-extension_darwin_all.zip"
+    package_zip "$ext_dir" "$zip_file"
+
+    echo "✓ macOS extension package created:"
+    ls -lh "$bin_dir/inkanim-ext"
+    ls -lh "$zip_file"
+}
+
+build_ext_all() {
+    echo "==> Building all available Inkscape extension packages..."
+    if [ "$(uname -s)" = "Darwin" ]; then
+        build_ext_darwin
+    else
+        build_ext_linux
+        if command -v x86_64-w64-mingw32-gcc &>/dev/null; then
+            build_ext_win
+        else
+            echo "Skipping ext-win: x86_64-w64-mingw32-gcc not found."
+        fi
+    fi
 }
 
 verify_wasm() {
@@ -202,6 +331,15 @@ case "$TARGET" in
     ext-win)
         build_ext_win
         ;;
+    ext-linux)
+        build_ext_linux
+        ;;
+    ext-darwin)
+        build_ext_darwin
+        ;;
+    ext-all)
+        build_ext_all
+        ;;
     wasm)
         build_wasm
         ;;
@@ -227,7 +365,7 @@ case "$TARGET" in
         clean_artifacts
         ;;
     *)
-        echo "Unknown target: $TARGET. Available: all, cli, gui, gui-win, ext-win, wasm, serve, test, test-update-golden, lint, cross, clean"
+        echo "Unknown target: $TARGET. Available: all, cli, gui, gui-win, ext-win, ext-linux, ext-darwin, ext-all, wasm, serve, test, test-update-golden, lint, cross, clean"
         exit 1
         ;;
 esac
