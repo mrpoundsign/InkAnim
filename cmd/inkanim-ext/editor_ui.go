@@ -3,11 +3,13 @@ package main
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
@@ -15,6 +17,7 @@ import (
 
 	"inkanim/internal/app"
 	"inkanim/internal/ext/doctree"
+	"inkanim/internal/ext/params"
 	"inkanim/internal/ext/presets"
 	"inkanim/internal/ext/svgpatch"
 	"inkanim/internal/ui"
@@ -23,12 +26,12 @@ import (
 
 var motionTypeDefaults = map[string]string{
 	"Move":  "f: 1-20; ease: in-out",
-	"Rot":   "f: 1-20; angle: 360",
+	"Rot":   "f: 1-20; deg: 360",
 	"Scale": "f: 1-20; from: 1.0; to: 0.5",
 	"Fade":  "f: 1-20; from: 0; to: 1",
 	"Show":  "f: 1-10",
 	"Hide":  "f: 1-10",
-	"Depth": "order: 1",
+	"Depth": "f: 1-20; order: 1",
 	"Dist":  "factor: 0.5",
 	"Color": "f: 1-20; from: #ffffff; to: #38bdf8",
 }
@@ -170,7 +173,7 @@ func NewEditorState(data []byte, inputPath string, selectedIDs []string) (*Edito
 		active = roots[0]
 	}
 
-	return &EditorState{
+	state := &EditorState{
 		Roots:       roots,
 		NodeMap:     nodeMap,
 		ActiveNode:  active,
@@ -179,7 +182,20 @@ func NewEditorState(data []byte, inputPath string, selectedIDs []string) (*Edito
 		InputPath:   inputPath,
 		SVGData:     data,
 		Result:      data,
-	}, nil
+	}
+
+	// Mark any nodes whose labels were migrated on load as modified
+	for _, node := range nodeMap {
+		if node.HasDirectives() {
+			orig := node.Label
+			migrated := node.FormatLabel()
+			if orig != migrated && orig != "" {
+				state.ModifiedIDs[node.ID] = true
+			}
+		}
+	}
+
+	return state, nil
 }
 
 // ShowEditorWindow displays the interactive Motion Editor window with live preview.
@@ -189,7 +205,7 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 
 	// Live Animation Preview Session
 	sess := app.NewSession()
-	_ = sess.LoadSVGData(state.SVGData, state.InputPath)
+	_ = sess.LoadSVGData(state.ComputePatchedSVG(), state.InputPath)
 	preview := ui.NewCenterPreviewPanel(sess)
 	preview.SetInspectorVisible(false)
 	if len(sess.RenderedFrames) > 1 {
@@ -310,32 +326,18 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 			if len(node.Directives) == 0 {
 				directivesList.Add(widget.NewLabel("No motion directives configured on this element."))
 			} else {
+				// Detect total doc frames
+				doc, err := inksvg.ParseSVG(state.ComputePatchedSVG())
+				totalDocFrames := 20
+				if err == nil && len(doc.Layers) > 0 {
+					totalDocFrames = len(doc.Layers)
+				}
+
 				for i := range node.Directives {
 					idx := i
 					dir := &node.Directives[idx]
 
-					typeSelect := widget.NewSelect(motionTypes, func(newType string) {
-						if newType != dir.Type {
-							dir.Type = newType
-							if def, ok := motionTypeDefaults[newType]; ok {
-								dir.Params = def
-							}
-							dir.Raw = fmt.Sprintf("%s {%s}", dir.Type, dir.Params)
-							state.ModifiedIDs[node.ID] = true
-							rebuildDirectivesList()
-							updatePreview()
-							updateStatus()
-							refreshTree()
-							schedulePreviewUpdate()
-						}
-					})
-					typeSelect.SetSelected(dir.Type)
-
-					paramsEntry := widget.NewEntry()
-					paramsEntry.SetText(dir.Params)
-					paramsEntry.OnChanged = func(val string) {
-						dir.Params = val
-						dir.Raw = fmt.Sprintf("%s {%s}", dir.Type, dir.Params)
+					onModified := func() {
 						state.ModifiedIDs[node.ID] = true
 						updatePreview()
 						updateStatus()
@@ -343,7 +345,7 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 						schedulePreviewUpdate()
 					}
 
-					deleteBtn := widget.NewButtonWithIcon("", theme.DeleteIcon(), func() {
+					onDelete := func() {
 						node.Directives = append(node.Directives[:idx], node.Directives[idx+1:]...)
 						state.ModifiedIDs[node.ID] = true
 						rebuildDirectivesList()
@@ -351,11 +353,10 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 						updateStatus()
 						refreshTree()
 						schedulePreviewUpdate()
-					})
-					deleteBtn.Importance = widget.DangerImportance
+					}
 
-					row := container.NewBorder(nil, nil, typeSelect, deleteBtn, paramsEntry)
-					directivesList.Add(row)
+					card := buildDirectiveWidgetCard(dir, totalDocFrames, onModified, onDelete)
+					directivesList.Add(card)
 				}
 			}
 			directivesList.Refresh()
@@ -503,19 +504,26 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 			return node != nil && len(node.Children) > 0
 		},
 		func(branch bool) fyne.CanvasObject {
+			icon := widget.NewIcon(theme.DocumentIcon())
+			iconWrap := container.NewGridWrap(fyne.NewSize(12, 12), icon)
+			txt := canvas.NewText("node template", theme.Color(theme.ColorNameForeground))
+			txt.TextSize = 7.0
 			return container.NewHBox(
-				widget.NewIcon(theme.DocumentIcon()),
-				widget.NewLabel("node template"),
+				iconWrap,
+				txt,
 			)
 		},
 		func(uid string, branch bool, obj fyne.CanvasObject) {
 			box := obj.(*fyne.Container)
-			icon := box.Objects[0].(*widget.Icon)
-			lbl := box.Objects[1].(*widget.Label)
+			iconWrap := box.Objects[0].(*fyne.Container)
+			icon := iconWrap.Objects[0].(*widget.Icon)
+			txt := box.Objects[1].(*canvas.Text)
+			txt.TextSize = 7.0
 
 			node := state.NodeMap[uid]
 			if node == nil {
-				lbl.SetText(uid)
+				txt.Text = uid
+				txt.Refresh()
 				return
 			}
 
@@ -545,12 +553,14 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 					dirTypes = append(dirTypes, d.Type)
 				}
 				displayText = fmt.Sprintf("✦ %s [%s]", displayText, strings.Join(dirTypes, ", "))
-				lbl.TextStyle = fyne.TextStyle{Bold: true}
+				txt.TextStyle = fyne.TextStyle{Bold: true}
 			} else {
-				lbl.TextStyle = fyne.TextStyle{}
+				txt.TextStyle = fyne.TextStyle{}
 			}
 
-			lbl.SetText(displayText)
+			txt.Text = displayText
+			txt.Color = theme.Color(theme.ColorNameForeground)
+			txt.Refresh()
 		},
 	)
 
@@ -618,3 +628,370 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 	w.Show()
 	return w
 }
+
+func buildDirectiveWidgetCard(
+	dir *doctree.Directive,
+	totalDocFrames int,
+	onModified func(),
+	onDelete func(),
+) fyne.CanvasObject {
+	m := params.Parse(dir.Type, dir.Params, totalDocFrames)
+
+	syncToDir := func() {
+		dir.Params = m.Format()
+		dir.Raw = fmt.Sprintf("%s {%s}", dir.Type, dir.Params)
+		onModified()
+	}
+
+	rawPreviewLabel := widget.NewLabelWithStyle(dir.Raw, fyne.TextAlignLeading, fyne.TextStyle{Monospace: true})
+	rawPreviewLabel.Truncation = fyne.TextTruncateClip
+
+	syncAndPreview := func() {
+		syncToDir()
+		rawPreviewLabel.SetText(dir.Raw)
+	}
+
+	// 1. Header: Directive Type Title & Delete Button
+	typeTitle := widget.NewLabelWithStyle(dir.Type, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+
+	delBtn := widget.NewButtonWithIcon("", theme.DeleteIcon(), onDelete)
+	delBtn.Importance = widget.DangerImportance
+
+	headerRow := container.NewBorder(nil, nil, nil, delBtn, typeTitle)
+
+	// 2. Timing Controls (Frames)
+	startEntry := widget.NewEntry()
+	startEntry.SetText(strconv.Itoa(m.StartFrame))
+
+	endEntry := widget.NewEntry()
+	endEntry.SetText(strconv.Itoa(m.EndFrame))
+
+	allFramesCheck := widget.NewCheck("All Frames", nil)
+	allFramesCheck.SetChecked(m.IsAll)
+
+	updateFrameEnables := func(isAll bool) {
+		if isAll {
+			startEntry.Disable()
+			endEntry.Disable()
+		} else {
+			startEntry.Enable()
+			endEntry.Enable()
+		}
+	}
+	updateFrameEnables(m.IsAll)
+
+	allFramesCheck.OnChanged = func(checked bool) {
+		m.IsAll = checked
+		updateFrameEnables(checked)
+		syncAndPreview()
+	}
+
+	startEntry.OnChanged = func(s string) {
+		if v, err := strconv.Atoi(s); err == nil && v > 0 {
+			m.StartFrame = v
+			syncAndPreview()
+		}
+	}
+	endEntry.OnChanged = func(s string) {
+		if v, err := strconv.Atoi(s); err == nil && v > 0 {
+			m.EndFrame = v
+			syncAndPreview()
+		}
+	}
+
+	framesRow := container.NewHBox(
+		widget.NewLabel("Frames:"),
+		container.NewGridWithColumns(2, startEntry, endEntry),
+		allFramesCheck,
+	)
+
+	// 3. Playback Controls (Easing, Repeat, Ping-Pong, Reverse)
+	easingOptions := []string{"linear", "in", "out", "in-out", "bounce"}
+	easeSelect := widget.NewSelect(easingOptions, func(sel string) {
+		m.Ease = sel
+		syncAndPreview()
+	})
+	if m.Ease == "" {
+		easeSelect.SetSelected("linear")
+	} else {
+		easeSelect.SetSelected(m.Ease)
+	}
+
+	repeatOptions := []string{"1x (Once)", "2x", "3x", "4x", "5x", "6x", "8x", "10x"}
+	repeatSelect := widget.NewSelect(repeatOptions, func(sel string) {
+		var r int
+		if _, err := fmt.Sscanf(sel, "%dx", &r); err == nil && r > 0 {
+			m.Repeat = r
+			syncAndPreview()
+		}
+	})
+	if m.Repeat > 1 {
+		repeatSelect.SetSelected(fmt.Sprintf("%dx", m.Repeat))
+	} else {
+		repeatSelect.SetSelected("1x (Once)")
+	}
+
+	pingpongCheck := widget.NewCheck("Ping-Pong", func(checked bool) {
+		m.PingPong = checked
+		syncAndPreview()
+	})
+	pingpongCheck.SetChecked(m.PingPong)
+
+	revCheck := widget.NewCheck("Reverse", func(checked bool) {
+		m.Reverse = checked
+		syncAndPreview()
+	})
+	revCheck.SetChecked(m.Reverse)
+
+	playbackRow := container.NewHBox(
+		widget.NewLabel("Ease:"),
+		easeSelect,
+		widget.NewLabel("Repeat:"),
+		repeatSelect,
+		pingpongCheck,
+		revCheck,
+	)
+
+	// 4. Type-Specific Parameter Widgets
+	typeProps := container.NewVBox()
+
+	switch m.Type {
+	case "Rot":
+		degEntry := widget.NewEntry()
+		degVal := m.Angle
+		if !m.HasAngle {
+			degVal = 360
+		}
+		degEntry.SetText(fmt.Sprintf("%g", degVal))
+		degEntry.OnChanged = func(s string) {
+			if v, err := strconv.ParseFloat(s, 64); err == nil {
+				m.Angle = v
+				m.HasAngle = true
+				syncAndPreview()
+			}
+		}
+
+		dirSelect := widget.NewSelect([]string{"Clockwise (cw)", "Counter-Clockwise (ccw)"}, func(sel string) {
+			if strings.Contains(sel, "ccw") {
+				m.RotDir = "ccw"
+			} else {
+				m.RotDir = "cw"
+			}
+			syncAndPreview()
+		})
+		if m.RotDir == "ccw" {
+			dirSelect.SetSelected("Counter-Clockwise (ccw)")
+		} else {
+			dirSelect.SetSelected("Clockwise (cw)")
+		}
+
+		pivotSelect := widget.NewSelect([]string{"center", "top", "bottom", "left", "right", "0", "90", "180", "270"}, func(sel string) {
+			m.Pivot = sel
+			syncAndPreview()
+		})
+		if m.Pivot != "" {
+			pivotSelect.SetSelected(m.Pivot)
+		} else {
+			pivotSelect.SetSelected("center")
+		}
+
+		rotRow := container.NewHBox(
+			widget.NewLabel("Degrees (°):"),
+			degEntry,
+			widget.NewLabel("Direction:"),
+			dirSelect,
+			widget.NewLabel("Pivot:"),
+			pivotSelect,
+		)
+		typeProps.Add(rotRow)
+
+	case "Scale":
+		fromEntry := widget.NewEntry()
+		fromEntry.SetText(fmt.Sprintf("%g", m.ScaleFrom))
+		fromEntry.OnChanged = func(s string) {
+			if v, err := strconv.ParseFloat(s, 64); err == nil {
+				m.ScaleFrom = v
+				m.HasScale = true
+				syncAndPreview()
+			}
+		}
+
+		toEntry := widget.NewEntry()
+		toEntry.SetText(fmt.Sprintf("%g", m.ScaleTo))
+		toEntry.OnChanged = func(s string) {
+			if v, err := strconv.ParseFloat(s, 64); err == nil {
+				m.ScaleTo = v
+				m.HasScale = true
+				syncAndPreview()
+			}
+		}
+
+		scaleRow := container.NewHBox(
+			widget.NewLabel("From Scale:"),
+			fromEntry,
+			widget.NewLabel("To Scale:"),
+			toEntry,
+		)
+		typeProps.Add(scaleRow)
+
+	case "Move":
+		orientCheck := widget.NewCheck("Orient along path", func(checked bool) {
+			m.Orient = checked
+			syncAndPreview()
+		})
+		orientCheck.SetChecked(m.Orient)
+
+		pivotSelect := widget.NewSelect([]string{"center", "top", "bottom", "left", "right"}, func(sel string) {
+			m.Pivot = sel
+			syncAndPreview()
+		})
+		if m.Pivot != "" {
+			pivotSelect.SetSelected(m.Pivot)
+		} else {
+			pivotSelect.SetSelected("center")
+		}
+
+		moveRow := container.NewHBox(
+			orientCheck,
+			widget.NewLabel("Pivot:"),
+			pivotSelect,
+		)
+		typeProps.Add(moveRow)
+
+	case "Fade":
+		fromEntry := widget.NewEntry()
+		fromEntry.SetText(fmt.Sprintf("%g", m.OpacityFrom))
+		fromEntry.OnChanged = func(s string) {
+			if v, err := strconv.ParseFloat(s, 64); err == nil {
+				m.OpacityFrom = v
+				m.HasOpacity = true
+				syncAndPreview()
+			}
+		}
+
+		toEntry := widget.NewEntry()
+		toEntry.SetText(fmt.Sprintf("%g", m.OpacityTo))
+		toEntry.OnChanged = func(s string) {
+			if v, err := strconv.ParseFloat(s, 64); err == nil {
+				m.OpacityTo = v
+				m.HasOpacity = true
+				syncAndPreview()
+			}
+		}
+
+		fadeRow := container.NewHBox(
+			widget.NewLabel("From Opacity (0-1):"),
+			fromEntry,
+			widget.NewLabel("To Opacity (0-1):"),
+			toEntry,
+		)
+		typeProps.Add(fadeRow)
+
+	case "Color":
+		targetSelect := widget.NewSelect([]string{"fill", "stroke", "all"}, func(sel string) {
+			m.ColorTarget = sel
+			syncAndPreview()
+		})
+		if m.ColorTarget != "" {
+			targetSelect.SetSelected(m.ColorTarget)
+		} else {
+			targetSelect.SetSelected("fill")
+		}
+
+		degEntry := widget.NewEntry()
+		degEntry.SetText(fmt.Sprintf("%g", m.ColorAngle))
+		degEntry.OnChanged = func(s string) {
+			if v, err := strconv.ParseFloat(s, 64); err == nil {
+				m.ColorAngle = v
+				m.HasColorAngle = true
+				syncAndPreview()
+			}
+		}
+
+		colorRow := container.NewHBox(
+			widget.NewLabel("Target:"),
+			targetSelect,
+			widget.NewLabel("Degrees (°):"),
+			degEntry,
+		)
+		typeProps.Add(colorRow)
+
+	case "Dist":
+		factorEntry := widget.NewEntry()
+		factorEntry.SetText(fmt.Sprintf("%g", m.ParallaxFactor))
+		factorEntry.OnChanged = func(s string) {
+			if v, err := strconv.ParseFloat(s, 64); err == nil {
+				m.ParallaxFactor = v
+				m.HasParallax = true
+				syncAndPreview()
+			}
+		}
+
+		fixedCheck := widget.NewCheck("Fixed Parallax (factor 0)", func(checked bool) {
+			if checked {
+				m.ParallaxFactor = 0.0
+				factorEntry.SetText("0")
+				factorEntry.Disable()
+			} else {
+				if m.ParallaxFactor == 0.0 {
+					m.ParallaxFactor = 1.0
+					factorEntry.SetText("1")
+				}
+				factorEntry.Enable()
+			}
+			m.HasParallax = true
+			syncAndPreview()
+		})
+		if m.ParallaxFactor == 0.0 {
+			fixedCheck.SetChecked(true)
+			factorEntry.Disable()
+		}
+
+		distRow := container.NewHBox(
+			widget.NewLabel("Parallax Factor:"),
+			factorEntry,
+			fixedCheck,
+		)
+		typeProps.Add(distRow)
+
+	case "Depth":
+		orderEntry := widget.NewEntry()
+		orderEntry.SetText(strconv.Itoa(m.DepthOffset))
+		orderEntry.OnChanged = func(s string) {
+			if v, err := strconv.Atoi(s); err == nil {
+				m.DepthOffset = v
+				syncAndPreview()
+			}
+		}
+
+		depthRow := container.NewHBox(
+			widget.NewLabel("Z-Order Offset:"),
+			orderEntry,
+		)
+		typeProps.Add(depthRow)
+	}
+
+	// Directive Card Container
+	cardItems := []fyne.CanvasObject{
+		headerRow,
+	}
+
+	// Frames row: on all types except static parallax "Dist"
+	if m.Type != "Dist" {
+		cardItems = append(cardItems, framesRow)
+	}
+
+	// Playback row (ease, repeat, ping-pong, reverse): only on continuous animations
+	isContinuous := m.Type == "Move" || m.Type == "Rot" || m.Type == "Scale" || m.Type == "Fade" || m.Type == "Color"
+	if isContinuous {
+		cardItems = append(cardItems, playbackRow)
+	}
+
+	if len(typeProps.Objects) > 0 {
+		cardItems = append(cardItems, typeProps)
+	}
+	cardItems = append(cardItems, rawPreviewLabel, widget.NewSeparator())
+
+	return container.NewVBox(cardItems...)
+}
+

@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+
+	"inkanim/pkg/inksvg"
 )
 
 // Directive represents a single IAMS motion directive parsed from an element's label.
@@ -70,6 +72,7 @@ var directiveScannerRe = regexp.MustCompile(`(?i)\b(move|motion|movement|rot|sca
 
 // ParseDirectives extracts all motion directives from an inkscape:label.
 func ParseDirectives(label string) (prefix string, directives []Directive, suffix string) {
+	label = inksvg.MigrateLabel(label)
 	matches := directiveScannerRe.FindAllStringSubmatchIndex(label, -1)
 	if len(matches) == 0 {
 		return strings.TrimSpace(label), nil, ""

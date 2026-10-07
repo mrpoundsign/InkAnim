@@ -76,7 +76,7 @@ func TestParseDirectives(t *testing.T) {
 	if directives[0].Type != "Fade" || directives[0].Params != "f: 1-10; from: 0; to: 1" {
 		t.Errorf("unexpected directive 0: %+v", directives[0])
 	}
-	if directives[1].Type != "Rot" || directives[1].Params != "f: 1-20; angle: 360" {
+	if directives[1].Type != "Rot" || directives[1].Params != "f: 1-20; deg: 360" {
 		t.Errorf("unexpected directive 1: %+v", directives[1])
 	}
 }

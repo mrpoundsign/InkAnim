@@ -629,17 +629,12 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 						totalDy = -camY * factor
 					}
 
-					var activePaths []MotionPath
 					var hasShowRules bool
 					var isShown bool
 					var hasHideRules bool
 					var isHidden bool
-					var hasSpatialOrFadeRules bool
 
 					for _, mp := range paths {
-						if mp.Config.Type == "move" || mp.Config.Type == "rot" || mp.Config.Type == "scale" || mp.Config.Type == "fade" {
-							hasSpatialOrFadeRules = true
-						}
 						startF := mp.Config.StartFrame
 						endF := mp.Config.EndFrame
 						if mp.Config.IsAll {
@@ -647,9 +642,6 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 							endF = maxF
 						}
 						inRange := frame1Idx >= startF && frame1Idx <= endF
-						if inRange {
-							activePaths = append(activePaths, mp)
-						}
 
 						switch mp.Config.VisibilityState {
 						case "show":
@@ -671,13 +663,6 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 						groupHidden = true
 					case isHidden:
 						groupHidden = true
-					case !hasShowRules && !hasHideRules:
-						// Group has no explicit Show/Hide rules:
-						// Hide if outside active range of defined spatial/fade motion paths.
-						// If group only has Depth/Dist rules or camera, it remains visible across all frames.
-						if hasSpatialOrFadeRules && len(activePaths) == 0 {
-							groupHidden = true
-						}
 					}
 
 					if groupHidden {
@@ -721,7 +706,21 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 					totalOpacity := 1.0
 					var hasActiveFade bool
 
-					for _, mp := range activePaths {
+					sortedPaths := make([]MotionPath, len(paths))
+					copy(sortedPaths, paths)
+					sort.SliceStable(sortedPaths, func(i, j int) bool {
+						sI := sortedPaths[i].Config.StartFrame
+						if sortedPaths[i].Config.IsAll {
+							sI = 1
+						}
+						sJ := sortedPaths[j].Config.StartFrame
+						if sortedPaths[j].Config.IsAll {
+							sJ = 1
+						}
+						return sI < sJ
+					})
+
+					for _, mp := range sortedPaths {
 						startF := mp.Config.StartFrame
 						endF := mp.Config.EndFrame
 						if mp.Config.IsAll {
@@ -729,10 +728,50 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 							endF = maxF
 						}
 
+						if frame1Idx < startF {
+							continue
+						}
+
+						if frame1Idx > endF {
+							superseded := false
+							for _, other := range sortedPaths {
+								if other.ID == mp.ID {
+									continue
+								}
+								if other.Config.Type != mp.Config.Type {
+									continue
+								}
+								oStartF := other.Config.StartFrame
+								if other.Config.IsAll {
+									oStartF = 1
+								}
+								if frame1Idx >= oStartF && oStartF > startF {
+									// An earlier rotation is only superseded if the later rotation
+									// explicitly specifies an absolute range (HasRotationRange).
+									// If the later rotation uses a relative angle, the earlier rotation
+									// provides the base orientation to rotate from.
+									if mp.Config.Type == "rot" && !other.Config.HasRotationRange {
+										continue
+									}
+									superseded = true
+									break
+								}
+							}
+							if superseded {
+								continue
+							}
+						}
+
 						duration := endF - startF
 						progress := 0.0
 						if duration > 0 {
-							progress = float64(frame1Idx-startF) / float64(duration)
+							if frame1Idx >= endF {
+								progress = 1.0
+							} else {
+								progress = float64(frame1Idx-startF) / float64(duration)
+							}
+						} else if frame1Idx >= endF {
+							progress = 1.0
 						}
 
 						r := mp.Config.Repeat
@@ -779,7 +818,7 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 							if mp.Config.RotationDir == "ccw" {
 								rot = -rot
 							}
-							totalRot += rot
+							totalRot = rot
 						} else if mp.Config.RotationAngle != 0 {
 							rot := mp.Config.RotationAngle * t
 							if mp.Config.RotationDir == "ccw" {
@@ -983,8 +1022,10 @@ func resolvePivot(doc *SVGDocument, groupID string, config MotionConfig, pathDat
 		groupRect := doc.GetElementRect(groupID)
 		return CalculateEdgePivot(groupRect, config.PivotEdgeAngle)
 	case "path-start":
-		if sx, sy, err := GetPathStartPoint(pathData); err == nil {
-			return sx, sy
+		if !config.OrientPath && config.Type != "move" {
+			if sx, sy, err := GetPathStartPoint(pathData); err == nil {
+				return sx, sy
+			}
 		}
 		groupRect := doc.GetElementRect(groupID)
 		return groupRect.X + groupRect.Width/2.0, groupRect.Y + groupRect.Height/2.0

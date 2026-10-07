@@ -77,6 +77,15 @@ func (s *CubicBezierSegment) TangentAt(u float64) (float64, float64) {
 	dx := 3.0*inv*inv*(s.cx1-s.sx) + 6.0*inv*u*(s.cx2-s.cx1) + 3.0*u*u*(s.ex-s.cx2)
 	dy := 3.0*inv*inv*(s.cy1-s.sy) + 6.0*inv*u*(s.cy2-s.cy1) + 3.0*u*u*(s.ey-s.cy2)
 	if dx == 0 && dy == 0 {
+		if u >= 0.5 {
+			if s.ex != s.cx1 || s.ey != s.cy1 {
+				return s.ex - s.cx1, s.ey - s.cy1
+			}
+		} else {
+			if s.cx2 != s.sx || s.cy2 != s.sy {
+				return s.cx2 - s.sx, s.cy2 - s.sy
+			}
+		}
 		return s.ex - s.sx, s.ey - s.sy
 	}
 	return dx, dy

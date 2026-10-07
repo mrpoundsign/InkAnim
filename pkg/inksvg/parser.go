@@ -844,6 +844,10 @@ func parseMotionConfigs(label string) []MotionConfig {
 				config.IsPingPong = true
 				continue
 			}
+			if part == "orient" {
+				config.OrientPath = true
+				continue
+			}
 			if part == "fixed" {
 				config.ParallaxFactor = 0.0
 				config.HasParallax = true
@@ -1004,8 +1008,8 @@ func parseMotionConfigs(label string) []MotionConfig {
 				if vFloat, err := strconv.ParseFloat(v, 64); err == nil {
 					config.ScaleToY = vFloat
 				}
-			case "angle":
-				if deg, err := strconv.ParseFloat(v, 64); err == nil {
+			case "angle", "deg":
+				if deg, err := strconv.ParseFloat(strings.TrimSuffix(v, "deg"), 64); err == nil {
 					if configType == "color" {
 						config.ColorAngle = deg
 						config.HasColorAngle = true
@@ -1019,16 +1023,31 @@ func parseMotionConfigs(label string) []MotionConfig {
 				config.OrientPath = (v == "true" || v == "1" || v == "yes")
 			case "pivot":
 				vLower := strings.ToLower(v)
-				if vLower == "center" || vLower == "" {
+				switch vLower {
+				case "center", "":
 					config.PivotType = "center"
-				} else if vLower == "path-start" {
-					config.PivotType = "path-start"
-				} else if strings.HasPrefix(v, "#") {
-					config.PivotType = "node"
-					config.PivotNodeID = strings.TrimPrefix(v, "#")
-				} else if angle, err := strconv.ParseFloat(v, 64); err == nil {
+				case "top":
 					config.PivotType = "edge"
-					config.PivotEdgeAngle = angle
+					config.PivotEdgeAngle = 0
+				case "right":
+					config.PivotType = "edge"
+					config.PivotEdgeAngle = 90
+				case "bottom":
+					config.PivotType = "edge"
+					config.PivotEdgeAngle = 180
+				case "left":
+					config.PivotType = "edge"
+					config.PivotEdgeAngle = 270
+				case "path-start":
+					config.PivotType = "path-start"
+				default:
+					if strings.HasPrefix(v, "#") {
+						config.PivotType = "node"
+						config.PivotNodeID = strings.TrimPrefix(v, "#")
+					} else if angle, err := strconv.ParseFloat(v, 64); err == nil {
+						config.PivotType = "edge"
+						config.PivotEdgeAngle = angle
+					}
 				}
 			case "f":
 				foundF = true

@@ -113,6 +113,17 @@ func TestParseMotionConfig_MoveAndRot(t *testing.T) {
 			wantPivot: "center",
 		},
 		{
+			label:     "Move {f:1-15 ease:in-out orient}",
+			wantOK:    true,
+			wantType:  "move",
+			wantStart: 1,
+			wantEnd:   15,
+			wantEase:  "in-out",
+			wantOrient: true,
+			wantDir:   "cw",
+			wantPivot: "center",
+		},
+		{
 			label:     "Rot {f:1-60 angle:360 dir:ccw pivot:center}",
 			wantOK:    true,
 			wantType:  "rot",
@@ -155,6 +166,46 @@ func TestParseMotionConfig_MoveAndRot(t *testing.T) {
 			wantPivot: "path-start",
 		},
 		{
+			label:     "Rot {pivot:top}",
+			wantOK:    true,
+			wantType:  "rot",
+			wantAll:   true,
+			wantEase:  "linear",
+			wantDir:   "cw",
+			wantPivot: "edge",
+			wantEdge:  0,
+		},
+		{
+			label:     "Rot {pivot:right}",
+			wantOK:    true,
+			wantType:  "rot",
+			wantAll:   true,
+			wantEase:  "linear",
+			wantDir:   "cw",
+			wantPivot: "edge",
+			wantEdge:  90,
+		},
+		{
+			label:     "Rot {pivot:bottom}",
+			wantOK:    true,
+			wantType:  "rot",
+			wantAll:   true,
+			wantEase:  "linear",
+			wantDir:   "cw",
+			wantPivot: "edge",
+			wantEdge:  180,
+		},
+		{
+			label:     "Rot {pivot:left}",
+			wantOK:    true,
+			wantType:  "rot",
+			wantAll:   true,
+			wantEase:  "linear",
+			wantDir:   "cw",
+			wantPivot: "edge",
+			wantEdge:  270,
+		},
+		{
 			label:        "Rot {f:13-24 ease:in-out from:0 to:180 pivot:center}",
 			wantOK:       true,
 			wantType:     "rot",
@@ -163,9 +214,7 @@ func TestParseMotionConfig_MoveAndRot(t *testing.T) {
 			wantEase:     "in-out",
 			wantDir:      "cw",
 			wantPivot:    "center",
-			wantRotFrom:  0,
-			wantRotTo:    180,
-			wantRotRange: true,
+			wantAngle:    180,
 		},
 		{
 			label:        "Rot {f:25-36 from:180 to:180 pivot:center}",
@@ -176,9 +225,7 @@ func TestParseMotionConfig_MoveAndRot(t *testing.T) {
 			wantEase:     "linear",
 			wantDir:      "cw",
 			wantPivot:    "center",
-			wantRotFrom:  180,
-			wantRotTo:    180,
-			wantRotRange: true,
+			wantAngle:    0,
 		},
 		{
 			label:        "Rot {f:37-48 ease:in-out from:180 to:0 pivot:center}",
@@ -189,9 +236,7 @@ func TestParseMotionConfig_MoveAndRot(t *testing.T) {
 			wantEase:     "in-out",
 			wantDir:      "cw",
 			wantPivot:    "center",
-			wantRotFrom:  180,
-			wantRotTo:    0,
-			wantRotRange: true,
+			wantAngle:    -180,
 		},
 		{
 			label:          "Scale {f:1-30 scale:1.5}",
@@ -495,14 +540,89 @@ func TestBuildTimelineFrameSVG_OrientPath(t *testing.T) {
 		t.Errorf("f0 expected no rotation at start of path, got:\n%s", string(f0))
 	}
 
-	// Frame 2 (frame 3): endpoint tangent should be rotated
+	// Frame 2 (frame 3): endpoint tangent should be rotated around element center (20, 20)
 	f2, err := BuildTimelineFrameSVG(doc, 2, doc.GetDocumentRect())
 	if err != nil {
 		t.Fatalf("f2 failed: %v", err)
 	}
 	f2Str := string(f2)
-	if !strings.Contains(f2Str, "rotate(") {
-		t.Errorf("f2 expected rotate transform for orient:true, got:\n%s", f2Str)
+	if !strings.Contains(f2Str, "rotate(90.000000, 20.000000, 20.000000)") {
+		t.Errorf("f2 expected rotate around center (20, 20), got:\n%s", f2Str)
+	}
+
+	// Verify that even if pivot: path-start is specified, orient: true safely anchors to element center
+	svgPathStart := `<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape">
+  <g id="arrowGroup" inkscape:groupmode="layer" inkscape:label="Arrow">
+    <rect id="arrow" x="10" y="10" width="20" height="20" fill="blue"/>
+    <path id="curvePath" inkscape:label="Move {f:1-3 orient:true pivot:path-start}" d="M 0,0 C 50,0 50,50 50,50"/>
+  </g>
+</svg>`
+	docPS, err := ParseSVG([]byte(svgPathStart))
+	if err != nil {
+		t.Fatalf("ParseSVG path-start failed: %v", err)
+	}
+	f2PS, err := BuildTimelineFrameSVG(docPS, 2, docPS.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("f2PS failed: %v", err)
+	}
+	if !strings.Contains(string(f2PS), "rotate(90.000000, 20.000000, 20.000000)") {
+		t.Errorf("f2PS expected rotate around element center (20, 20) when orienting along path, got:\n%s", string(f2PS))
+	}
+}
+
+func TestBuildTimelineFrameSVG_RotRange_NotActiveBeforeStartFrame(t *testing.T) {
+	// A motion directive running from frame 37 to 48 (migrated from: 180 to: 0 -> deg: -180)
+	// preceded by frame 13 to 24 (from: 0 to: 180 -> deg: 180).
+	// Frame 1 MUST NOT apply rotation prematurely.
+	// Frame 25-36 MUST hold the 180 orientation.
+	// Frame 48 MUST roll back to 0.
+	svgContent := `<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape">
+  <g id="ship" inkscape:groupmode="layer" inkscape:label="Ship">
+    <rect id="body" x="50" y="50" width="40" height="20" fill="green"/>
+    <path id="roll_top" inkscape:label="Rot {f:13-24 from:0 to:180}" d="M 0,0 L 0,0"/>
+    <path id="roll_bottom" inkscape:label="Rot {f:37-48 from:180 to:0}" d="M 0,0 L 0,0"/>
+  </g>
+</svg>`
+
+	doc, err := ParseSVG([]byte(svgContent))
+	if err != nil {
+		t.Fatalf("ParseSVG failed: %v", err)
+	}
+
+	// Frame 0 (frame 1): rotation should be 0 (no rotate transform applied)
+	f0, err := BuildTimelineFrameSVG(doc, 0, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("f0 failed: %v", err)
+	}
+	if strings.Contains(string(f0), "rotate(") {
+		t.Errorf("f0 expected NO rotation at frame 1 for directive starting at frame 13, got:\n%s", string(f0))
+	}
+
+	// Frame 24 (frame 25, 1-based): end of roll_top, should be 180 degrees
+	f24, err := BuildTimelineFrameSVG(doc, 24, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("f24 failed: %v", err)
+	}
+	if !strings.Contains(string(f24), "rotate(180.000000") {
+		t.Errorf("f24 expected rotate(180) at end of roll_top, got:\n%s", string(f24))
+	}
+
+	// Frame 36 (frame 37, 1-based): start of roll_bottom, should still be held at 180 degrees
+	f36, err := BuildTimelineFrameSVG(doc, 36, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("f36 failed: %v", err)
+	}
+	if !strings.Contains(string(f36), "rotate(180.000000") {
+		t.Errorf("f36 expected rotate(180) held at start frame 37, got:\n%s", string(f36))
+	}
+
+	// Frame 47 (frame 48, 1-based): end of roll_bottom, should reach 0 degrees (no rotate or rotate(0))
+	f47, err := BuildTimelineFrameSVG(doc, 47, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("f47 failed: %v", err)
+	}
+	if strings.Contains(string(f47), "rotate(180") {
+		t.Errorf("f47 expected rotation to reach 0 at end frame 48, got:\n%s", string(f47))
 	}
 }
 
@@ -645,16 +765,16 @@ func TestIntegration_PendulumAndComplexMotion(t *testing.T) {
 	}
 
 	mpRollTop := mpMap["roll_top"]
-	if mpRollTop.Config.Type != "rot" || mpRollTop.Config.RotationFrom != 0 || mpRollTop.Config.RotationTo != 180 {
-		t.Errorf("complex_motion.svg roll top = %+v, want rot from 0 to 180", mpRollTop.Config)
+	if mpRollTop.Config.Type != "rot" || mpRollTop.Config.RotationAngle != 180 {
+		t.Errorf("complex_motion.svg roll top = %+v, want RotationAngle=180", mpRollTop.Config)
 	}
 	mpRollHold := mpMap["roll_hold"]
-	if mpRollHold.Config.Type != "rot" || mpRollHold.Config.RotationFrom != 180 || mpRollHold.Config.RotationTo != 180 {
-		t.Errorf("complex_motion.svg roll hold = %+v, want rot from 180 to 180", mpRollHold.Config)
+	if mpRollHold.Config.Type != "rot" || mpRollHold.Config.RotationAngle != 0 {
+		t.Errorf("complex_motion.svg roll hold = %+v, want RotationAngle=0", mpRollHold.Config)
 	}
 	mpRollBottom := mpMap["roll_bottom"]
-	if mpRollBottom.Config.Type != "rot" || mpRollBottom.Config.RotationFrom != 180 || mpRollBottom.Config.RotationTo != 0 {
-		t.Errorf("complex_motion.svg roll bottom = %+v, want rot from 180 to 0", mpRollBottom.Config)
+	if mpRollBottom.Config.Type != "rot" || mpRollBottom.Config.RotationAngle != -180 {
+		t.Errorf("complex_motion.svg roll bottom = %+v, want RotationAngle=-180", mpRollBottom.Config)
 	}
 
 	// Render all 60 frames to verify compositing across overlapping Move, Rot, Scale, Fade, Show/Hide, and Depth
@@ -2726,14 +2846,17 @@ func TestMultiDirective_IndependentFrameRanges_Visibility(t *testing.T) {
 		t.Errorf("frame 19: rotation should reach 180, got: %s", f19Str)
 	}
 
-	// Frame 20 (1-based frame 21): Outside 1-20 range, group1 should be hidden!
+	// Frame 20 (1-based frame 21): Outside 1-20 range, group1 remains visible and holds final pose!
 	f20, err := BuildTimelineFrameSVG(doc, 20, doc.GetDocumentRect())
 	if err != nil {
 		t.Fatalf("frame 20 failed: %v", err)
 	}
 	f20Str := string(f20)
-	if !strings.Contains(f20Str, "display:none") && !strings.Contains(f20Str, `display="none"`) {
-		t.Errorf("frame 20: group1 should be hidden outside frame range, got: %s", f20Str)
+	if strings.Contains(f20Str, "display:none") || strings.Contains(f20Str, `display="none"`) {
+		t.Errorf("frame 20: group1 should hold final pose and NOT be hidden, got: %s", f20Str)
+	}
+	if !strings.Contains(f20Str, "translate(100.000000, 0.000000)") || !strings.Contains(f20Str, "rotate(180") {
+		t.Errorf("frame 20: group1 should hold final translate(100) and rotate(180), got: %s", f20Str)
 	}
 }
 
@@ -2891,8 +3014,61 @@ func TestBuildTimelineFrameSVG_SpatialRepeatAndPingPong(t *testing.T) {
 	}
 }
 
+func TestBuildTimelineFrameSVG_ClampAndHoldAfterMotion(t *testing.T) {
+	// A document with a total of 20 frames.
+	// Object box1 scales up during frames 1-10 (from: 1.0, to: 2.0).
+	// During frames 11-20, box1 should NOT be hidden, but stay visible at scale 2.0!
+	svgContent := `<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape">
+  <g id="boxGroup" inkscape:groupmode="layer" inkscape:label="Box">
+    <rect id="box" x="10" y="10" width="20" height="20" fill="blue"/>
+    <circle id="scaleMod" cx="20" cy="20" r="1" inkscape:label="Scale {f: 1-10; from: 1.0; to: 2.0}"/>
+  </g>
+  <g id="otherGroup" inkscape:groupmode="layer" inkscape:label="Other">
+    <rect id="other" x="50" y="50" width="10" height="10" fill="red"/>
+    <path id="moveLong" inkscape:label="Move {f: 1-20}" d="M 0,0 L 50,50"/>
+  </g>
+</svg>`
 
+	doc, err := ParseSVG([]byte(svgContent))
+	if err != nil {
+		t.Fatalf("ParseSVG failed: %v", err)
+	}
 
+	// Frame 0 (f1): start of scale
+	f0, err := BuildTimelineFrameSVG(doc, 0, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("f0 failed: %v", err)
+	}
+	if strings.Contains(string(f0), "display:none") {
+		t.Errorf("f0 expected boxGroup to be visible, got: %s", string(f0))
+	}
 
+	// Frame 9 (f10): end of scale (scale 2.0)
+	f9, err := BuildTimelineFrameSVG(doc, 9, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("f9 failed: %v", err)
+	}
+	f9Str := string(f9)
+	if strings.Contains(f9Str, "display:none") {
+		t.Errorf("f9 expected boxGroup to be visible, got: %s", f9Str)
+	}
+	if !strings.Contains(f9Str, "scale(2.000000, 2.000000)") {
+		t.Errorf("f9 expected scale(2.0, 2.0), got: %s", f9Str)
+	}
+
+	// Frame 14 (f15): past the end of scale (f: 1-10) in a 20-frame animation.
+	// boxGroup MUST remain visible AND hold scale 2.0!
+	f14, err := BuildTimelineFrameSVG(doc, 14, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("f14 failed: %v", err)
+	}
+	f14Str := string(f14)
+	if strings.Contains(f14Str, "display:none") {
+		t.Errorf("f14 expected boxGroup to remain visible after f: 1-10, got: %s", f14Str)
+	}
+	if !strings.Contains(f14Str, "scale(2.000000, 2.000000)") {
+		t.Errorf("f14 expected boxGroup to hold scale(2.0, 2.0), got: %s", f14Str)
+	}
+}
 
 
