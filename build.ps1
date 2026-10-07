@@ -106,6 +106,7 @@ function Build-ExtWin {
     }
 
     Copy-Item (Join-Path $PSScriptRoot "extensions\inkscape\*.inx") $extDir -Force
+    Copy-Item (Join-Path $PSScriptRoot "assets\icon.png") $extDir -Force
 
     $zipFile = Join-Path $BuildDir "inkanim-inkscape-extension_dev_windows_amd64.zip"
     if (Test-Path $zipFile) { Remove-Item $zipFile -Force }

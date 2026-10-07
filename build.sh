@@ -77,6 +77,7 @@ build_ext_win() {
         -o "$bin_dir/inkanim-ext.exe" ./cmd/inkanim-ext
 
     cp "$ROOT_DIR"/extensions/inkscape/*.inx "$ext_dir/"
+    cp "$ROOT_DIR"/assets/icon.png "$ext_dir/"
 
     local zip_file="$BUILD_DIR/inkanim-inkscape-extension_dev_windows_amd64.zip"
     rm -f "$zip_file"
