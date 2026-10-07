@@ -201,7 +201,7 @@ func NewEditorState(data []byte, inputPath string, selectedIDs []string) (*Edito
 // ShowEditorWindow displays the interactive Motion Editor window with live preview.
 func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 	w := a.NewWindow("InkAnim Motion Studio")
-	w.Resize(fyne.NewSize(1150, 650))
+	w.Resize(fyne.NewSize(1200, 720))
 
 	// Live Animation Preview Session
 	sess := app.NewSession()
@@ -211,6 +211,30 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 	if len(sess.RenderedFrames) > 1 {
 		preview.Play()
 	}
+
+	var leftPanel *ui.LeftFramesPanel
+	var rightPanel *ui.RightExportPanel
+
+	leftPanel = ui.NewLeftFramesPanel(sess, func() {
+		preview.Refresh()
+		if rightPanel != nil {
+			rightPanel.Refresh()
+		}
+	})
+
+	rightPanel = ui.NewRightExportPanel(sess, w, func() {
+		preview.Refresh()
+	}, func() func() {
+		wasPlaying := preview.IsPlaying()
+		if wasPlaying {
+			preview.Pause()
+		}
+		return func() {
+			if wasPlaying {
+				preview.Play()
+			}
+		}
+	})
 
 	var previewTimer *time.Timer
 	var previewMu sync.Mutex
@@ -224,6 +248,12 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 			fyne.Do(func() {
 				if err := sess.LoadSVGData(patched, state.InputPath); err == nil {
 					preview.Refresh()
+					if leftPanel != nil {
+						leftPanel.Refresh()
+					}
+					if rightPanel != nil {
+						rightPanel.Refresh()
+					}
 					if len(sess.RenderedFrames) > 1 && !preview.IsPlaying() {
 						preview.Play()
 					}
@@ -575,12 +605,20 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 		tree.Refresh()
 	}
 
-	// 3-Pane Studio Layout: [Tree] | [Inspector] | [Live Canvas Preview]
+	// Studio Layout:
+	// Left side: Tabs [Layers & Motion | Frames | Export]
+	// Right side: [Live Canvas Preview]
 	inspectorScroll := container.NewVScroll(inspectorCard)
-	leftSplit := container.NewHSplit(tree, inspectorScroll)
-	leftSplit.SetOffset(0.38)
+	motionSplit := container.NewHSplit(tree, inspectorScroll)
+	motionSplit.SetOffset(0.38)
 
-	mainSplit := container.NewHSplit(leftSplit, preview.Container())
+	sidebarTabs := container.NewAppTabs(
+		container.NewTabItemWithIcon("Layers & Motion", theme.VisibilityIcon(), motionSplit),
+		container.NewTabItemWithIcon("Frames", theme.ListIcon(), leftPanel.Container()),
+		container.NewTabItemWithIcon("Export", theme.DownloadIcon(), rightPanel.Container()),
+	)
+
+	mainSplit := container.NewHSplit(sidebarTabs, preview.Container())
 	mainSplit.SetOffset(0.55)
 
 	// Bottom action buttons

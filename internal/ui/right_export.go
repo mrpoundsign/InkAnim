@@ -232,6 +232,11 @@ func (p *RightExportPanel) Container() *container.Scroll {
 	return p.container
 }
 
+// Refresh re-validates export specifications and updates status.
+func (p *RightExportPanel) Refresh() {
+	p.validateTwitch()
+}
+
 func (p *RightExportPanel) syncOptions() {
 	p.validateTwitch()
 	if p.onOptionsChange != nil {
