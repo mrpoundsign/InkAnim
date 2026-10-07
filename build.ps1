@@ -94,8 +94,9 @@ function Build-ExtWin {
         $env:CC = "zig cc"
     }
     $extDir = Join-Path $BuildDir "inkscape-ext\windows-amd64"
+    if (Test-Path $extDir) { Remove-Item $extDir -Recurse -Force }
     $binDir = Join-Path $extDir "bin"
-    if (-not (Test-Path $binDir)) { New-Item -ItemType Directory -Path $binDir -Force | Out-Null }
+    New-Item -ItemType Directory -Path $binDir -Force | Out-Null
 
     $outExe = Join-Path $binDir "inkanim-ext.exe"
     $env:GOOS = "windows"
@@ -108,7 +109,7 @@ function Build-ExtWin {
     Copy-Item (Join-Path $PSScriptRoot "extensions\inkscape\*.inx") $extDir -Force
     Copy-Item (Join-Path $PSScriptRoot "assets\icon.png") $extDir -Force
 
-    $zipFile = Join-Path $BuildDir "inkanim-inkscape-extension_dev_windows_amd64.zip"
+    $zipFile = Join-Path $BuildDir "InkAnim_dev_inkscape-extension_windows_amd64.zip"
     if (Test-Path $zipFile) { Remove-Item $zipFile -Force }
     Compress-Archive -Path (Join-Path $extDir "*") -DestinationPath $zipFile
 
@@ -118,10 +119,16 @@ function Build-ExtWin {
 }
 
 function Install-ExtWin {
-    $zipFile = Join-Path $BuildDir "inkanim-inkscape-extension_dev_windows_amd64.zip"
+    $zipFile = Join-Path $BuildDir "InkAnim_dev_inkscape-extension_windows_amd64.zip"
     if (-not (Test-Path $zipFile)) {
-        Write-Host "Extension package not found. Building first..." -ForegroundColor DarkGray
-        Build-ExtWin
+        # Check legacy name for fallback
+        $legacyZip = Join-Path $BuildDir "inkanim-inkscape-extension_dev_windows_amd64.zip"
+        if (Test-Path $legacyZip) {
+            $zipFile = $legacyZip
+        } else {
+            Write-Host "Extension package not found. Building first..." -ForegroundColor DarkGray
+            Build-ExtWin
+        }
     }
 
     Write-Host "`n==> Installing InkAnim extension for Inkscape (Windows)..." -ForegroundColor Cyan
