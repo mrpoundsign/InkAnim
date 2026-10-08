@@ -3,6 +3,7 @@ package inksvg
 import (
 	"math"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -3068,6 +3069,105 @@ func TestBuildTimelineFrameSVG_ClampAndHoldAfterMotion(t *testing.T) {
 	}
 	if !strings.Contains(f14Str, "scale(2.000000, 2.000000)") {
 		t.Errorf("f14 expected boxGroup to hold scale(2.0, 2.0), got: %s", f14Str)
+	}
+}
+
+func TestTransformPathData(t *testing.T) {
+	// Simple line: M 0,0 L 100,50
+	linePath := "M 0,0 L 100,50"
+	mScale := parseTransform("scale(2, 0.5)")
+	tLine, err := TransformPathData(linePath, mScale)
+	if err != nil {
+		t.Fatalf("TransformPathData line failed: %v", err)
+	}
+	dx, dy, err := EvaluatePathAt(tLine, 1.0)
+	if err != nil {
+		t.Fatalf("EvaluatePathAt transformed line failed: %v", err)
+	}
+	if math.Abs(dx-200.0) > 0.01 || math.Abs(dy-25.0) > 0.01 {
+		t.Errorf("expected dx=200, dy=25, got dx=%f, dy=%f", dx, dy)
+	}
+
+	// Cubic bezier curve
+	bezierPath := "M 0,0 C 10,20 30,40 50,50"
+	mTranslateScale := parseTransform("translate(10, 20) scale(1.5, 2.0)")
+	tBezier, err := TransformPathData(bezierPath, mTranslateScale)
+	if err != nil {
+		t.Fatalf("TransformPathData bezier failed: %v", err)
+	}
+	dxB, dyB, err := EvaluatePathAt(tBezier, 1.0)
+	if err != nil {
+		t.Fatalf("EvaluatePathAt transformed bezier failed: %v", err)
+	}
+	// Untransformed end: (50, 50) -> delta: (50, 50).
+	// With scale(1.5, 2.0), delta must be (75, 100).
+	if math.Abs(dxB-75.0) > 0.01 || math.Abs(dyB-100.0) > 0.01 {
+		t.Errorf("expected dx=75, dy=100, got dx=%f, dy=%f", dxB, dyB)
+	}
+}
+
+func TestMotionPath_TransformScaling_ScaledSpiral(t *testing.T) {
+	spiralSVG := `<svg width="512" height="512" viewBox="0 0 512 512" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape">
+  <g id="layer1" inkscape:groupmode="layer" inkscape:label="Layer 1">
+    <path id="path2" d="m 287.9,192.9 3.4,34.8" fill="#00aa00" />
+    <path id="path1"
+       d="m 270.81735,240.66491 c 37.29158,-10.03797 62.88945,32.50182 60.32849,64.5134 -4.13548,51.69266 -57.56864,82.86402 -105.8838,74.5842 -63.44641,-10.87288 -100.76338,-77.10295 -87.76274,-138.00463 15.78638,-73.95152 93.822,-116.93722 165.66519,-99.86102 83.57287,19.86418 131.81286,108.76697 111.09927,190.50307 C 390.81693,424.92141 291.80518,478.08049 200.93305,454.04813 99.997667,427.35442 42.194,318.8471 69.301236,219.4226 92.931582,132.75071 174.16777,72.082492 263.45591,70.516062"
+       inkscape:label="path1 Move {f: 1-15}"
+       transform="matrix(1.0001844,0,0,0.56493489,32.275455,83.533307)" />
+  </g>
+</svg>`
+
+	doc, err := ParseSVG([]byte(spiralSVG))
+	if err != nil {
+		t.Fatalf("ParseSVG failed: %v", err)
+	}
+
+	if len(doc.MotionPaths) != 1 {
+		t.Fatalf("expected 1 motion path, got %d", len(doc.MotionPaths))
+	}
+
+	mp := doc.MotionPaths[0]
+	_, dy, err := EvaluatePathAt(mp.PathData, 1.0)
+	if err != nil {
+		t.Fatalf("EvaluatePathAt failed: %v", err)
+	}
+
+	// Without transform: dy would be -170.15.
+	// With vertical scale ~0.564935: dy should be ~ -96.12.
+	expectedDy := -170.148848 * 0.56493489
+	if math.Abs(dy-expectedDy) > 0.5 {
+		t.Errorf("expected transformed dy ≈ %.2f, got %.2f (untransformed was -170.15)", expectedDy, dy)
+	}
+
+	// Verify timeline frame generation applies the scaled translate
+	f14, err := BuildTimelineFrameSVG(doc, 14, doc.GetDocumentRect())
+	if err != nil {
+		t.Fatalf("BuildTimelineFrameSVG failed: %v", err)
+	}
+	f14Str := string(f14)
+	if !strings.Contains(f14Str, "translate(") {
+		t.Fatalf("expected translate in frame 14 SVG, got:\n%s", f14Str)
+	}
+
+	// Verify the permanent testdata/scaled_spiral.svg regression fixture
+	fixturePath := filepath.Join("..", "..", "testdata", "scaled_spiral.svg")
+	fileData, err := os.ReadFile(fixturePath)
+	if err != nil {
+		t.Fatalf("failed to read testdata/scaled_spiral.svg: %v", err)
+	}
+	sDoc, sErr := ParseSVG(fileData)
+	if sErr != nil {
+		t.Fatalf("ParseSVG on testdata/scaled_spiral.svg failed: %v", sErr)
+	}
+	if len(sDoc.MotionPaths) == 0 {
+		t.Fatalf("testdata/scaled_spiral.svg expected at least 1 motion path")
+	}
+	_, sDy, sEvalErr := EvaluatePathAt(sDoc.MotionPaths[0].PathData, 1.0)
+	if sEvalErr != nil {
+		t.Fatalf("EvaluatePathAt on testdata/scaled_spiral.svg failed: %v", sEvalErr)
+	}
+	if math.Abs(sDy-expectedDy) > 0.5 {
+		t.Errorf("testdata/scaled_spiral.svg expected transformed dy ≈ %.2f, got %.2f", expectedDy, sDy)
 	}
 }
 

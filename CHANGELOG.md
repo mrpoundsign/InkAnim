@@ -15,11 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Updated user-facing UI messages in native GUI and WebAssembly builds to report frame counts rather than layers ([#105](https://github.com/mrpoundsign/InkAnim/issues/105)).
 
 ### Fixed
-- **Motion Editor Anchor Loss on Close**:
-  - Captured immutable `OriginalSVG` baseline and implemented `IsDirty()` byte-level comparison on `EditorState` ([#101](https://github.com/mrpoundsign/InkAnim/issues/101)).
-  - Added `Change` struct and `History` snapshot tracking to lay the groundwork for Undo/Redo ([#101](https://github.com/mrpoundsign/InkAnim/issues/101), [#103](https://github.com/mrpoundsign/InkAnim/issues/103)).
-  - Ensured documents open in a clean state on launch without pre-flagging syntax migration, so close prompts only trigger upon user edits ([#101](https://github.com/mrpoundsign/InkAnim/issues/101)).
-  - Fixed status bar and close intercept dialog to reliably detect structural edits (e.g. preset anchor insertions) and prevent silent data loss ([#101](https://github.com/mrpoundsign/InkAnim/issues/101)).
+- **Motion Editor Close Confirmation & Change Tracking**:
+  - Fixed an issue where closing the Motion Editor after applying presets (such as auto-generated group anchors) closed without prompting, losing changes in Inkscape ([#101](https://github.com/mrpoundsign/InkAnim/issues/101)).
+  - Ensured documents open in a clean state on launch without false-positive change prompts when closing unedited files ([#101](https://github.com/mrpoundsign/InkAnim/issues/101)).
+  - Added change history tracking to document inspector actions in the status bar ([#101](https://github.com/mrpoundsign/InkAnim/issues/101), [#103](https://github.com/mrpoundsign/InkAnim/issues/103)).
+- **Scaled and Transformed Motion Paths**:
+  - Fixed an issue where motion paths (such as spirals or splines) scaled, rotated, or transformed in Inkscape caused animated objects to follow the original unscaled trajectory instead of the visible shape ([#106](https://github.com/mrpoundsign/InkAnim/issues/106)).
+  - Motion trajectory preview guides and travel distances now accurately reflect scaled and transformed guide paths ([#106](https://github.com/mrpoundsign/InkAnim/issues/106)).
 
 ## [0.5.0-beta] - 2026-10-07
 
