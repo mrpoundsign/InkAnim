@@ -1144,15 +1144,7 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 			)
 		}
 
-		// Resulting label preview
-		previewLabel := widget.NewLabelWithStyle("Label preview will appear here", fyne.TextAlignLeading, fyne.TextStyle{Italic: true})
-		updatePreview := func() {
-			lbl := node.FormatLabel()
-			if lbl == "" {
-				lbl = "(empty label)"
-			}
-			previewLabel.SetText("inkscape:label: " + lbl)
-		}
+		updatePreview := func() {}
 
 		// Label prefix entry (e.g. "Fade In: ")
 		prefixEntry := newCommitEntry(
@@ -1283,6 +1275,7 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 		presetSelect := widget.NewSelect(presetNames, nil)
 		presetSelect.PlaceHolder = "Select a motion preset..."
 		presetDescLabel := widget.NewLabelWithStyle("", fyne.TextAlignLeading, fyne.TextStyle{Italic: true})
+		presetDescLabel.Wrapping = fyne.TextWrapWord
 
 		applyPresetBtn := widget.NewButtonWithIcon("Apply Preset", theme.MediaPlayIcon(), func() {
 			sel := presetSelect.Selected
@@ -1368,8 +1361,6 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 			directivesList,
 			widget.NewSeparator(),
 			addBar,
-			widget.NewSeparator(),
-			previewLabel,
 		)
 
 		scrollContent := container.NewVScroll(content)
@@ -1495,9 +1486,8 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 	// Studio Layout:
 	// Left side: Tabs [Layers & Motion | Frames | Export]
 	// Right side: [Live Canvas Preview]
-	inspectorScroll := container.NewVScroll(inspectorCard)
-	motionSplit := container.NewHSplit(treePanel, inspectorScroll)
-	motionSplit.SetOffset(0.38)
+	motionSplit := container.NewHSplit(treePanel, inspectorCard)
+	motionSplit.SetOffset(0.35)
 
 	sidebarTabs := container.NewAppTabs(
 		container.NewTabItemWithIcon("Layers & Motion", theme.VisibilityIcon(), motionSplit),
