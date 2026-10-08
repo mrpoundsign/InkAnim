@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.5.0-beta2] - Unreleased
 
+### Added
+- **Undo and Redo in Motion Editor**:
+  - Full bidirectional undo and redo history for all motion edits, including adding and deleting motion directives, adjusting timing and playback properties, applying motion presets, and renaming object label prefixes ([#103](https://github.com/mrpoundsign/InkAnim/issues/103)).
+  - Dedicated Undo and Redo toolbar icon buttons placed directly above the document object tree in the Layers & Motion panel ([#103](https://github.com/mrpoundsign/InkAnim/issues/103)).
+  - Standard keyboard shortcuts (`Ctrl+Z` for undo, `Ctrl+Shift+Z` or `Ctrl+Y` for redo) ([#103](https://github.com/mrpoundsign/InkAnim/issues/103)).
+  - Smooth text and numeric editing with real-time live preview updates, coalescing input sequences into clean single undo steps upon pressing Enter or changing field focus ([#103](https://github.com/mrpoundsign/InkAnim/issues/103)).
+  - Status bar feedback displaying the specific action that was undone or redone, and automatic clean state restoration when all changes are undone back to the initial document ([#103](https://github.com/mrpoundsign/InkAnim/issues/103)).
+
 ### Changed
 - **Animation Frame Model Nomenclature**:
   - Renamed `pkg/inksvg.Layer` to `pkg/inksvg.Frame` and `SVGDocument.Layers` to `SVGDocument.Frames` to clearly distinguish synthetic animation timeline frames from Inkscape SVG layers ([#105](https://github.com/mrpoundsign/InkAnim/issues/105)).

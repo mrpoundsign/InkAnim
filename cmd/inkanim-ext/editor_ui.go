@@ -13,6 +13,7 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -51,25 +52,31 @@ var motionTypes = []string{
 	"Color",
 }
 
-// Change records a document mutation with a human-readable description and full SVG snapshot.
+// Change records a document mutation with a human-readable description, full SVG snapshot,
+// and the ID of the active node at the time of the change.
 type Change struct {
-	Description string
-	SVGData     []byte
+	Description  string
+	SVGData      []byte
+	ActiveNodeID string
 }
 
 type EditorState struct {
-	Roots       []*doctree.DocNode
-	NodeMap     map[string]*doctree.DocNode
-	ActiveNode  *doctree.DocNode
-	ModifiedIDs map[string]bool
-	SelectedIDs []string
-	InputPath   string
-	SVGData     []byte
-	OriginalSVG []byte
-	History     []Change
-	Result      []byte
-	Applied     bool
+	Roots            []*doctree.DocNode
+	NodeMap          map[string]*doctree.DocNode
+	ActiveNode       *doctree.DocNode
+	ModifiedIDs      map[string]bool
+	SelectedIDs      []string
+	InputPath        string
+	SVGData          []byte
+	OriginalSVG      []byte
+	OriginalActiveID string
+	History          []Change
+	HistoryIndex     int
+	Result           []byte
+	Applied          bool
 }
+
+const maxHistory = 100
 
 // ComputePatchedSVG generates the updated SVG bytes with all modified labels applied.
 func (s *EditorState) ComputePatchedSVG() []byte {
@@ -88,13 +95,92 @@ func (s *EditorState) ComputePatchedSVG() []byte {
 	return patchedData
 }
 
-// RecordChange captures a snapshot of the current document state and appends it to History.
+// RecordChange captures a snapshot of the current document state and appends it to History,
+// pruning any redo history if changes were previously undone.
 func (s *EditorState) RecordChange(description string) {
 	snapshot := s.ComputePatchedSVG()
+	if s.HistoryIndex < len(s.History)-1 {
+		s.History = s.History[:s.HistoryIndex+1]
+	}
+	var activeID string
+	if s.ActiveNode != nil {
+		activeID = s.ActiveNode.ID
+	}
 	s.History = append(s.History, Change{
-		Description: description,
-		SVGData:     snapshot,
+		Description:  description,
+		SVGData:      snapshot,
+		ActiveNodeID: activeID,
 	})
+	s.HistoryIndex = len(s.History) - 1
+	if len(s.History) > maxHistory {
+		excess := len(s.History) - maxHistory
+		s.History = s.History[excess:]
+		s.HistoryIndex -= excess
+		if s.HistoryIndex < 0 {
+			s.HistoryIndex = 0
+		}
+	}
+}
+
+// CanUndo reports whether there are actions in history that can be undone.
+func (s *EditorState) CanUndo() bool {
+	return s.HistoryIndex >= 0
+}
+
+// CanRedo reports whether there are previously undone actions that can be redone.
+func (s *EditorState) CanRedo() bool {
+	return s.HistoryIndex < len(s.History)-1
+}
+
+// RestoreSnapshot restores the document tree and node selections from SVG data.
+func (s *EditorState) RestoreSnapshot(svgData []byte, targetNodeID string) error {
+	roots, nodeMap, err := doctree.ParseTree(svgData)
+	if err != nil {
+		return err
+	}
+	s.Roots = roots
+	s.NodeMap = nodeMap
+	s.SVGData = svgData
+	s.ModifiedIDs = make(map[string]bool)
+
+	// Restore active node selection
+	switch {
+	case targetNodeID != "" && nodeMap[targetNodeID] != nil:
+		s.ActiveNode = nodeMap[targetNodeID]
+	case s.ActiveNode != nil && nodeMap[s.ActiveNode.ID] != nil:
+		s.ActiveNode = nodeMap[s.ActiveNode.ID]
+	case s.ActiveNode != nil && s.ActiveNode.ParentID != "" && nodeMap[s.ActiveNode.ParentID] != nil:
+		s.ActiveNode = nodeMap[s.ActiveNode.ParentID]
+	case len(roots) > 0:
+		s.ActiveNode = roots[0]
+	default:
+		s.ActiveNode = nil
+	}
+	return nil
+}
+
+// Undo steps back one action in history and restores the previous document state.
+func (s *EditorState) Undo() (string, error) {
+	if !s.CanUndo() {
+		return "", errors.New("nothing to undo")
+	}
+	undoneDesc := s.History[s.HistoryIndex].Description
+	s.HistoryIndex--
+	if s.HistoryIndex >= 0 {
+		prev := s.History[s.HistoryIndex]
+		return undoneDesc, s.RestoreSnapshot(prev.SVGData, prev.ActiveNodeID)
+	}
+	return undoneDesc, s.RestoreSnapshot(s.OriginalSVG, s.OriginalActiveID)
+}
+
+// Redo steps forward one action in history and restores the subsequent document state.
+func (s *EditorState) Redo() (string, error) {
+	if !s.CanRedo() {
+		return "", errors.New("nothing to redo")
+	}
+	s.HistoryIndex++
+	next := s.History[s.HistoryIndex]
+	return next.Description, s.RestoreSnapshot(next.SVGData, next.ActiveNodeID)
 }
 
 // IsDirty reports whether the current document state differs from the original SVG loaded.
@@ -200,19 +286,120 @@ func NewEditorState(data []byte, inputPath string, selectedIDs []string) (*Edito
 		active = roots[0]
 	}
 
+	var activeID string
+	if active != nil {
+		activeID = active.ID
+	}
+
 	state := &EditorState{
-		Roots:       roots,
-		NodeMap:     nodeMap,
-		ActiveNode:  active,
-		ModifiedIDs: make(map[string]bool),
-		SelectedIDs: selectedIDs,
-		InputPath:   inputPath,
-		SVGData:     data,
-		OriginalSVG: bytes.Clone(data),
-		Result:      data,
+		Roots:            roots,
+		NodeMap:          nodeMap,
+		ActiveNode:       active,
+		ModifiedIDs:      make(map[string]bool),
+		SelectedIDs:      selectedIDs,
+		InputPath:        inputPath,
+		SVGData:          data,
+		OriginalSVG:      bytes.Clone(data),
+		OriginalActiveID: activeID,
+		History:          nil,
+		HistoryIndex:     -1,
+		Result:           data,
 	}
 
 	return state, nil
+}
+
+// commitEntry is an Entry widget that coalesces live typing modifications for smooth real-time preview,
+// and only commits an undo snapshot when submitted (Enter key) or when focus is lost.
+// It also catches Ctrl+Z and Ctrl+Y shortcuts when focused so entry widgets never swallow global undo/redo.
+type commitEntry struct {
+	widget.Entry
+	lastCommitted string
+	onCommit      func(val string)
+	onUndo        func()
+	onRedo        func()
+}
+
+func newCommitEntry(initialText string, onLiveChange func(string), onCommit func(string), onUndo func(), onRedo func()) *commitEntry {
+	e := &commitEntry{
+		Entry:         widget.Entry{Wrapping: fyne.TextWrap(fyne.TextTruncateClip)},
+		lastCommitted: initialText,
+		onCommit:      onCommit,
+		onUndo:        onUndo,
+		onRedo:        onRedo,
+	}
+	e.ExtendBaseWidget(e)
+	e.Text = initialText
+	e.OnChanged = onLiveChange
+	e.OnSubmitted = func(_ string) {
+		e.Commit()
+	}
+	return e
+}
+
+func (e *commitEntry) FocusLost() {
+	e.Entry.FocusLost()
+	e.Commit()
+}
+
+func (e *commitEntry) Commit() {
+	current := e.Text
+	if current != e.lastCommitted {
+		e.lastCommitted = current
+		if e.onCommit != nil {
+			e.onCommit(current)
+		}
+	}
+}
+
+func (e *commitEntry) SetText(text string) {
+	e.lastCommitted = text
+	e.Entry.SetText(text)
+}
+
+func (e *commitEntry) TypedShortcut(shortcut fyne.Shortcut) {
+	if _, ok := shortcut.(*fyne.ShortcutUndo); ok {
+		if e.Text != e.lastCommitted {
+			e.SetText(e.lastCommitted)
+			return
+		}
+		if e.onUndo != nil {
+			e.onUndo()
+		}
+		return
+	}
+	if _, ok := shortcut.(*fyne.ShortcutRedo); ok {
+		if e.onRedo != nil {
+			e.onRedo()
+		}
+		return
+	}
+	if cs, ok := shortcut.(*desktop.CustomShortcut); ok {
+		ctrlOrCmd := cs.Modifier&fyne.KeyModifierControl != 0 || cs.Modifier&fyne.KeyModifierSuper != 0
+		if cs.KeyName == fyne.KeyZ && ctrlOrCmd {
+			if cs.Modifier&fyne.KeyModifierShift != 0 {
+				if e.onRedo != nil {
+					e.onRedo()
+				}
+				return
+			}
+			if e.Text != e.lastCommitted {
+				e.SetText(e.lastCommitted)
+				return
+			}
+			if e.onUndo != nil {
+				e.onUndo()
+			}
+			return
+		}
+		if cs.KeyName == fyne.KeyY && ctrlOrCmd {
+			if e.onRedo != nil {
+				e.onRedo()
+			}
+			return
+		}
+	}
+	e.Entry.TypedShortcut(shortcut)
 }
 
 // ShowEditorWindow displays the interactive Motion Editor window with live preview.
@@ -300,6 +487,52 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 
 	// Status label at bottom
 	statusLabel := widget.NewLabel("")
+
+	// Undo/Redo Controls
+	undoBtn := widget.NewButtonWithIcon("", theme.ContentUndoIcon(), nil)
+	undoBtn.Importance = widget.LowImportance
+
+	redoBtn := widget.NewButtonWithIcon("", theme.ContentRedoIcon(), nil)
+	redoBtn.Importance = widget.LowImportance
+
+	undoItem := fyne.NewMenuItem("Undo", nil)
+	undoItem.Shortcut = &fyne.ShortcutUndo{}
+	undoItem.Icon = theme.ContentUndoIcon()
+
+	redoItem := fyne.NewMenuItem("Redo", nil)
+	redoItem.Shortcut = &fyne.ShortcutRedo{}
+	redoItem.Icon = theme.ContentRedoIcon()
+
+	editMenu := fyne.NewMenu("Edit", undoItem, redoItem)
+	mainMenu := fyne.NewMainMenu(editMenu)
+	w.SetMainMenu(mainMenu)
+
+	updateUndoRedo := func() {
+		canUndo := state.CanUndo()
+		canRedo := state.CanRedo()
+		if canUndo {
+			undoBtn.Enable()
+			undoItem.Disabled = false
+		} else {
+			undoBtn.Disable()
+			undoItem.Disabled = true
+		}
+		if canRedo {
+			redoBtn.Enable()
+			redoItem.Disabled = false
+		} else {
+			redoBtn.Disable()
+			redoItem.Disabled = true
+		}
+		mainMenu.Refresh()
+	}
+	updateUndoRedo()
+
+	var lastHistoryMsg string
+	var tree *widget.Tree
+	var refreshTree func()
+	var refreshInspector func()
+
 	updateStatus := func() {
 		var activeName string
 		if state.ActiveNode != nil {
@@ -309,26 +542,96 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 		}
 		var changeStatus string
 		if state.IsDirty() {
+			count := state.HistoryIndex + 1
 			switch {
-			case len(state.History) == 1:
-				changeStatus = fmt.Sprintf("Unapplied changes (%s)", state.History[0].Description)
-			case len(state.History) > 1:
-				changeStatus = fmt.Sprintf("Unapplied changes (%d changes, latest: %s)", len(state.History), state.History[len(state.History)-1].Description)
+			case count == 1:
+				changeStatus = fmt.Sprintf("Unapplied changes (%s)", state.History[state.HistoryIndex].Description)
+			case count > 1:
+				changeStatus = fmt.Sprintf("Unapplied changes (%d changes, latest: %s)", count, state.History[state.HistoryIndex].Description)
 			default:
 				changeStatus = "Unapplied changes"
 			}
 		} else {
 			changeStatus = "No changes"
 		}
+		if lastHistoryMsg != "" {
+			changeStatus = fmt.Sprintf("%s (%s)", lastHistoryMsg, changeStatus)
+			lastHistoryMsg = ""
+		}
 		statusLabel.SetText(fmt.Sprintf("Active Object: %s | %s", activeName, changeStatus))
 	}
+
+	rebuildAfterHistoryChange := func() {
+		updateUndoRedo()
+		refreshTree()
+		if state.ActiveNode != nil && tree != nil {
+			if state.ActiveNode.ParentID != "" {
+				tree.OpenBranch(state.ActiveNode.ParentID)
+			}
+			tree.Select(state.ActiveNode.ID)
+		}
+		refreshInspector()
+		schedulePreviewUpdate()
+		updateStatus()
+	}
+
+	doUndo := func() {
+		if !state.CanUndo() {
+			return
+		}
+		desc, err := state.Undo()
+		if err != nil {
+			return
+		}
+		lastHistoryMsg = "Undid: " + desc
+		rebuildAfterHistoryChange()
+	}
+
+	doRedo := func() {
+		if !state.CanRedo() {
+			return
+		}
+		desc, err := state.Redo()
+		if err != nil {
+			return
+		}
+		lastHistoryMsg = "Redid: " + desc
+		rebuildAfterHistoryChange()
+	}
+
+	undoBtn.OnTapped = doUndo
+	redoBtn.OnTapped = doRedo
+	undoItem.Action = doUndo
+	redoItem.Action = doRedo
+
+	w.Canvas().AddShortcut(&fyne.ShortcutUndo{}, func(_ fyne.Shortcut) {
+		doUndo()
+	})
+	w.Canvas().AddShortcut(&fyne.ShortcutRedo{}, func(_ fyne.Shortcut) {
+		doRedo()
+	})
+	w.Canvas().AddShortcut(&desktop.CustomShortcut{
+		KeyName:  fyne.KeyZ,
+		Modifier: fyne.KeyModifierControl,
+	}, func(_ fyne.Shortcut) {
+		doUndo()
+	})
+	w.Canvas().AddShortcut(&desktop.CustomShortcut{
+		KeyName:  fyne.KeyZ,
+		Modifier: fyne.KeyModifierControl | fyne.KeyModifierShift,
+	}, func(_ fyne.Shortcut) {
+		doRedo()
+	})
+	w.Canvas().AddShortcut(&desktop.CustomShortcut{
+		KeyName:  fyne.KeyY,
+		Modifier: fyne.KeyModifierControl,
+	}, func(_ fyne.Shortcut) {
+		doRedo()
+	})
 
 	// Inspector container
 	inspectorCard := container.NewStack()
 
-	var tree *widget.Tree
-	var refreshTree func()
-	var refreshInspector func()
 	refreshInspector = func() {
 		node := state.ActiveNode
 		if node == nil {
@@ -370,17 +673,25 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 		}
 
 		// Label prefix entry (e.g. "Fade In: ")
-		prefixEntry := widget.NewEntry()
+		prefixEntry := newCommitEntry(
+			node.LabelPrefix,
+			func(val string) {
+				node.LabelPrefix = val
+				state.ModifiedIDs[node.ID] = true
+				updatePreview()
+				updateStatus()
+				refreshTree()
+				schedulePreviewUpdate()
+			},
+			func(val string) {
+				state.RecordChange(fmt.Sprintf("Rename %s prefix to '%s'", node.DisplayTitle(), val))
+				updateUndoRedo()
+				updateStatus()
+			},
+			doUndo,
+			doRedo,
+		)
 		prefixEntry.SetPlaceHolder("Descriptive name or prefix (optional)")
-		prefixEntry.SetText(node.LabelPrefix)
-		prefixEntry.OnChanged = func(val string) {
-			node.LabelPrefix = val
-			state.ModifiedIDs[node.ID] = true
-			updatePreview()
-			updateStatus()
-			refreshTree()
-			schedulePreviewUpdate()
-		}
 
 		// Directives list container
 		directivesList := container.NewVBox()
@@ -410,6 +721,13 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 						schedulePreviewUpdate()
 					}
 
+					onCommit := func(desc string) {
+						state.ModifiedIDs[node.ID] = true
+						state.RecordChange(fmt.Sprintf("%s on %s", desc, node.DisplayTitle()))
+						updateUndoRedo()
+						updateStatus()
+					}
+
 					onDelete := func() {
 						deletedType := dir.Type
 						node.Directives = append(node.Directives[:idx], node.Directives[idx+1:]...)
@@ -417,12 +735,13 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 						state.RecordChange(fmt.Sprintf("Delete %s from %s", deletedType, node.DisplayTitle()))
 						rebuildDirectivesList()
 						updatePreview()
+						updateUndoRedo()
 						updateStatus()
 						refreshTree()
 						schedulePreviewUpdate()
 					}
 
-					card := buildDirectiveWidgetCard(dir, totalDocFrames, onModified, onDelete)
+					card := buildDirectiveWidgetCard(dir, totalDocFrames, onModified, onCommit, onDelete, doUndo, doRedo)
 					directivesList.Add(card)
 				}
 			}
@@ -452,6 +771,7 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 			})
 			state.ModifiedIDs[node.ID] = true
 			state.RecordChange(fmt.Sprintf("Add %s to %s", mType, node.DisplayTitle()))
+			updateUndoRedo()
 			rebuildDirectivesList()
 			updatePreview()
 			updateStatus()
@@ -486,6 +806,7 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 			if err != nil {
 				return
 			}
+			updateUndoRedo()
 			updatePreview()
 			updateStatus()
 			refreshTree()
@@ -643,11 +964,24 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 		tree.Refresh()
 	}
 
+	// Tree panel with toolbar header for Undo/Redo
+	treeHeader := container.NewHBox(
+		widget.NewLabelWithStyle("Objects", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		layout.NewSpacer(),
+		undoBtn,
+		redoBtn,
+	)
+	treePanel := container.NewBorder(
+		container.NewVBox(treeHeader, widget.NewSeparator()),
+		nil, nil, nil,
+		tree,
+	)
+
 	// Studio Layout:
 	// Left side: Tabs [Layers & Motion | Frames | Export]
 	// Right side: [Live Canvas Preview]
 	inspectorScroll := container.NewVScroll(inspectorCard)
-	motionSplit := container.NewHSplit(tree, inspectorScroll)
+	motionSplit := container.NewHSplit(treePanel, inspectorScroll)
 	motionSplit.SetOffset(0.38)
 
 	sidebarTabs := container.NewAppTabs(
@@ -670,13 +1004,14 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 		}
 
 		var message string
+		count := state.HistoryIndex + 1
 		switch {
 		case hasExported:
 			message = "You have exported an animated GIF, but your motion changes have not been applied to your Inkscape document yet.\n\nWould you like to apply your changes to the document before closing?"
-		case len(state.History) == 1:
-			message = fmt.Sprintf("You have unapplied motion changes (%s).\n\nWould you like to apply your changes to your Inkscape document before closing?", state.History[0].Description)
-		case len(state.History) > 1:
-			message = fmt.Sprintf("You have %d unapplied motion changes (latest: %s).\n\nWould you like to apply your changes to your Inkscape document before closing?", len(state.History), state.History[len(state.History)-1].Description)
+		case count == 1:
+			message = fmt.Sprintf("You have unapplied motion changes (%s).\n\nWould you like to apply your changes to your Inkscape document before closing?", state.History[state.HistoryIndex].Description)
+		case count > 1:
+			message = fmt.Sprintf("You have %d unapplied motion changes (latest: %s).\n\nWould you like to apply your changes to your Inkscape document before closing?", count, state.History[state.HistoryIndex].Description)
 		case len(state.ModifiedIDs) > 0:
 			message = fmt.Sprintf("You have unapplied motion changes on %d element(s).\n\nWould you like to apply your changes to your Inkscape document before closing?", len(state.ModifiedIDs))
 		default:
@@ -774,9 +1109,13 @@ func buildDirectiveWidgetCard(
 	dir *doctree.Directive,
 	totalDocFrames int,
 	onModified func(),
+	onCommit func(description string),
 	onDelete func(),
+	onUndo func(),
+	onRedo func(),
 ) fyne.CanvasObject {
 	m := params.Parse(dir.Type, dir.Params, totalDocFrames)
+	initializing := true
 
 	syncToDir := func() {
 		dir.Params = m.Format()
@@ -792,6 +1131,14 @@ func buildDirectiveWidgetCard(
 		rawPreviewLabel.SetText(dir.Raw)
 	}
 
+	syncAndCommit := func(desc string) {
+		syncToDir()
+		rawPreviewLabel.SetText(dir.Raw)
+		if !initializing && onCommit != nil {
+			onCommit(desc)
+		}
+	}
+
 	// 1. Header: Directive Type Title & Delete Button
 	typeTitle := widget.NewLabelWithStyle(dir.Type, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 
@@ -801,11 +1148,39 @@ func buildDirectiveWidgetCard(
 	headerRow := container.NewBorder(nil, nil, nil, delBtn, typeTitle)
 
 	// 2. Timing Controls (Frames)
-	startEntry := widget.NewEntry()
-	startEntry.SetText(strconv.Itoa(m.StartFrame))
+	startEntry := newCommitEntry(
+		strconv.Itoa(m.StartFrame),
+		func(s string) {
+			if v, err := strconv.Atoi(s); err == nil && v > 0 {
+				m.StartFrame = v
+				syncAndPreview()
+			}
+		},
+		func(s string) {
+			if v, err := strconv.Atoi(s); err == nil && v > 0 && onCommit != nil {
+				onCommit(fmt.Sprintf("Change %s start frame to %d", dir.Type, v))
+			}
+		},
+		onUndo,
+		onRedo,
+	)
 
-	endEntry := widget.NewEntry()
-	endEntry.SetText(strconv.Itoa(m.EndFrame))
+	endEntry := newCommitEntry(
+		strconv.Itoa(m.EndFrame),
+		func(s string) {
+			if v, err := strconv.Atoi(s); err == nil && v > 0 {
+				m.EndFrame = v
+				syncAndPreview()
+			}
+		},
+		func(s string) {
+			if v, err := strconv.Atoi(s); err == nil && v > 0 && onCommit != nil {
+				onCommit(fmt.Sprintf("Change %s end frame to %d", dir.Type, v))
+			}
+		},
+		onUndo,
+		onRedo,
+	)
 
 	allFramesCheck := widget.NewCheck("All Frames", nil)
 	allFramesCheck.SetChecked(m.IsAll)
@@ -824,20 +1199,7 @@ func buildDirectiveWidgetCard(
 	allFramesCheck.OnChanged = func(checked bool) {
 		m.IsAll = checked
 		updateFrameEnables(checked)
-		syncAndPreview()
-	}
-
-	startEntry.OnChanged = func(s string) {
-		if v, err := strconv.Atoi(s); err == nil && v > 0 {
-			m.StartFrame = v
-			syncAndPreview()
-		}
-	}
-	endEntry.OnChanged = func(s string) {
-		if v, err := strconv.Atoi(s); err == nil && v > 0 {
-			m.EndFrame = v
-			syncAndPreview()
-		}
+		syncAndCommit("Toggle all frames on " + dir.Type)
 	}
 
 	framesRow := container.NewHBox(
@@ -850,7 +1212,7 @@ func buildDirectiveWidgetCard(
 	easingOptions := []string{"linear", "in", "out", "in-out", "bounce"}
 	easeSelect := widget.NewSelect(easingOptions, func(sel string) {
 		m.Ease = sel
-		syncAndPreview()
+		syncAndCommit(fmt.Sprintf("Change %s easing to %s", dir.Type, sel))
 	})
 	if m.Ease == "" {
 		easeSelect.SetSelected("linear")
@@ -863,7 +1225,7 @@ func buildDirectiveWidgetCard(
 		var r int
 		if _, err := fmt.Sscanf(sel, "%dx", &r); err == nil && r > 0 {
 			m.Repeat = r
-			syncAndPreview()
+			syncAndCommit(fmt.Sprintf("Change %s repeat to %s", dir.Type, sel))
 		}
 	})
 	if m.Repeat > 1 {
@@ -874,13 +1236,13 @@ func buildDirectiveWidgetCard(
 
 	pingpongCheck := widget.NewCheck("Ping-Pong", func(checked bool) {
 		m.PingPong = checked
-		syncAndPreview()
+		syncAndCommit("Toggle ping-pong on " + dir.Type)
 	})
 	pingpongCheck.SetChecked(m.PingPong)
 
 	revCheck := widget.NewCheck("Reverse", func(checked bool) {
 		m.Reverse = checked
-		syncAndPreview()
+		syncAndCommit("Toggle reverse on " + dir.Type)
 	})
 	revCheck.SetChecked(m.Reverse)
 
@@ -898,19 +1260,27 @@ func buildDirectiveWidgetCard(
 
 	switch m.Type {
 	case "Rot":
-		degEntry := widget.NewEntry()
 		degVal := m.Angle
 		if !m.HasAngle {
 			degVal = 360
 		}
-		degEntry.SetText(fmt.Sprintf("%g", degVal))
-		degEntry.OnChanged = func(s string) {
-			if v, err := strconv.ParseFloat(s, 64); err == nil {
-				m.Angle = v
-				m.HasAngle = true
-				syncAndPreview()
-			}
-		}
+		degEntry := newCommitEntry(
+			fmt.Sprintf("%g", degVal),
+			func(s string) {
+				if v, err := strconv.ParseFloat(s, 64); err == nil {
+					m.Angle = v
+					m.HasAngle = true
+					syncAndPreview()
+				}
+			},
+			func(s string) {
+				if v, err := strconv.ParseFloat(s, 64); err == nil && onCommit != nil {
+					onCommit(fmt.Sprintf("Set Rot angle to %g°", v))
+				}
+			},
+			onUndo,
+			onRedo,
+		)
 
 		dirSelect := widget.NewSelect([]string{"Clockwise (cw)", "Counter-Clockwise (ccw)"}, func(sel string) {
 			if strings.Contains(sel, "ccw") {
@@ -918,7 +1288,7 @@ func buildDirectiveWidgetCard(
 			} else {
 				m.RotDir = "cw"
 			}
-			syncAndPreview()
+			syncAndCommit("Set Rot direction to " + m.RotDir)
 		})
 		if m.RotDir == "ccw" {
 			dirSelect.SetSelected("Counter-Clockwise (ccw)")
@@ -928,7 +1298,7 @@ func buildDirectiveWidgetCard(
 
 		pivotSelect := widget.NewSelect([]string{"center", "top", "bottom", "left", "right", "0", "90", "180", "270"}, func(sel string) {
 			m.Pivot = sel
-			syncAndPreview()
+			syncAndCommit("Set Rot pivot to " + sel)
 		})
 		if m.Pivot != "" {
 			pivotSelect.SetSelected(m.Pivot)
@@ -947,25 +1317,41 @@ func buildDirectiveWidgetCard(
 		typeProps.Add(rotRow)
 
 	case "Scale":
-		fromEntry := widget.NewEntry()
-		fromEntry.SetText(fmt.Sprintf("%g", m.ScaleFrom))
-		fromEntry.OnChanged = func(s string) {
-			if v, err := strconv.ParseFloat(s, 64); err == nil {
-				m.ScaleFrom = v
-				m.HasScale = true
-				syncAndPreview()
-			}
-		}
+		fromEntry := newCommitEntry(
+			fmt.Sprintf("%g", m.ScaleFrom),
+			func(s string) {
+				if v, err := strconv.ParseFloat(s, 64); err == nil {
+					m.ScaleFrom = v
+					m.HasScale = true
+					syncAndPreview()
+				}
+			},
+			func(s string) {
+				if v, err := strconv.ParseFloat(s, 64); err == nil && onCommit != nil {
+					onCommit(fmt.Sprintf("Set Scale 'from' to %g", v))
+				}
+			},
+			onUndo,
+			onRedo,
+		)
 
-		toEntry := widget.NewEntry()
-		toEntry.SetText(fmt.Sprintf("%g", m.ScaleTo))
-		toEntry.OnChanged = func(s string) {
-			if v, err := strconv.ParseFloat(s, 64); err == nil {
-				m.ScaleTo = v
-				m.HasScale = true
-				syncAndPreview()
-			}
-		}
+		toEntry := newCommitEntry(
+			fmt.Sprintf("%g", m.ScaleTo),
+			func(s string) {
+				if v, err := strconv.ParseFloat(s, 64); err == nil {
+					m.ScaleTo = v
+					m.HasScale = true
+					syncAndPreview()
+				}
+			},
+			func(s string) {
+				if v, err := strconv.ParseFloat(s, 64); err == nil && onCommit != nil {
+					onCommit(fmt.Sprintf("Set Scale 'to' to %g", v))
+				}
+			},
+			onUndo,
+			onRedo,
+		)
 
 		scaleRow := container.NewHBox(
 			widget.NewLabel("From Scale:"),
@@ -978,13 +1364,13 @@ func buildDirectiveWidgetCard(
 	case "Move":
 		orientCheck := widget.NewCheck("Orient along path", func(checked bool) {
 			m.Orient = checked
-			syncAndPreview()
+			syncAndCommit("Toggle Move orientation")
 		})
 		orientCheck.SetChecked(m.Orient)
 
 		pivotSelect := widget.NewSelect([]string{"center", "top", "bottom", "left", "right"}, func(sel string) {
 			m.Pivot = sel
-			syncAndPreview()
+			syncAndCommit("Set Move pivot to " + sel)
 		})
 		if m.Pivot != "" {
 			pivotSelect.SetSelected(m.Pivot)
@@ -1000,25 +1386,41 @@ func buildDirectiveWidgetCard(
 		typeProps.Add(moveRow)
 
 	case "Fade":
-		fromEntry := widget.NewEntry()
-		fromEntry.SetText(fmt.Sprintf("%g", m.OpacityFrom))
-		fromEntry.OnChanged = func(s string) {
-			if v, err := strconv.ParseFloat(s, 64); err == nil {
-				m.OpacityFrom = v
-				m.HasOpacity = true
-				syncAndPreview()
-			}
-		}
+		fromEntry := newCommitEntry(
+			fmt.Sprintf("%g", m.OpacityFrom),
+			func(s string) {
+				if v, err := strconv.ParseFloat(s, 64); err == nil {
+					m.OpacityFrom = v
+					m.HasOpacity = true
+					syncAndPreview()
+				}
+			},
+			func(s string) {
+				if v, err := strconv.ParseFloat(s, 64); err == nil && onCommit != nil {
+					onCommit(fmt.Sprintf("Set Fade 'from' to %g", v))
+				}
+			},
+			onUndo,
+			onRedo,
+		)
 
-		toEntry := widget.NewEntry()
-		toEntry.SetText(fmt.Sprintf("%g", m.OpacityTo))
-		toEntry.OnChanged = func(s string) {
-			if v, err := strconv.ParseFloat(s, 64); err == nil {
-				m.OpacityTo = v
-				m.HasOpacity = true
-				syncAndPreview()
-			}
-		}
+		toEntry := newCommitEntry(
+			fmt.Sprintf("%g", m.OpacityTo),
+			func(s string) {
+				if v, err := strconv.ParseFloat(s, 64); err == nil {
+					m.OpacityTo = v
+					m.HasOpacity = true
+					syncAndPreview()
+				}
+			},
+			func(s string) {
+				if v, err := strconv.ParseFloat(s, 64); err == nil && onCommit != nil {
+					onCommit(fmt.Sprintf("Set Fade 'to' to %g", v))
+				}
+			},
+			onUndo,
+			onRedo,
+		)
 
 		fadeRow := container.NewHBox(
 			widget.NewLabel("From Opacity (0-1):"),
@@ -1031,7 +1433,7 @@ func buildDirectiveWidgetCard(
 	case "Color":
 		targetSelect := widget.NewSelect([]string{"fill", "stroke", "all"}, func(sel string) {
 			m.ColorTarget = sel
-			syncAndPreview()
+			syncAndCommit("Set Color target to " + sel)
 		})
 		if m.ColorTarget != "" {
 			targetSelect.SetSelected(m.ColorTarget)
@@ -1039,15 +1441,23 @@ func buildDirectiveWidgetCard(
 			targetSelect.SetSelected("fill")
 		}
 
-		degEntry := widget.NewEntry()
-		degEntry.SetText(fmt.Sprintf("%g", m.ColorAngle))
-		degEntry.OnChanged = func(s string) {
-			if v, err := strconv.ParseFloat(s, 64); err == nil {
-				m.ColorAngle = v
-				m.HasColorAngle = true
-				syncAndPreview()
-			}
-		}
+		degEntry := newCommitEntry(
+			fmt.Sprintf("%g", m.ColorAngle),
+			func(s string) {
+				if v, err := strconv.ParseFloat(s, 64); err == nil {
+					m.ColorAngle = v
+					m.HasColorAngle = true
+					syncAndPreview()
+				}
+			},
+			func(s string) {
+				if v, err := strconv.ParseFloat(s, 64); err == nil && onCommit != nil {
+					onCommit(fmt.Sprintf("Set Color angle to %g°", v))
+				}
+			},
+			onUndo,
+			onRedo,
+		)
 
 		colorRow := container.NewHBox(
 			widget.NewLabel("Target:"),
@@ -1058,15 +1468,23 @@ func buildDirectiveWidgetCard(
 		typeProps.Add(colorRow)
 
 	case "Dist":
-		factorEntry := widget.NewEntry()
-		factorEntry.SetText(fmt.Sprintf("%g", m.ParallaxFactor))
-		factorEntry.OnChanged = func(s string) {
-			if v, err := strconv.ParseFloat(s, 64); err == nil {
-				m.ParallaxFactor = v
-				m.HasParallax = true
-				syncAndPreview()
-			}
-		}
+		factorEntry := newCommitEntry(
+			fmt.Sprintf("%g", m.ParallaxFactor),
+			func(s string) {
+				if v, err := strconv.ParseFloat(s, 64); err == nil {
+					m.ParallaxFactor = v
+					m.HasParallax = true
+					syncAndPreview()
+				}
+			},
+			func(s string) {
+				if v, err := strconv.ParseFloat(s, 64); err == nil && onCommit != nil {
+					onCommit(fmt.Sprintf("Set Dist parallax factor to %g", v))
+				}
+			},
+			onUndo,
+			onRedo,
+		)
 
 		fixedCheck := widget.NewCheck("Fixed Parallax (factor 0)", func(checked bool) {
 			if checked {
@@ -1081,7 +1499,7 @@ func buildDirectiveWidgetCard(
 				factorEntry.Enable()
 			}
 			m.HasParallax = true
-			syncAndPreview()
+			syncAndCommit("Toggle fixed parallax")
 		})
 		if m.ParallaxFactor == 0.0 {
 			fixedCheck.SetChecked(true)
@@ -1096,14 +1514,22 @@ func buildDirectiveWidgetCard(
 		typeProps.Add(distRow)
 
 	case "Depth":
-		orderEntry := widget.NewEntry()
-		orderEntry.SetText(strconv.Itoa(m.DepthOffset))
-		orderEntry.OnChanged = func(s string) {
-			if v, err := strconv.Atoi(s); err == nil {
-				m.DepthOffset = v
-				syncAndPreview()
-			}
-		}
+		orderEntry := newCommitEntry(
+			strconv.Itoa(m.DepthOffset),
+			func(s string) {
+				if v, err := strconv.Atoi(s); err == nil {
+					m.DepthOffset = v
+					syncAndPreview()
+				}
+			},
+			func(s string) {
+				if v, err := strconv.Atoi(s); err == nil && onCommit != nil {
+					onCommit(fmt.Sprintf("Set Depth order to %d", v))
+				}
+			},
+			onUndo,
+			onRedo,
+		)
 
 		depthRow := container.NewHBox(
 			widget.NewLabel("Z-Order Offset:"),
@@ -1111,6 +1537,8 @@ func buildDirectiveWidgetCard(
 		)
 		typeProps.Add(depthRow)
 	}
+
+	initializing = false
 
 	// Directive Card Container
 	cardItems := []fyne.CanvasObject{
