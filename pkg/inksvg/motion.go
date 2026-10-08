@@ -2,6 +2,7 @@ package inksvg
 
 import (
 	"errors"
+	"fmt"
 	"math"
 	"strconv"
 	"strings"
@@ -498,3 +499,62 @@ func CalculateEdgePivot(rect Rect, clockDeg float64) (float64, float64) {
 
 	return cx + t*dx, cy + t*dy
 }
+
+// TransformPathData applies a 2D affine transformation matrix to an SVG path string,
+// returning the transformed path string with absolute coordinates.
+func TransformPathData(pathData string, m Matrix2D) (string, error) {
+	if m == IdentityMatrix() {
+		return pathData, nil
+	}
+	segments, _, _, err := parsePathSegments(pathData)
+	if err != nil {
+		return pathData, err
+	}
+	if len(segments) == 0 {
+		return pathData, nil
+	}
+
+	var sb strings.Builder
+	var prevX, prevY float64
+
+	for i, seg := range segments {
+		var segStartX, segStartY float64
+		switch s := seg.(type) {
+		case *LineSegment:
+			segStartX, segStartY = s.startX, s.startY
+		case *CubicBezierSegment:
+			segStartX, segStartY = s.sx, s.sy
+		case *QuadraticBezierSegment:
+			segStartX, segStartY = s.sx, s.sy
+		}
+
+		if i == 0 || math.Abs(segStartX-prevX) > 1e-6 || math.Abs(segStartY-prevY) > 1e-6 {
+			tx, ty := m.Transform(segStartX, segStartY)
+			if i > 0 {
+				sb.WriteByte(' ')
+			}
+			fmt.Fprintf(&sb, "M %.4f %.4f", tx, ty)
+		}
+
+		switch s := seg.(type) {
+		case *LineSegment:
+			ex, ey := m.Transform(s.endX, s.endY)
+			fmt.Fprintf(&sb, " L %.4f %.4f", ex, ey)
+			prevX, prevY = s.endX, s.endY
+		case *CubicBezierSegment:
+			cx1, cy1 := m.Transform(s.cx1, s.cy1)
+			cx2, cy2 := m.Transform(s.cx2, s.cy2)
+			ex, ey := m.Transform(s.ex, s.ey)
+			fmt.Fprintf(&sb, " C %.4f %.4f %.4f %.4f %.4f %.4f", cx1, cy1, cx2, cy2, ex, ey)
+			prevX, prevY = s.ex, s.ey
+		case *QuadraticBezierSegment:
+			cx, cy := m.Transform(s.cx, s.cy)
+			ex, ey := m.Transform(s.ex, s.ey)
+			fmt.Fprintf(&sb, " Q %.4f %.4f %.4f %.4f", cx, cy, ex, ey)
+			prevX, prevY = s.ex, s.ey
+		}
+	}
+
+	return sb.String(), nil
+}
+

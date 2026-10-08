@@ -157,34 +157,41 @@ func ParseSVG(data []byte) (*SVGDocument, error) {
 						y2Val := parseDimension(extractAttr(elem.Attr, "y2"))
 						bounds = Rect{X: math.Min(x1Val, x2Val), Y: math.Min(y1Val, y2Val), Width: math.Abs(x2Val - x1Val), Height: math.Abs(y2Val - y1Val)}
 					}
-					if trStr := extractAttr(elem.Attr, "transform"); trStr != "" && (bounds.Width > 0 || bounds.Height > 0) {
+					if trStr := extractAttr(elem.Attr, "transform"); trStr != "" {
 						m := parseTransform(trStr)
 						if m != IdentityMatrix() {
-							pts := [4][2]float64{
-								{bounds.X, bounds.Y},
-								{bounds.X + bounds.Width, bounds.Y},
-								{bounds.X + bounds.Width, bounds.Y + bounds.Height},
-								{bounds.X, bounds.Y + bounds.Height},
-							}
-							x0, y0 := m.Transform(pts[0][0], pts[0][1])
-							minX, maxX := x0, x0
-							minY, maxY := y0, y0
-							for i := 1; i < 4; i++ {
-								xi, yi := m.Transform(pts[i][0], pts[i][1])
-								if xi < minX {
-									minX = xi
-								}
-								if xi > maxX {
-									maxX = xi
-								}
-								if yi < minY {
-									minY = yi
-								}
-								if yi > maxY {
-									maxY = yi
+							if d != "" {
+								if td, err := TransformPathData(d, m); err == nil {
+									d = td
 								}
 							}
-							bounds = Rect{X: minX, Y: minY, Width: maxX - minX, Height: maxY - minY}
+							if bounds.Width > 0 || bounds.Height > 0 {
+								pts := [4][2]float64{
+									{bounds.X, bounds.Y},
+									{bounds.X + bounds.Width, bounds.Y},
+									{bounds.X + bounds.Width, bounds.Y + bounds.Height},
+									{bounds.X, bounds.Y + bounds.Height},
+								}
+								x0, y0 := m.Transform(pts[0][0], pts[0][1])
+								minX, maxX := x0, x0
+								minY, maxY := y0, y0
+								for i := 1; i < 4; i++ {
+									xi, yi := m.Transform(pts[i][0], pts[i][1])
+									if xi < minX {
+										minX = xi
+									}
+									if xi > maxX {
+										maxX = xi
+									}
+									if yi < minY {
+										minY = yi
+									}
+									if yi > maxY {
+										maxY = yi
+									}
+								}
+								bounds = Rect{X: minX, Y: minY, Width: maxX - minX, Height: maxY - minY}
+							}
 						}
 					}
 					for i, cfg := range cfgs {
