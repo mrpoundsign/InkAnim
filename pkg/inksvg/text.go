@@ -68,7 +68,9 @@ type FontManager struct {
 	cache        map[string]*sfnt.Font
 	systemDirs   []string
 	fileScanOnce sync.Once
+	sfntScanOnce sync.Once
 	fileMap      map[string]string // normalized family/filename -> file path
+	scannedFiles []string          // all discovered font file paths
 }
 
 var globalFontManager = newFontManager()
@@ -115,6 +117,8 @@ func normalizeFontName(s string) string {
 
 // scanSystemFonts maps normalized font file names and base names to full paths.
 func (fm *FontManager) scanSystemFonts() {
+	scanPlatformFontRegistry(fm)
+
 	for _, dir := range fm.systemDirs {
 		_ = filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 			if err != nil || info == nil || info.IsDir() {
@@ -122,6 +126,7 @@ func (fm *FontManager) scanSystemFonts() {
 			}
 			ext := strings.ToLower(filepath.Ext(path))
 			if ext == ".ttf" || ext == ".otf" || ext == ".ttc" {
+				fm.scannedFiles = append(fm.scannedFiles, path)
 				base := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
 				norm := normalizeFontName(base)
 				if _, exists := fm.fileMap[norm]; !exists {
@@ -130,6 +135,82 @@ func (fm *FontManager) scanSystemFonts() {
 			}
 			return nil
 		})
+	}
+}
+
+// processRegistryFontEntries parses font registry name-to-file entries (such as from Windows
+// HKLM/HKCU Fonts registry keys), strips format suffixes (e.g. "(TrueType)"), normalizes names,
+// and maps them to disk file paths.
+func processRegistryFontEntries(entries map[string]string, searchDirs []string, fileMap map[string]string) {
+	for name, fileVal := range entries {
+		if fileVal == "" {
+			continue
+		}
+
+		cleanName := name
+		for _, suffix := range []string{"(TrueType)", "(OpenType)", "(PostScript)", "(TrueType & OpenType)", "(Type 1)"} {
+			if idx := strings.Index(strings.ToLower(cleanName), strings.ToLower(suffix)); idx != -1 {
+				cleanName = strings.TrimSpace(cleanName[:idx])
+			}
+		}
+
+		norm := normalizeFontName(cleanName)
+		if norm == "" {
+			continue
+		}
+
+		resolvedPath := fileVal
+		if !filepath.IsAbs(resolvedPath) {
+			for _, dir := range searchDirs {
+				cand := filepath.Join(dir, resolvedPath)
+				if _, err := os.Stat(cand); err == nil {
+					resolvedPath = cand
+					break
+				}
+			}
+		}
+
+		if _, exists := fileMap[norm]; !exists {
+			fileMap[norm] = resolvedPath
+		}
+	}
+}
+
+// scanSFNTNames inspects the SFNT name tables of discovered font files to index
+// typographic family and full font names (e.g. for fonts with 8.3 short filenames).
+func (fm *FontManager) scanSFNTNames() {
+	var b sfnt.Buffer
+	for _, path := range fm.scannedFiles {
+		data, err := os.ReadFile(path)
+		if err != nil || len(data) == 0 {
+			continue
+		}
+		font, err := sfnt.Parse(data)
+		if err != nil {
+			col, errCol := sfnt.ParseCollection(data)
+			if errCol == nil && col.NumFonts() > 0 {
+				font, _ = col.Font(0)
+			}
+		}
+		if font == nil {
+			continue
+		}
+
+		indexName := func(id sfnt.NameID) {
+			name, err := font.Name(&b, id)
+			if err == nil && name != "" {
+				norm := normalizeFontName(name)
+				if norm != "" {
+					if _, exists := fm.fileMap[norm]; !exists {
+						fm.fileMap[norm] = path
+					}
+				}
+			}
+		}
+
+		indexName(sfnt.NameIDFamily)
+		indexName(sfnt.NameIDTypographicFamily)
+		indexName(sfnt.NameIDFull)
 	}
 }
 
@@ -229,36 +310,49 @@ func (fm *FontManager) findSystemFont(family string, bold, italic bool) *sfnt.Fo
 
 	candidates = append(candidates, normFam)
 
-	for _, cand := range candidates {
-		if strings.HasPrefix(cand, "dejavusans") && !strings.Contains(cand, "mono") && !strings.Contains(cand, "serif") {
-			if font := loadEmbeddedDejaVu(bold); font != nil {
-				return font
-			}
-		}
-		if path, ok := fm.fileMap[cand]; ok {
-			if font := fm.loadFontFromFile(path); font != nil {
-				return font
-			}
-		}
-	}
-
-	// Prefix search in fileMap
-	for normKey, path := range fm.fileMap {
-		if strings.HasPrefix(normKey, normFam) {
-			if bold && (strings.Contains(normKey, "bold") || strings.Contains(normKey, "bd") || strings.HasSuffix(normKey, "b")) {
-				if font := fm.loadFontFromFile(path); font != nil {
+	matchCandidate := func() *sfnt.Font {
+		for _, cand := range candidates {
+			if strings.HasPrefix(cand, "dejavusans") && !strings.Contains(cand, "mono") && !strings.Contains(cand, "serif") {
+				if font := loadEmbeddedDejaVu(bold); font != nil {
 					return font
 				}
 			}
-			if !bold && !strings.Contains(normKey, "bold") && !strings.Contains(normKey, "bd") {
+			if path, ok := fm.fileMap[cand]; ok {
 				if font := fm.loadFontFromFile(path); font != nil {
 					return font
 				}
 			}
 		}
+
+		// Prefix search in fileMap
+		for normKey, path := range fm.fileMap {
+			if strings.HasPrefix(normKey, normFam) {
+				if bold && (strings.Contains(normKey, "bold") || strings.Contains(normKey, "bd") || strings.HasSuffix(normKey, "b")) {
+					if font := fm.loadFontFromFile(path); font != nil {
+						return font
+					}
+				}
+				if !bold && !strings.Contains(normKey, "bold") && !strings.Contains(normKey, "bd") {
+					if font := fm.loadFontFromFile(path); font != nil {
+						return font
+					}
+				}
+			}
+		}
+		return nil
 	}
 
-	return nil
+	if font := matchCandidate(); font != nil {
+		return font
+	}
+
+	// Fallback: lazily inspect SFNT name tables across scanned font files
+	// to resolve true typographic names for short 8.3 filenames.
+	fm.sfntScanOnce.Do(func() {
+		fm.scanSFNTNames()
+	})
+
+	return matchCandidate()
 }
 
 func (fm *FontManager) loadFontFromFile(path string) *sfnt.Font {

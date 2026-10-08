@@ -4,6 +4,7 @@ import (
 	"image"
 	"image/png"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
@@ -45,6 +46,84 @@ func TestFontResolution_SegoeUIVariable(t *testing.T) {
 	full, _ := f.Name(&b, sfnt.NameIDFull)
 	if !strings.Contains(strings.ToLower(family), "segoe") {
 		t.Errorf("expected Segoe font, got family %q (full %q)", family, full)
+	}
+}
+
+func TestFontResolution_ShortFilename_Synthetic(t *testing.T) {
+	tempDir := t.TempDir()
+	shortFontPath := filepath.Join(tempDir, "DVSANS.TTF")
+	if err := os.WriteFile(shortFontPath, dejavuSansTTF, 0644); err != nil {
+		t.Fatalf("failed to write test font: %v", err)
+	}
+
+	fm := &FontManager{
+		cache:      make(map[string]*sfnt.Font),
+		fileMap:    make(map[string]string),
+		systemDirs: []string{tempDir},
+	}
+	fm.scanSystemFonts()
+
+	// Initial scan only mapped the 8.3 filename
+	if _, ok := fm.fileMap["dvsans"]; !ok {
+		t.Fatalf("expected dvsans to be indexed from filename, got fileMap: %v", fm.fileMap)
+	}
+	if _, ok := fm.fileMap["dejavusans"]; ok {
+		t.Fatalf("dejavusans should not be indexed prior to SFNT scan")
+	}
+
+	// Trigger SFNT header name table extraction
+	fm.scanSFNTNames()
+
+	// SFNT scan should discover "DejaVu Sans" and index "dejavusans"
+	resolvedPath, ok := fm.fileMap["dejavusans"]
+	if !ok {
+		t.Fatalf("expected dejavusans to be indexed after scanSFNTNames, fileMap: %v", fm.fileMap)
+	}
+	if resolvedPath != shortFontPath {
+		t.Errorf("expected path %s, got %s", shortFontPath, resolvedPath)
+	}
+
+	// Also verify loadFontFromFile can load the font
+	font := fm.loadFontFromFile(resolvedPath)
+	if font == nil {
+		t.Fatalf("failed to load font from %s", resolvedPath)
+	}
+	var b sfnt.Buffer
+	fam, err := font.Name(&b, sfnt.NameIDFamily)
+	if err != nil || fam != "DejaVu Sans" {
+		t.Errorf("expected family 'DejaVu Sans', got %q (err %v)", fam, err)
+	}
+}
+
+func TestProcessRegistryFontEntries_Synthetic(t *testing.T) {
+	tempDir := t.TempDir()
+	frahvPath := filepath.Join(tempDir, "FRAHV.TTF")
+	gothicbPath := filepath.Join(tempDir, "GOTHICB.TTF")
+	if err := os.WriteFile(frahvPath, []byte("dummy font"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(gothicbPath, []byte("dummy font"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	entries := map[string]string{
+		"Franklin Gothic Heavy (TrueType)": "FRAHV.TTF",
+		"Century Gothic Bold (TrueType)":   "GOTHICB.TTF",
+		"NonExistent (TrueType)":           "NOFILE.TTF",
+	}
+
+	fileMap := make(map[string]string)
+	processRegistryFontEntries(entries, []string{tempDir}, fileMap)
+
+	if got := fileMap["franklingothicheavy"]; got != frahvPath {
+		t.Errorf("expected %s, got %s", frahvPath, got)
+	}
+	if got := fileMap["centurygothicbold"]; got != gothicbPath {
+		t.Errorf("expected %s, got %s", gothicbPath, got)
+	}
+	// For files that do not exist on disk in searchDirs, relative path is preserved as fallback
+	if got := fileMap["nonexistent"]; got != "NOFILE.TTF" {
+		t.Errorf("expected fallback relative path NOFILE.TTF, got %s", got)
 	}
 }
 
