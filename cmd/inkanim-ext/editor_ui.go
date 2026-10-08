@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -71,9 +72,10 @@ type EditorState struct {
 	OriginalSVG      []byte
 	OriginalActiveID string
 	History          []Change
-	HistoryIndex     int
-	Result           []byte
-	Applied          bool
+	HistoryIndex        int
+	ClipboardDirectives string
+	Result              []byte
+	Applied             bool
 }
 
 const maxHistory = 100
@@ -327,6 +329,223 @@ func (s *EditorState) ApplyPreset(p presets.Preset) (string, error) {
 	s.RecordChange(fmt.Sprintf("Apply preset '%s' to %s", p.Name, targetNode.DisplayTitle()))
 	return targetNode.ID, nil
 }
+
+var pivotRefRe = regexp.MustCompile(`(?i)\bpivot:\s*#([a-zA-Z0-9_\-\.:]+)`)
+
+// CopyMotions extracts all directives on node into an IAMS plaintext string and caches it in s.ClipboardDirectives.
+func (s *EditorState) CopyMotions(node *doctree.DocNode) string {
+	if node == nil || len(node.Directives) == 0 {
+		return ""
+	}
+	var parts []string
+	for _, d := range node.Directives {
+		raw := strings.TrimSpace(d.Raw)
+		if raw == "" {
+			raw = fmt.Sprintf("%s {%s}", d.Type, d.Params)
+		}
+		parts = append(parts, raw)
+	}
+	text := strings.Join(parts, " ")
+	s.ClipboardDirectives = text
+	return text
+}
+
+// CopySingleDirective caches a single directive's IAMS string in s.ClipboardDirectives and returns it.
+func (s *EditorState) CopySingleDirective(d doctree.Directive) string {
+	raw := strings.TrimSpace(d.Raw)
+	if raw == "" {
+		raw = fmt.Sprintf("%s {%s}", d.Type, d.Params)
+	}
+	s.ClipboardDirectives = raw
+	return raw
+}
+
+// PasteMotions parses rawDirectives (falling back to s.ClipboardDirectives) and appends
+// the resulting motion directives to the active element. If the active element is a group
+// or an un-animated child shape in a group, a new motion anchor circle is created in the group.
+// If any directive references an object pivot (#oldID), a new pivot anchor element is generated
+// at the same location in the target's group and the directive is rewritten to reference it.
+func (s *EditorState) PasteMotions(rawDirectives string) (string, error) {
+	if s.ActiveNode == nil {
+		return "", errors.New("no active node selected")
+	}
+	if strings.TrimSpace(rawDirectives) == "" {
+		rawDirectives = s.ClipboardDirectives
+	}
+	if strings.TrimSpace(rawDirectives) == "" {
+		return "", errors.New("clipboard is empty")
+	}
+
+	_, parsedDirectives, _ := doctree.ParseDirectives(rawDirectives)
+	if len(parsedDirectives) == 0 {
+		return "", errors.New("no valid motion directives found to paste")
+	}
+
+	targetNode := s.ActiveNode
+	isGroup := targetNode.IsGroup || targetNode.IsLayer
+
+	// If target is an ordinary non-group shape that doesn't have directives,
+	// anchor to its parent group if available to avoid culling the user's artwork.
+	if !isGroup && !targetNode.HasDirectives() && targetNode.ParentID != "" {
+		if parent := s.NodeMap[targetNode.ParentID]; parent != nil {
+			targetNode = parent
+			isGroup = true
+		}
+	}
+
+	// 1. Pivot ID handling:
+	// If any pasted directive references an object pivot (pivot: #source_pivot),
+	// measure its position and create a new anchor pivot element in the target's group,
+	// then rewrite the directive to reference the new pivot ID.
+	createdPivots := make(map[string]string)
+	doc, docErr := inksvg.ParseSVG(s.ComputePatchedSVG())
+
+	for i := range parsedDirectives {
+		d := &parsedDirectives[i]
+		matches := pivotRefRe.FindAllStringSubmatch(d.Params, -1)
+		for _, m := range matches {
+			if len(m) < 2 {
+				continue
+			}
+			matchedFull := m[0]
+			oldPivotID := m[1]
+
+			newPivotID, exists := createdPivots[oldPivotID]
+			if !exists {
+				// Determine parent group where the pivot should be inserted
+				insertGroupID := targetNode.ID
+				if !isGroup && targetNode.ParentID != "" {
+					insertGroupID = targetNode.ParentID
+				}
+
+				// Find location for new pivot
+				var cx, cy float64
+				foundLocation := false
+				if docErr == nil && doc != nil {
+					rect, ok := inksvg.ComputeElementRect(s.ComputePatchedSVG(), oldPivotID)
+					if ok {
+						cx = rect.X + rect.Width/2.0
+						cy = rect.Y + rect.Height/2.0
+						foundLocation = true
+					}
+					if !foundLocation {
+						// Fallback to active node center
+						tRect, tOk := inksvg.ComputeElementRect(s.ComputePatchedSVG(), s.ActiveNode.ID)
+						if tOk {
+							cx = tRect.X + tRect.Width/2.0
+							cy = tRect.Y + tRect.Height/2.0
+							foundLocation = true
+						}
+					}
+				}
+				if !foundLocation && doc != nil {
+					dRect := doc.GetDrawingRect()
+					cx = dRect.X + dRect.Width/2.0
+					cy = dRect.Y + dRect.Height/2.0
+				}
+
+				basePivotID := targetNode.ID + "_pivot"
+				newPivotID = basePivotID
+				counter := 2
+				for s.NodeMap[newPivotID] != nil {
+					newPivotID = fmt.Sprintf("%s_%d", basePivotID, counter)
+					counter++
+				}
+
+				pivotXML := fmt.Sprintf(`<circle id="%s" cx="%.2f" cy="%.2f" r="1.5" style="fill:#38bdf8;stroke:none" inkscape:label="Pivot: %s" />`,
+					newPivotID, cx, cy, newPivotID)
+
+				patched, err := svgpatch.InsertChild(s.ComputePatchedSVG(), insertGroupID, pivotXML)
+				if err == nil {
+					s.SVGData = patched
+					s.ModifiedIDs = make(map[string]bool)
+					if roots, nodeMap, pErr := doctree.ParseTree(s.SVGData); pErr == nil {
+						s.Roots = roots
+						s.NodeMap = nodeMap
+						if refreshedTarget := s.NodeMap[targetNode.ID]; refreshedTarget != nil {
+							targetNode = refreshedTarget
+						}
+					}
+					createdPivots[oldPivotID] = newPivotID
+					// Refresh doc for subsequent measurements
+					doc, _ = inksvg.ParseSVG(s.SVGData)
+				}
+			}
+
+			if newPivotID != "" {
+				d.Params = strings.Replace(d.Params, matchedFull, "pivot: #"+newPivotID, 1)
+				d.Raw = fmt.Sprintf("%s {%s}", d.Type, d.Params)
+			}
+		}
+	}
+
+	// 2. Attach directives to target
+	var resultingID string
+	if isGroup {
+		var cx, cy float64
+		if doc != nil {
+			measureID := s.ActiveNode.ID
+			rect, ok := inksvg.ComputeElementRect(s.ComputePatchedSVG(), measureID)
+			if ok {
+				cx = rect.X + rect.Width/2.0
+				cy = rect.Y + rect.Height/2.0
+			} else {
+				dRect := doc.GetDrawingRect()
+				cx = dRect.X + dRect.Width/2.0
+				cy = dRect.Y + dRect.Height/2.0
+			}
+		}
+
+		baseID := targetNode.ID + "_motion"
+		anchorID := baseID
+		counter := 2
+		for s.NodeMap[anchorID] != nil {
+			anchorID = fmt.Sprintf("%s_%d", baseID, counter)
+			counter++
+		}
+
+		var dirStrings []string
+		for _, d := range parsedDirectives {
+			dirStrings = append(dirStrings, d.Raw)
+		}
+		label := fmt.Sprintf("%s: %s", anchorID, strings.Join(dirStrings, " "))
+		childXML := fmt.Sprintf(`<circle id="%s" cx="%.2f" cy="%.2f" r="1.5" style="fill:#38bdf8;stroke:none" inkscape:label="%s" />`,
+			anchorID, cx, cy, label)
+
+		patched, err := svgpatch.InsertChild(s.ComputePatchedSVG(), targetNode.ID, childXML)
+		if err != nil {
+			return "", fmt.Errorf("failed to insert motion anchor element: %w", err)
+		}
+
+		s.SVGData = patched
+		s.ModifiedIDs = make(map[string]bool)
+		roots, nodeMap, err := doctree.ParseTree(s.SVGData)
+		if err != nil {
+			return "", fmt.Errorf("failed to re-parse tree: %w", err)
+		}
+		s.Roots = roots
+		s.NodeMap = nodeMap
+		if newAnchor := nodeMap[anchorID]; newAnchor != nil {
+			s.ActiveNode = newAnchor
+		}
+		resultingID = anchorID
+	} else {
+		if len(targetNode.Directives) == 0 && targetNode.LabelPrefix == "" {
+			targetNode.LabelPrefix = targetNode.ID
+		}
+		targetNode.Directives = append(targetNode.Directives, parsedDirectives...)
+		s.ModifiedIDs[targetNode.ID] = true
+		resultingID = targetNode.ID
+	}
+
+	desc := fmt.Sprintf("Paste %d motion(s) onto %s", len(parsedDirectives), targetNode.DisplayTitle())
+	if len(parsedDirectives) == 1 {
+		desc = fmt.Sprintf("Paste %s motion onto %s", parsedDirectives[0].Type, targetNode.DisplayTitle())
+	}
+	s.RecordChange(desc)
+	return resultingID, nil
+}
+
 
 
 // NewEditorState initializes the editor model from SVG data and CLI parameters.
@@ -596,11 +815,27 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 	redoItem.Shortcut = &fyne.ShortcutRedo{}
 	redoItem.Icon = theme.ContentRedoIcon()
 
+	copyItem := fyne.NewMenuItem("Copy Motions", nil)
+	copyItem.Shortcut = &fyne.ShortcutCopy{}
+	copyItem.Icon = theme.ContentCopyIcon()
+
+	pasteItem := fyne.NewMenuItem("Paste Motions", nil)
+	pasteItem.Shortcut = &fyne.ShortcutPaste{}
+	pasteItem.Icon = theme.ContentPasteIcon()
+
 	deleteItem := fyne.NewMenuItem("Delete Element", nil)
 	deleteItem.Icon = theme.DeleteIcon()
 	deleteItem.Shortcut = &desktop.CustomShortcut{KeyName: fyne.KeyDelete}
 
-	editMenu := fyne.NewMenu("Edit", undoItem, redoItem, fyne.NewMenuItemSeparator(), deleteItem)
+	editMenu := fyne.NewMenu("Edit",
+		undoItem,
+		redoItem,
+		fyne.NewMenuItemSeparator(),
+		copyItem,
+		pasteItem,
+		fyne.NewMenuItemSeparator(),
+		deleteItem,
+	)
 	mainMenu := fyne.NewMainMenu(editMenu)
 	w.SetMainMenu(mainMenu)
 
@@ -621,6 +856,15 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 			redoBtn.Disable()
 			redoItem.Disabled = true
 		}
+
+		canCopy := state.ActiveNode != nil && len(state.ActiveNode.Directives) > 0
+		copyItem.Disabled = !canCopy
+
+		clipHasText := state.ClipboardDirectives != ""
+		if a != nil && a.Clipboard() != nil && strings.TrimSpace(a.Clipboard().Content()) != "" {
+			clipHasText = true
+		}
+		pasteItem.Disabled = state.ActiveNode == nil || !clipHasText
 
 		var canDelete bool
 		if state.ActiveNode != nil {
@@ -708,6 +952,63 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 	undoItem.Action = doUndo
 	redoItem.Action = doRedo
 
+	doCopy := func() {
+		if _, isEntry := w.Canvas().Focused().(*commitEntry); isEntry {
+			return
+		}
+		if _, isEntry := w.Canvas().Focused().(*widget.Entry); isEntry {
+			return
+		}
+		if state.ActiveNode == nil || len(state.ActiveNode.Directives) == 0 {
+			return
+		}
+		text := state.CopyMotions(state.ActiveNode)
+		if a != nil && a.Clipboard() != nil {
+			a.Clipboard().SetContent(text)
+		}
+		statusLabel.SetText(fmt.Sprintf("Copied %d motion directive(s) to clipboard", len(state.ActiveNode.Directives)))
+		updateUndoRedo()
+	}
+
+	doPaste := func() {
+		if _, isEntry := w.Canvas().Focused().(*commitEntry); isEntry {
+			return
+		}
+		if _, isEntry := w.Canvas().Focused().(*widget.Entry); isEntry {
+			return
+		}
+		if state.ActiveNode == nil {
+			return
+		}
+		clipText := ""
+		if a != nil && a.Clipboard() != nil {
+			clipText = a.Clipboard().Content()
+		}
+		if strings.TrimSpace(clipText) == "" {
+			clipText = state.ClipboardDirectives
+		}
+		if strings.TrimSpace(clipText) == "" {
+			statusLabel.SetText("Clipboard is empty")
+			return
+		}
+		resultingID, err := state.PasteMotions(clipText)
+		if err != nil {
+			statusLabel.SetText("Paste error: " + err.Error())
+			return
+		}
+		lastHistoryMsg = ""
+		rebuildAfterHistoryChange()
+		if tree != nil && resultingID != "" {
+			if n := state.NodeMap[resultingID]; n != nil && n.ParentID != "" {
+				tree.OpenBranch(n.ParentID)
+			}
+			tree.Select(resultingID)
+		}
+	}
+
+	copyItem.Action = doCopy
+	pasteItem.Action = doPaste
+
 	doDeleteActiveElement := func() {
 		if state.ActiveNode == nil {
 			return
@@ -755,6 +1056,24 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 		Modifier: fyne.KeyModifierControl,
 	}, func(_ fyne.Shortcut) {
 		doRedo()
+	})
+	w.Canvas().AddShortcut(&fyne.ShortcutCopy{}, func(_ fyne.Shortcut) {
+		doCopy()
+	})
+	w.Canvas().AddShortcut(&fyne.ShortcutPaste{}, func(_ fyne.Shortcut) {
+		doPaste()
+	})
+	w.Canvas().AddShortcut(&desktop.CustomShortcut{
+		KeyName:  fyne.KeyC,
+		Modifier: fyne.KeyModifierControl,
+	}, func(_ fyne.Shortcut) {
+		doCopy()
+	})
+	w.Canvas().AddShortcut(&desktop.CustomShortcut{
+		KeyName:  fyne.KeyV,
+		Modifier: fyne.KeyModifierControl,
+	}, func(_ fyne.Shortcut) {
+		doPaste()
 	})
 	w.Canvas().AddShortcut(&desktop.CustomShortcut{
 		KeyName: fyne.KeyDelete,
@@ -904,7 +1223,16 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 						schedulePreviewUpdate()
 					}
 
-					card := buildDirectiveWidgetCard(dir, totalDocFrames, onModified, onCommit, onDelete, doUndo, doRedo)
+					onCopy := func() {
+						text := state.CopySingleDirective(*dir)
+						if a != nil && a.Clipboard() != nil {
+							a.Clipboard().SetContent(text)
+						}
+						statusLabel.SetText(fmt.Sprintf("Copied %s directive to clipboard", dir.Type))
+						updateUndoRedo()
+					}
+
+					card := buildDirectiveWidgetCard(dir, totalDocFrames, onModified, onCommit, onCopy, onDelete, doUndo, doRedo)
 					directivesList.Add(card)
 				}
 			}
@@ -1006,6 +1334,28 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 
 		updatePreview()
 
+		copyAllBtn := widget.NewButtonWithIcon("Copy All", theme.ContentCopyIcon(), doCopy)
+		copyAllBtn.Importance = widget.LowImportance
+		if len(node.Directives) == 0 {
+			copyAllBtn.Disable()
+		}
+
+		pasteBtn := widget.NewButtonWithIcon("Paste", theme.ContentPasteIcon(), doPaste)
+		pasteBtn.Importance = widget.LowImportance
+		clipHasText := state.ClipboardDirectives != ""
+		if a != nil && a.Clipboard() != nil && strings.TrimSpace(a.Clipboard().Content()) != "" {
+			clipHasText = true
+		}
+		if !clipHasText {
+			pasteBtn.Disable()
+		}
+
+		dirHeader := container.NewBorder(
+			nil, nil,
+			widget.NewLabelWithStyle("Motion Directives", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+			container.NewHBox(copyAllBtn, pasteBtn),
+		)
+
 		content := container.NewVBox(
 			headerBox,
 			widget.NewLabelWithStyle("Motion Presets", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
@@ -1014,7 +1364,7 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 			widget.NewLabelWithStyle("Object Name / Label Prefix", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 			prefixEntry,
 			widget.NewSeparator(),
-			widget.NewLabelWithStyle("Motion Directives", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+			dirHeader,
 			directivesList,
 			widget.NewSeparator(),
 			addBar,
@@ -1279,6 +1629,7 @@ func buildDirectiveWidgetCard(
 	totalDocFrames int,
 	onModified func(),
 	onCommit func(description string),
+	onCopy func(),
 	onDelete func(),
 	onUndo func(),
 	onRedo func(),
@@ -1308,13 +1659,17 @@ func buildDirectiveWidgetCard(
 		}
 	}
 
-	// 1. Header: Directive Type Title & Delete Button
+	// 1. Header: Directive Type Title, Copy & Delete Buttons
 	typeTitle := widget.NewLabelWithStyle(dir.Type, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+
+	copyBtn := widget.NewButtonWithIcon("", theme.ContentCopyIcon(), onCopy)
+	copyBtn.Importance = widget.LowImportance
 
 	delBtn := widget.NewButtonWithIcon("", theme.DeleteIcon(), onDelete)
 	delBtn.Importance = widget.DangerImportance
 
-	headerRow := container.NewBorder(nil, nil, nil, delBtn, typeTitle)
+	actions := container.NewHBox(copyBtn, delBtn)
+	headerRow := container.NewBorder(nil, nil, nil, actions, typeTitle)
 
 	// 2. Timing Controls (Frames)
 	startEntry := newCommitEntry(
