@@ -1108,6 +1108,63 @@ func TestEditorWindow_DeleteElementUI(t *testing.T) {
 	}
 }
 
+func TestEditorWindow_ApplyChanges_CleanVsDirty(t *testing.T) {
+	svg := []byte(`<svg xmlns="http://www.w3.org/2000/svg"><rect id="r1" width="10"/></svg>`)
+
+	// 1. Clean document: clicking Apply Changes sets Applied = false
+	stateClean, err := NewEditorState(svg, "test.svg", []string{"r1"})
+	if err != nil {
+		t.Fatalf("NewEditorState failed: %v", err)
+	}
+
+	a := test.NewApp()
+	wClean := ShowEditorWindow(a, stateClean)
+
+	var findApplyBtn func(co fyne.CanvasObject) *widget.Button
+	findApplyBtn = func(co fyne.CanvasObject) *widget.Button {
+		if btn, ok := co.(*widget.Button); ok && btn.Text == "Apply Changes" {
+			return btn
+		}
+		if c, ok := co.(*fyne.Container); ok {
+			for _, child := range c.Objects {
+				if b := findApplyBtn(child); b != nil {
+					return b
+				}
+			}
+		}
+		return nil
+	}
+
+	applyBtnClean := findApplyBtn(wClean.Content())
+	if applyBtnClean == nil {
+		t.Fatalf("applyBtn not found in clean window")
+	}
+
+	applyBtnClean.Tapped(&fyne.PointEvent{})
+	if stateClean.Applied {
+		t.Errorf("expected Applied == false when clicking Apply Changes on clean document")
+	}
+
+	// 2. Dirty document: clicking Apply Changes sets Applied = true
+	stateDirty, err := NewEditorState(svg, "test.svg", []string{"r1"})
+	if err != nil {
+		t.Fatalf("NewEditorState failed: %v", err)
+	}
+	stateDirty.NodeMap["r1"].LabelPrefix = "Dirty Prefix"
+	stateDirty.ModifiedIDs["r1"] = true
+
+	wDirty := ShowEditorWindow(a, stateDirty)
+	applyBtnDirty := findApplyBtn(wDirty.Content())
+	if applyBtnDirty == nil {
+		t.Fatalf("applyBtn not found in dirty window")
+	}
+
+	applyBtnDirty.Tapped(&fyne.PointEvent{})
+	if !stateDirty.Applied {
+		t.Errorf("expected Applied == true when clicking Apply Changes on dirty document")
+	}
+}
+
 
 
 

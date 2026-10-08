@@ -1231,8 +1231,12 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 	// Bottom action buttons
 	applyBtn := widget.NewButtonWithIcon("Apply Changes", theme.ConfirmIcon(), func() {
 		cleanupPlayback()
-		state.Result = state.ComputePatchedSVG()
-		state.Applied = true
+		if state.IsDirty() {
+			state.Result = state.ComputePatchedSVG()
+			state.Applied = true
+		} else {
+			state.Applied = false
+		}
 		w.Close()
 		a.Quit()
 	})
