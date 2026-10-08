@@ -264,7 +264,7 @@ func TestBuildDirectiveWidgetCard(t *testing.T) {
 		deleteCalled = true
 	}
 
-	cardObj := buildDirectiveWidgetCard(dir, 20, onModified, onDelete)
+	cardObj := buildDirectiveWidgetCard(dir, 20, onModified, nil, onDelete, nil, nil)
 	card, ok := cardObj.(*fyne.Container)
 	if !ok {
 		t.Fatalf("expected card to be *fyne.Container")
@@ -280,7 +280,11 @@ func TestBuildDirectiveWidgetCard(t *testing.T) {
 		if co == nil {
 			return
 		}
-		if e, ok := co.(*widget.Entry); ok {
+		if e, ok := co.(*commitEntry); ok {
+			if e.Text == "45" {
+				angleEntry = &e.Entry
+			}
+		} else if e, ok := co.(*widget.Entry); ok {
 			if e.Text == "45" {
 				angleEntry = e
 			}
@@ -347,7 +351,7 @@ func TestBuildDirectiveWidgetCard(t *testing.T) {
 		Params: "f: 1-10; order: 2",
 		Raw:    "Depth {f: 1-10; order: 2}",
 	}
-	depthCard := buildDirectiveWidgetCard(depthDir, 20, func() {}, func() {}).(*fyne.Container)
+	depthCard := buildDirectiveWidgetCard(depthDir, 20, func() {}, nil, func() {}, nil, nil).(*fyne.Container)
 	var depthHasFrames, depthHasEase bool
 	walk = func(co fyne.CanvasObject) {
 		if co == nil {
@@ -379,7 +383,7 @@ func TestBuildDirectiveWidgetCard(t *testing.T) {
 		Params: "factor: 0.5",
 		Raw:    "Dist {factor: 0.5}",
 	}
-	distCard := buildDirectiveWidgetCard(distDir, 20, func() {}, func() {}).(*fyne.Container)
+	distCard := buildDirectiveWidgetCard(distDir, 20, func() {}, nil, func() {}, nil, nil).(*fyne.Container)
 	var distHasFrames, distHasEase bool
 	walk = func(co fyne.CanvasObject) {
 		if co == nil {
@@ -515,6 +519,329 @@ func TestEditorState_InitialStateCleanOnLoad(t *testing.T) {
 		if len(st.History) > 0 {
 			t.Errorf("%s: expected empty History on load, got %d changes", name, len(st.History))
 		}
+	}
+}
+
+func TestEditorState_UndoRedo_ApplyPreset(t *testing.T) {
+	cleanSVG := `<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="100" height="100">
+  <g id="layer1" inkscape:groupmode="layer" inkscape:label="Layer 1">
+    <g id="g_rocket" inkscape:label="Rocket">
+      <rect id="rect_body" x="10" y="10" width="20" height="40" />
+    </g>
+  </g>
+</svg>`
+	data := []byte(cleanSVG)
+
+	state, err := NewEditorState(data, "clean.svg", []string{"g_rocket"})
+	if err != nil {
+		t.Fatalf("NewEditorState failed: %v", err)
+	}
+
+	if state.CanUndo() {
+		t.Errorf("expected CanUndo() == false initially")
+	}
+	if state.CanRedo() {
+		t.Errorf("expected CanRedo() == false initially")
+	}
+	if state.HistoryIndex != -1 {
+		t.Errorf("expected HistoryIndex == -1 initially, got %d", state.HistoryIndex)
+	}
+
+	spinPreset, ok := presets.FindPreset("spin")
+	if !ok {
+		t.Fatalf("spin preset not found")
+	}
+
+	anchorID, err := state.ApplyPreset(spinPreset)
+	if err != nil {
+		t.Fatalf("ApplyPreset failed: %v", err)
+	}
+
+	if !state.CanUndo() {
+		t.Errorf("expected CanUndo() == true after preset")
+	}
+	if state.CanRedo() {
+		t.Errorf("expected CanRedo() == false after preset")
+	}
+	if state.HistoryIndex != 0 {
+		t.Errorf("expected HistoryIndex == 0, got %d", state.HistoryIndex)
+	}
+	if state.ActiveNode == nil || state.ActiveNode.ID != anchorID {
+		t.Errorf("expected active node to be anchor %s, got %v", anchorID, state.ActiveNode)
+	}
+	if !state.IsDirty() {
+		t.Errorf("expected state to be dirty after preset")
+	}
+
+	// Undo the preset
+	desc, err := state.Undo()
+	if err != nil {
+		t.Fatalf("Undo failed: %v", err)
+	}
+	if !strings.Contains(desc, "Spin") {
+		t.Errorf("expected undone description to mention Spin, got %q", desc)
+	}
+	if state.CanUndo() {
+		t.Errorf("expected CanUndo() == false after undoing only change")
+	}
+	if !state.CanRedo() {
+		t.Errorf("expected CanRedo() == true after undoing")
+	}
+	if state.HistoryIndex != -1 {
+		t.Errorf("expected HistoryIndex == -1 after undo, got %d", state.HistoryIndex)
+	}
+	if state.IsDirty() {
+		t.Errorf("expected state to be clean after undoing back to initial state")
+	}
+	if state.NodeMap[anchorID] != nil {
+		t.Errorf("expected anchor %s to be removed from NodeMap after undo", anchorID)
+	}
+	if state.ActiveNode == nil || state.ActiveNode.ID != "g_rocket" {
+		t.Errorf("expected active node restored to g_rocket, got %v", state.ActiveNode)
+	}
+
+	// Redo the preset
+	redoneDesc, err := state.Redo()
+	if err != nil {
+		t.Fatalf("Redo failed: %v", err)
+	}
+	if !strings.Contains(redoneDesc, "Spin") {
+		t.Errorf("expected redone description to mention Spin, got %q", redoneDesc)
+	}
+	if !state.CanUndo() {
+		t.Errorf("expected CanUndo() == true after redo")
+	}
+	if state.CanRedo() {
+		t.Errorf("expected CanRedo() == false after redo")
+	}
+	if state.HistoryIndex != 0 {
+		t.Errorf("expected HistoryIndex == 0 after redo, got %d", state.HistoryIndex)
+	}
+	if !state.IsDirty() {
+		t.Errorf("expected state to be dirty after redo")
+	}
+	if state.NodeMap[anchorID] == nil {
+		t.Errorf("expected anchor %s restored in NodeMap after redo", anchorID)
+	}
+	if state.ActiveNode == nil || state.ActiveNode.ID != anchorID {
+		t.Errorf("expected active node to be restored to %s, got %v", anchorID, state.ActiveNode)
+	}
+}
+
+func TestEditorState_UndoRedo_DirectiveAddDelete(t *testing.T) {
+	cleanSVG := `<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="100" height="100">
+  <rect id="rect1" inkscape:label="MyBox" x="10" y="10" width="20" height="20" />
+</svg>`
+	data := []byte(cleanSVG)
+
+	state, err := NewEditorState(data, "clean.svg", []string{"rect1"})
+	if err != nil {
+		t.Fatalf("NewEditorState failed: %v", err)
+	}
+
+	node := state.ActiveNode
+	if node == nil {
+		t.Fatalf("expected rect1 active")
+	}
+
+	// Add directive
+	node.Directives = append(node.Directives, doctree.Directive{
+		Type:   "Move",
+		Params: "f: 1-10",
+		Raw:    "Move {f: 1-10}",
+	})
+	state.ModifiedIDs[node.ID] = true
+	state.RecordChange("Add Move to rect1")
+
+	if state.HistoryIndex != 0 || len(state.History) != 1 {
+		t.Fatalf("expected 1 history entry, got index %d len %d", state.HistoryIndex, len(state.History))
+	}
+
+	// Delete directive
+	node.Directives = nil
+	state.ModifiedIDs[node.ID] = true
+	state.RecordChange("Delete Move from rect1")
+
+	if state.HistoryIndex != 1 || len(state.History) != 2 {
+		t.Fatalf("expected 2 history entries, got index %d len %d", state.HistoryIndex, len(state.History))
+	}
+
+	// Undo delete
+	_, err = state.Undo()
+	if err != nil {
+		t.Fatalf("Undo delete failed: %v", err)
+	}
+	if len(state.ActiveNode.Directives) != 1 {
+		t.Fatalf("expected 1 directive restored after undoing delete, got %d", len(state.ActiveNode.Directives))
+	}
+	if state.ActiveNode.Directives[0].Type != "Move" {
+		t.Errorf("expected restored directive to be Move, got %s", state.ActiveNode.Directives[0].Type)
+	}
+
+	// Undo add
+	_, err = state.Undo()
+	if err != nil {
+		t.Fatalf("Undo add failed: %v", err)
+	}
+	if len(state.ActiveNode.Directives) != 0 {
+		t.Fatalf("expected 0 directives after undoing add, got %d", len(state.ActiveNode.Directives))
+	}
+	if state.IsDirty() {
+		t.Errorf("expected clean state after undoing back to initial")
+	}
+}
+
+func TestEditorState_UndoRedo_TruncateOnNewEdit(t *testing.T) {
+	cleanSVG := `<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="100" height="100">
+  <rect id="rect1" inkscape:label="MyBox" x="10" y="10" width="20" height="20" />
+</svg>`
+	data := []byte(cleanSVG)
+
+	state, err := NewEditorState(data, "clean.svg", []string{"rect1"})
+	if err != nil {
+		t.Fatalf("NewEditorState failed: %v", err)
+	}
+
+	node := state.ActiveNode
+
+	// Edit 1
+	node.LabelPrefix = "Box Alpha"
+	state.ModifiedIDs[node.ID] = true
+	state.RecordChange("Rename prefix to Box Alpha")
+
+	// Edit 2
+	node.LabelPrefix = "Box Beta"
+	state.ModifiedIDs[node.ID] = true
+	state.RecordChange("Rename prefix to Box Beta")
+
+	if len(state.History) != 2 || state.HistoryIndex != 1 {
+		t.Fatalf("expected 2 history entries, got index %d len %d", state.HistoryIndex, len(state.History))
+	}
+
+	// Undo Edit 2
+	_, _ = state.Undo()
+	if state.HistoryIndex != 0 {
+		t.Fatalf("expected index 0 after undo, got %d", state.HistoryIndex)
+	}
+	if !state.CanRedo() {
+		t.Fatalf("expected CanRedo() == true")
+	}
+
+	// New Edit 3 while at index 0 should truncate Edit 2 from redo stack
+	node = state.ActiveNode
+	node.LabelPrefix = "Box Gamma"
+	state.ModifiedIDs[node.ID] = true
+	state.RecordChange("Rename prefix to Box Gamma")
+
+	if len(state.History) != 2 {
+		t.Fatalf("expected history truncated and appended to length 2, got %d", len(state.History))
+	}
+	if state.HistoryIndex != 1 {
+		t.Fatalf("expected index 1, got %d", state.HistoryIndex)
+	}
+	if state.CanRedo() {
+		t.Errorf("expected CanRedo() == false after branching new edit")
+	}
+	if state.History[1].Description != "Rename prefix to Box Gamma" {
+		t.Errorf("expected latest history to be Box Gamma, got %q", state.History[1].Description)
+	}
+}
+
+func TestCommitEntry_Coalescing(t *testing.T) {
+	var liveCalls int
+	var committedVals []string
+
+	onLive := func(s string) {
+		liveCalls++
+	}
+	onCommit := func(s string) {
+		committedVals = append(committedVals, s)
+	}
+
+	var undoCalls, redoCalls int
+	onUndo := func() {
+		undoCalls++
+	}
+	onRedo := func() {
+		redoCalls++
+	}
+
+	entry := newCommitEntry("10", onLive, onCommit, onUndo, onRedo)
+	if entry.Text != "10" {
+		t.Errorf("expected initial text 10, got %q", entry.Text)
+	}
+	if liveCalls != 0 {
+		t.Errorf("expected 0 live calls during construction, got %d", liveCalls)
+	}
+	if len(committedVals) != 0 {
+		t.Errorf("expected 0 commit calls during construction, got %d", len(committedVals))
+	}
+
+	// Simulate user typing: "11", "12", "15"
+	entry.SetText("11")
+	entry.SetText("12")
+	entry.SetText("15")
+
+	if len(committedVals) != 0 {
+		t.Errorf("expected no commits while typing, got %v", committedVals)
+	}
+
+	// Now simulate user typing via OnChanged without updating lastCommitted
+	entry.Text = "20"
+	entry.OnChanged("20")
+	entry.Text = "25"
+	entry.OnChanged("25")
+
+	if len(committedVals) != 0 {
+		t.Errorf("expected no commits during live typing, got %v", committedVals)
+	}
+
+	// Test Undo while entry has uncommitted text: reverts back to lastCommitted ("15")
+	entry.TypedShortcut(&fyne.ShortcutUndo{})
+	if entry.Text != "15" {
+		t.Errorf("expected uncommitted text to revert to 15, got %q", entry.Text)
+	}
+	if undoCalls != 0 {
+		t.Errorf("expected document undo NOT called when entry was dirty, got %d", undoCalls)
+	}
+
+	// FocusLost should commit once with current text ("15")
+	entry.FocusLost()
+	if len(committedVals) != 0 {
+		// entry was reverted to "15" which was lastCommitted so no commit should be fired
+		t.Logf("committedVals: %v", committedVals)
+	}
+
+	// Now modify text and commit via FocusLost
+	entry.Text = "25"
+	entry.FocusLost()
+	if len(committedVals) != 1 || committedVals[0] != "25" {
+		t.Fatalf("expected 1 commit with '25', got %v", committedVals)
+	}
+
+	// Subsequent FocusLost without edits should not duplicate commit
+	entry.FocusLost()
+	if len(committedVals) != 1 {
+		t.Fatalf("expected still 1 commit, got %v", committedVals)
+	}
+
+	// Enter submission with edit
+	entry.Text = "30"
+	entry.OnSubmitted("30")
+	if len(committedVals) != 2 || committedVals[1] != "30" {
+		t.Fatalf("expected second commit with '30', got %v", committedVals)
+	}
+
+	// Test Undo when clean (text == lastCommitted): delegates to document onUndo
+	entry.TypedShortcut(&fyne.ShortcutUndo{})
+	if undoCalls != 1 {
+		t.Errorf("expected document undo called once, got %d", undoCalls)
+	}
+
+	// Test Redo: delegates to document onRedo
+	entry.TypedShortcut(&fyne.ShortcutRedo{})
+	if redoCalls != 1 {
+		t.Errorf("expected document redo called once, got %d", redoCalls)
 	}
 }
 
