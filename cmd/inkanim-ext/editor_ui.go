@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"strconv"
@@ -50,6 +51,12 @@ var motionTypes = []string{
 	"Color",
 }
 
+// Change records a document mutation with a human-readable description and full SVG snapshot.
+type Change struct {
+	Description string
+	SVGData     []byte
+}
+
 type EditorState struct {
 	Roots       []*doctree.DocNode
 	NodeMap     map[string]*doctree.DocNode
@@ -58,6 +65,8 @@ type EditorState struct {
 	SelectedIDs []string
 	InputPath   string
 	SVGData     []byte
+	OriginalSVG []byte
+	History     []Change
 	Result      []byte
 	Applied     bool
 }
@@ -77,6 +86,20 @@ func (s *EditorState) ComputePatchedSVG() []byte {
 		}
 	}
 	return patchedData
+}
+
+// RecordChange captures a snapshot of the current document state and appends it to History.
+func (s *EditorState) RecordChange(description string) {
+	snapshot := s.ComputePatchedSVG()
+	s.History = append(s.History, Change{
+		Description: description,
+		SVGData:     snapshot,
+	})
+}
+
+// IsDirty reports whether the current document state differs from the original SVG loaded.
+func (s *EditorState) IsDirty() bool {
+	return !bytes.Equal(s.ComputePatchedSVG(), s.OriginalSVG)
 }
 
 // ApplyPreset applies a motion preset to the active node. If the active node is a group,
@@ -142,6 +165,7 @@ func (s *EditorState) ApplyPreset(p presets.Preset) (string, error) {
 		if newAnchor := nodeMap[anchorID]; newAnchor != nil {
 			s.ActiveNode = newAnchor
 		}
+		s.RecordChange(fmt.Sprintf("Apply preset '%s' to %s", p.Name, targetNode.DisplayTitle()))
 		return anchorID, nil
 	}
 
@@ -156,6 +180,7 @@ func (s *EditorState) ApplyPreset(p presets.Preset) (string, error) {
 	targetNode.Directives = directives
 	targetNode.LabelSuffix = suffix
 	s.ModifiedIDs[targetNode.ID] = true
+	s.RecordChange(fmt.Sprintf("Apply preset '%s' to %s", p.Name, targetNode.DisplayTitle()))
 	return targetNode.ID, nil
 }
 
@@ -183,18 +208,8 @@ func NewEditorState(data []byte, inputPath string, selectedIDs []string) (*Edito
 		SelectedIDs: selectedIDs,
 		InputPath:   inputPath,
 		SVGData:     data,
+		OriginalSVG: bytes.Clone(data),
 		Result:      data,
-	}
-
-	// Mark any nodes whose labels were migrated on load as modified
-	for _, node := range nodeMap {
-		if node.HasDirectives() {
-			orig := node.Label
-			migrated := node.FormatLabel()
-			if orig != migrated && orig != "" {
-				state.ModifiedIDs[node.ID] = true
-			}
-		}
 	}
 
 	return state, nil
@@ -292,8 +307,20 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 		} else {
 			activeName = "None"
 		}
-		statusLabel.SetText(fmt.Sprintf("Active Object: %s | Modified: %d",
-			activeName, len(state.ModifiedIDs)))
+		var changeStatus string
+		if state.IsDirty() {
+			switch {
+			case len(state.History) == 1:
+				changeStatus = fmt.Sprintf("Unapplied changes (%s)", state.History[0].Description)
+			case len(state.History) > 1:
+				changeStatus = fmt.Sprintf("Unapplied changes (%d changes, latest: %s)", len(state.History), state.History[len(state.History)-1].Description)
+			default:
+				changeStatus = "Unapplied changes"
+			}
+		} else {
+			changeStatus = "No changes"
+		}
+		statusLabel.SetText(fmt.Sprintf("Active Object: %s | %s", activeName, changeStatus))
 	}
 
 	// Inspector container
@@ -384,8 +411,10 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 					}
 
 					onDelete := func() {
+						deletedType := dir.Type
 						node.Directives = append(node.Directives[:idx], node.Directives[idx+1:]...)
 						state.ModifiedIDs[node.ID] = true
+						state.RecordChange(fmt.Sprintf("Delete %s from %s", deletedType, node.DisplayTitle()))
 						rebuildDirectivesList()
 						updatePreview()
 						updateStatus()
@@ -422,6 +451,7 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 				Raw:    fmt.Sprintf("%s {%s}", mType, params),
 			})
 			state.ModifiedIDs[node.ID] = true
+			state.RecordChange(fmt.Sprintf("Add %s to %s", mType, node.DisplayTitle()))
 			rebuildDirectivesList()
 			updatePreview()
 			updateStatus()
@@ -630,9 +660,9 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 	mainSplit.SetOffset(0.55)
 
 	handleCloseRequest := func() {
-		if len(state.ModifiedIDs) == 0 {
+		if !state.IsDirty() {
 			cleanupPlayback()
-			state.Result = state.SVGData
+			state.Result = state.OriginalSVG
 			state.Applied = false
 			w.Close()
 			a.Quit()
@@ -640,10 +670,17 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 		}
 
 		var message string
-		if hasExported {
+		switch {
+		case hasExported:
 			message = "You have exported an animated GIF, but your motion changes have not been applied to your Inkscape document yet.\n\nWould you like to apply your changes to the document before closing?"
-		} else {
+		case len(state.History) == 1:
+			message = fmt.Sprintf("You have unapplied motion changes (%s).\n\nWould you like to apply your changes to your Inkscape document before closing?", state.History[0].Description)
+		case len(state.History) > 1:
+			message = fmt.Sprintf("You have %d unapplied motion changes (latest: %s).\n\nWould you like to apply your changes to your Inkscape document before closing?", len(state.History), state.History[len(state.History)-1].Description)
+		case len(state.ModifiedIDs) > 0:
 			message = fmt.Sprintf("You have unapplied motion changes on %d element(s).\n\nWould you like to apply your changes to your Inkscape document before closing?", len(state.ModifiedIDs))
+		default:
+			message = "You have unapplied motion changes.\n\nWould you like to apply your changes to your Inkscape document before closing?"
 		}
 
 		var d *dialog.CustomDialog
@@ -661,7 +698,7 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 		discardChanges := widget.NewButtonWithIcon("Discard Changes", theme.DeleteIcon(), func() {
 			d.Hide()
 			cleanupPlayback()
-			state.Result = state.SVGData
+			state.Result = state.OriginalSVG
 			state.Applied = false
 			w.Close()
 			a.Quit()
