@@ -64,11 +64,13 @@ func run() error {
 
 	logDebug("a.Run exited. applied=%v, resultLen=%d", editorState.Applied, len(editorState.Result))
 
-	if editorState.Applied {
+	if editorState.Applied && editorState.IsDirty() {
 		if err := writeOutput(editorState.Result); err != nil {
 			return fmt.Errorf("writing SVG to stdout: %w", err)
 		}
 		logDebug("writeOutput completed successfully")
+	} else {
+		logDebug("No changes made (document clean); skipping writeOutput to keep Inkscape document clean")
 	}
 
 	return nil
