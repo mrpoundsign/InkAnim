@@ -270,3 +270,168 @@ func InsertChild(data []byte, parentID string, childXML string) ([]byte, error) 
 	return data, fmt.Errorf("parent element %q not found", parentID)
 }
 
+// ChildElementCount returns the number of immediate XML child elements contained inside elementID.
+// It inspects the raw XML tokens to ensure un-rendered elements (such as clipPath, mask, defs)
+// are accurately detected.
+func ChildElementCount(data []byte, elementID string) (int, error) {
+	dec := xml.NewDecoder(bytes.NewReader(data))
+	var prevOffset int64
+	var insideTarget bool
+	var targetDepth int
+	var count int
+
+	for {
+		tok, err := dec.Token()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return 0, fmt.Errorf("xml decoding error: %w", err)
+		}
+
+		currOffset := dec.InputOffset()
+
+		switch elem := tok.(type) {
+		case xml.StartElement:
+			if !insideTarget {
+				for _, attr := range elem.Attr {
+					if attr.Name.Local == "id" && attr.Value == elementID {
+						segment := data[prevOffset:currOffset]
+						relStart := bytes.IndexByte(segment, '<')
+						if relStart != -1 {
+							tagBytes := segment[relStart:]
+							if bytes.HasSuffix(bytes.TrimSpace(tagBytes), []byte("/>")) {
+								return 0, nil
+							}
+						}
+						insideTarget = true
+						targetDepth = 1
+						break
+					}
+				}
+			} else {
+				if targetDepth == 1 {
+					count++
+				}
+				targetDepth++
+			}
+
+		case xml.EndElement:
+			if insideTarget {
+				targetDepth--
+				if targetDepth == 0 {
+					return count, nil
+				}
+			}
+		}
+
+		prevOffset = currOffset
+	}
+
+	if insideTarget {
+		return count, nil
+	}
+	return 0, fmt.Errorf("element %q not found", elementID)
+}
+
+// HasChildElements returns true if the element identified by elementID contains any child elements.
+func HasChildElements(data []byte, elementID string) (bool, error) {
+	count, err := ChildElementCount(data, elementID)
+	return count > 0, err
+}
+
+// RemoveElement byte-splices the element identified by elementID (including its closing tag
+// and subtree if an open/close element) out of the document without re-serializing untouched
+// portions of the SVG. It also removes the leading whitespace and newline the element occupied.
+func RemoveElement(data []byte, elementID string) ([]byte, error) {
+	dec := xml.NewDecoder(bytes.NewReader(data))
+	var prevOffset int64
+	var insideTarget bool
+	var targetDepth int
+	var tagStart int
+
+	for {
+		tok, err := dec.Token()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return data, fmt.Errorf("xml decoding error: %w", err)
+		}
+
+		currOffset := dec.InputOffset()
+
+		switch elem := tok.(type) {
+		case xml.StartElement:
+			if !insideTarget {
+				for _, attr := range elem.Attr {
+					if attr.Name.Local == "id" && attr.Value == elementID {
+						segment := data[prevOffset:currOffset]
+						relStart := bytes.IndexByte(segment, '<')
+						if relStart == -1 {
+							return data, fmt.Errorf("failed to locate start of element %q", elementID)
+						}
+						tagStart = int(prevOffset) + relStart
+
+						// Check if self-closing (<tag ... />)
+						tagBytes := segment[relStart:]
+						if bytes.HasSuffix(bytes.TrimSpace(tagBytes), []byte("/>")) {
+							elemEnd := int(currOffset)
+							return spliceOutElement(data, tagStart, elemEnd), nil
+						}
+
+						insideTarget = true
+						targetDepth = 1
+						break
+					}
+				}
+			} else {
+				targetDepth++
+			}
+
+		case xml.EndElement:
+			if insideTarget {
+				targetDepth--
+				if targetDepth == 0 {
+					elemEnd := int(currOffset)
+					return spliceOutElement(data, tagStart, elemEnd), nil
+				}
+			}
+		}
+
+		prevOffset = currOffset
+	}
+
+	return data, fmt.Errorf("element %q not found", elementID)
+}
+
+func spliceOutElement(data []byte, tagStart, elemEnd int) []byte {
+	spliceStart := tagStart
+	spliceEnd := elemEnd
+
+	lineStart := bytes.LastIndexByte(data[:tagStart], '\n')
+	if lineStart != -1 {
+		prefix := data[lineStart+1 : tagStart]
+		if len(bytes.Trim(prefix, " \t\r")) == 0 {
+			// Preceded only by whitespace after a newline: remove the newline as well
+			if lineStart > 0 && data[lineStart-1] == '\r' {
+				spliceStart = lineStart - 1
+			} else {
+				spliceStart = lineStart
+			}
+		}
+	} else {
+		// First line of document: check if trailing newline exists
+		if bytes.HasPrefix(data[elemEnd:], []byte("\r\n")) {
+			spliceEnd += 2
+		} else if bytes.HasPrefix(data[elemEnd:], []byte("\n")) {
+			spliceEnd += 1
+		}
+	}
+
+	res := make([]byte, 0, len(data)-(spliceEnd-spliceStart))
+	res = append(res, data[:spliceStart]...)
+	res = append(res, data[spliceEnd:]...)
+	return res
+}
+

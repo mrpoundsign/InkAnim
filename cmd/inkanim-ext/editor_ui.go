@@ -188,6 +188,64 @@ func (s *EditorState) IsDirty() bool {
 	return !bytes.Equal(s.ComputePatchedSVG(), s.OriginalSVG)
 }
 
+// CanDeleteElement checks whether the element identified by nodeID can be safely deleted.
+// Leaf elements with real SVG IDs are deletable.
+// Groups and layers are deletable only if they contain no raw XML child elements.
+// Elements without a real SVG ID (synthetic IDs) are not deletable.
+func (s *EditorState) CanDeleteElement(nodeID string) (bool, string) {
+	node := s.NodeMap[nodeID]
+	if node == nil {
+		return false, "Element not found"
+	}
+	if node.SyntheticID {
+		return false, "Cannot delete element without an SVG id attribute"
+	}
+	if node.IsGroup || node.IsLayer {
+		childCount, err := svgpatch.ChildElementCount(s.ComputePatchedSVG(), node.ID)
+		if err != nil {
+			return false, err.Error()
+		}
+		if childCount > 0 {
+			if childCount == 1 {
+				return false, "Group contains 1 element — empty it in Inkscape first"
+			}
+			return false, fmt.Sprintf("Group contains %d elements — empty it in Inkscape first", childCount)
+		}
+	}
+	return true, ""
+}
+
+// DeleteElement removes the element identified by nodeID from the document.
+// It byte-splices out the element, updates tree hierarchy, selects parent/sibling,
+// and records an undoable history snapshot.
+func (s *EditorState) DeleteElement(nodeID string) error {
+	canDelete, reason := s.CanDeleteElement(nodeID)
+	if !canDelete {
+		return errors.New(reason)
+	}
+
+	node := s.NodeMap[nodeID]
+	title := node.DisplayTitle()
+	parentID := node.ParentID
+
+	// Flush any in-flight label modifications
+	s.SVGData = s.ComputePatchedSVG()
+	s.ModifiedIDs = make(map[string]bool)
+
+	patched, err := svgpatch.RemoveElement(s.SVGData, nodeID)
+	if err != nil {
+		return fmt.Errorf("failed to remove element: %w", err)
+	}
+
+	// Restore snapshot into state and select parent if available
+	if err := s.RestoreSnapshot(patched, parentID); err != nil {
+		return fmt.Errorf("failed to restore snapshot after delete: %w", err)
+	}
+
+	s.RecordChange("Delete " + title)
+	return nil
+}
+
 // ApplyPreset applies a motion preset to the active node. If the active node is a group,
 // or a child drawing shape without existing directives, an anchor element (dot or path)
 // centered on the target is automatically generated and inserted into the group.
@@ -402,6 +460,41 @@ func (e *commitEntry) TypedShortcut(shortcut fyne.Shortcut) {
 	e.Entry.TypedShortcut(shortcut)
 }
 
+type deletableTree struct {
+	widget.Tree
+	onDelete func()
+}
+
+func newDeletableTree(
+	childUIDs func(string) []string,
+	isBranch func(string) bool,
+	create func(bool) fyne.CanvasObject,
+	update func(string, bool, fyne.CanvasObject),
+	onDelete func(),
+) *deletableTree {
+	t := &deletableTree{
+		Tree: widget.Tree{
+			ChildUIDs:  childUIDs,
+			IsBranch:   isBranch,
+			CreateNode: create,
+			UpdateNode: update,
+		},
+		onDelete: onDelete,
+	}
+	t.ExtendBaseWidget(t)
+	return t
+}
+
+func (t *deletableTree) TypedKey(ev *fyne.KeyEvent) {
+	if ev.Name == fyne.KeyDelete {
+		if t.onDelete != nil {
+			t.onDelete()
+			return
+		}
+	}
+	t.Tree.TypedKey(ev)
+}
+
 // ShowEditorWindow displays the interactive Motion Editor window with live preview.
 func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 	w := a.NewWindow("InkAnim Motion Studio")
@@ -503,7 +596,11 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 	redoItem.Shortcut = &fyne.ShortcutRedo{}
 	redoItem.Icon = theme.ContentRedoIcon()
 
-	editMenu := fyne.NewMenu("Edit", undoItem, redoItem)
+	deleteItem := fyne.NewMenuItem("Delete Element", nil)
+	deleteItem.Icon = theme.DeleteIcon()
+	deleteItem.Shortcut = &desktop.CustomShortcut{KeyName: fyne.KeyDelete}
+
+	editMenu := fyne.NewMenu("Edit", undoItem, redoItem, fyne.NewMenuItemSeparator(), deleteItem)
 	mainMenu := fyne.NewMainMenu(editMenu)
 	w.SetMainMenu(mainMenu)
 
@@ -524,12 +621,19 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 			redoBtn.Disable()
 			redoItem.Disabled = true
 		}
+
+		var canDelete bool
+		if state.ActiveNode != nil {
+			canDelete, _ = state.CanDeleteElement(state.ActiveNode.ID)
+		}
+		deleteItem.Disabled = !canDelete
+
 		mainMenu.Refresh()
 	}
 	updateUndoRedo()
 
 	var lastHistoryMsg string
-	var tree *widget.Tree
+	var tree *deletableTree
 	var refreshTree func()
 	var refreshInspector func()
 
@@ -604,6 +708,30 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 	undoItem.Action = doUndo
 	redoItem.Action = doRedo
 
+	doDeleteActiveElement := func() {
+		if state.ActiveNode == nil {
+			return
+		}
+		if _, isEntry := w.Canvas().Focused().(*commitEntry); isEntry {
+			return
+		}
+		if _, isEntry := w.Canvas().Focused().(*widget.Entry); isEntry {
+			return
+		}
+		nodeID := state.ActiveNode.ID
+		canDelete, _ := state.CanDeleteElement(nodeID)
+		if !canDelete {
+			return
+		}
+		if err := state.DeleteElement(nodeID); err != nil {
+			statusLabel.SetText("Delete error: " + err.Error())
+			return
+		}
+		lastHistoryMsg = ""
+		rebuildAfterHistoryChange()
+	}
+	deleteItem.Action = doDeleteActiveElement
+
 	w.Canvas().AddShortcut(&fyne.ShortcutUndo{}, func(_ fyne.Shortcut) {
 		doUndo()
 	})
@@ -628,6 +756,16 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 	}, func(_ fyne.Shortcut) {
 		doRedo()
 	})
+	w.Canvas().AddShortcut(&desktop.CustomShortcut{
+		KeyName: fyne.KeyDelete,
+	}, func(_ fyne.Shortcut) {
+		doDeleteActiveElement()
+	})
+	w.Canvas().SetOnTypedKey(func(ev *fyne.KeyEvent) {
+		if ev.Name == fyne.KeyDelete {
+			doDeleteActiveElement()
+		}
+	})
 
 	// Inspector container
 	inspectorCard := container.NewStack()
@@ -639,6 +777,7 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 			inspectorCard.Objects = []fyne.CanvasObject{emptyNotice}
 			inspectorCard.Refresh()
 			updateStatus()
+			updateUndoRedo()
 			return
 		}
 
@@ -656,11 +795,35 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 		titleLabel := widget.NewLabelWithStyle(fmt.Sprintf("%s: %s", kind, node.ID), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 		tagLabel := widget.NewLabel(fmt.Sprintf("Tag: <%s>", node.Tag))
 
-		headerBox := container.NewVBox(
+		canDelete, deleteReason := state.CanDeleteElement(node.ID)
+		deleteBtn := widget.NewButtonWithIcon("Delete", theme.DeleteIcon(), doDeleteActiveElement)
+		deleteBtn.Importance = widget.DangerImportance
+		if !canDelete {
+			deleteBtn.Disable()
+		}
+
+		headerTop := container.NewBorder(
+			nil, nil,
 			titleLabel,
-			tagLabel,
-			widget.NewSeparator(),
+			deleteBtn,
 		)
+
+		var headerBox *fyne.Container
+		if !canDelete && deleteReason != "" {
+			reasonLabel := widget.NewLabelWithStyle(deleteReason, fyne.TextAlignLeading, fyne.TextStyle{Italic: true})
+			headerBox = container.NewVBox(
+				headerTop,
+				tagLabel,
+				reasonLabel,
+				widget.NewSeparator(),
+			)
+		} else {
+			headerBox = container.NewVBox(
+				headerTop,
+				tagLabel,
+				widget.NewSeparator(),
+			)
+		}
 
 		// Resulting label preview
 		previewLabel := widget.NewLabelWithStyle("Label preview will appear here", fyne.TextAlignLeading, fyne.TextStyle{Italic: true})
@@ -863,10 +1026,11 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 		inspectorCard.Objects = []fyne.CanvasObject{scrollContent}
 		inspectorCard.Refresh()
 		updateStatus()
+		updateUndoRedo()
 	}
 
 	// Build Tree widget
-	tree = widget.NewTree(
+	tree = newDeletableTree(
 		func(uid string) []string {
 			if uid == "" {
 				uids := make([]string, len(state.Roots))
@@ -951,6 +1115,7 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 			txt.Color = theme.Color(theme.ColorNameForeground)
 			txt.Refresh()
 		},
+		doDeleteActiveElement,
 	)
 
 	tree.OnSelected = func(uid string) {

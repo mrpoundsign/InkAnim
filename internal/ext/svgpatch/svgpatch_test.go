@@ -190,3 +190,169 @@ func TestInsertChild(t *testing.T) {
 	}
 }
 
+func TestRemoveElement_LeafAndGroup(t *testing.T) {
+	svg := []byte(`<svg xmlns="http://www.w3.org/2000/svg">
+  <g id="layer1">
+    <!-- A comment -->
+    <rect id="rect1" width="10" height="10"/>
+    <circle id="circle1" r="5"/>
+  </g>
+  <g id="empty_group">
+  </g>
+</svg>`)
+
+	// 1. Remove self-closing leaf element rect1
+	patched1, err := RemoveElement(svg, "rect1")
+	if err != nil {
+		t.Fatalf("RemoveElement(rect1) failed: %v", err)
+	}
+	if strings.Contains(string(patched1), "rect1") {
+		t.Errorf("expected rect1 to be removed from SVG: %s", string(patched1))
+	}
+	if !strings.Contains(string(patched1), "circle1") {
+		t.Errorf("expected circle1 to remain in SVG: %s", string(patched1))
+	}
+	if !strings.Contains(string(patched1), "<!-- A comment -->") {
+		t.Errorf("expected comment to remain in SVG")
+	}
+	// Verify no blank line between comment and circle1
+	expected1 := `<svg xmlns="http://www.w3.org/2000/svg">
+  <g id="layer1">
+    <!-- A comment -->
+    <circle id="circle1" r="5"/>
+  </g>
+  <g id="empty_group">
+  </g>
+</svg>`
+	if string(patched1) != expected1 {
+		t.Errorf("unexpected patched1 content:\nGot:\n%s\nWant:\n%s", string(patched1), expected1)
+	}
+
+	// 2. Remove open/close empty group
+	patched2, err := RemoveElement(patched1, "empty_group")
+	if err != nil {
+		t.Fatalf("RemoveElement(empty_group) failed: %v", err)
+	}
+	if strings.Contains(string(patched2), "empty_group") {
+		t.Errorf("expected empty_group to be removed from SVG: %s", string(patched2))
+	}
+	expected2 := `<svg xmlns="http://www.w3.org/2000/svg">
+  <g id="layer1">
+    <!-- A comment -->
+    <circle id="circle1" r="5"/>
+  </g>
+</svg>`
+	if string(patched2) != expected2 {
+		t.Errorf("unexpected patched2 content:\nGot:\n%s\nWant:\n%s", string(patched2), expected2)
+	}
+
+	// 3. Remove group with children (nested subtree deletion)
+	patched3, err := RemoveElement(svg, "layer1")
+	if err != nil {
+		t.Fatalf("RemoveElement(layer1) failed: %v", err)
+	}
+	if strings.Contains(string(patched3), "layer1") || strings.Contains(string(patched3), "rect1") || strings.Contains(string(patched3), "circle1") {
+		t.Errorf("expected entire layer1 subtree to be removed: %s", string(patched3))
+	}
+
+	// 4. Missing ID
+	_, err = RemoveElement(svg, "non_existent")
+	if err == nil {
+		t.Errorf("expected error for non_existent element ID, got nil")
+	}
+}
+
+func TestRemoveElement_CRLF(t *testing.T) {
+	crlfSVG := []byte("<svg xmlns=\"http://www.w3.org/2000/svg\">\r\n  <rect id=\"r1\" width=\"10\"/>\r\n  <rect id=\"r2\" width=\"20\"/>\r\n</svg>")
+	patched, err := RemoveElement(crlfSVG, "r1")
+	if err != nil {
+		t.Fatalf("RemoveElement failed on CRLF SVG: %v", err)
+	}
+	expected := "<svg xmlns=\"http://www.w3.org/2000/svg\">\r\n  <rect id=\"r2\" width=\"20\"/>\r\n</svg>"
+	if string(patched) != expected {
+		t.Errorf("unexpected CRLF patched output:\nGot:\n%q\nWant:\n%q", string(patched), expected)
+	}
+}
+
+func TestRemoveElement_SingleQuotes(t *testing.T) {
+	sqSVG := []byte(`<svg xmlns="http://www.w3.org/2000/svg"><rect id='r1' width='10'/><rect id="r2"/></svg>`)
+	patched, err := RemoveElement(sqSVG, "r1")
+	if err != nil {
+		t.Fatalf("RemoveElement failed with single quotes: %v", err)
+	}
+	expected := `<svg xmlns="http://www.w3.org/2000/svg"><rect id="r2"/></svg>`
+	if string(patched) != expected {
+		t.Errorf("unexpected output:\nGot: %q\nWant: %q", string(patched), expected)
+	}
+}
+
+func TestChildElementCount_And_HasChildElements(t *testing.T) {
+	svg := []byte(`<svg xmlns="http://www.w3.org/2000/svg">
+  <g id="empty_pair"></g>
+  <g id="empty_whitespace">
+  </g>
+  <g id="self_closing_group" />
+  <g id="group_with_clip">
+    <clipPath id="cp1">
+      <rect width="10" height="10"/>
+    </clipPath>
+  </g>
+  <g id="group_with_visible">
+    <path id="p1" d="M 0,0 L 10,10"/>
+    <circle id="c1" r="5"/>
+  </g>
+  <rect id="leaf_rect" width="5" height="5"/>
+</svg>`)
+
+	// 1. Leaf element
+	count, err := ChildElementCount(svg, "leaf_rect")
+	if err != nil || count != 0 {
+		t.Errorf("leaf_rect count = (%d, %v), want (0, nil)", count, err)
+	}
+	hasChildren, err := HasChildElements(svg, "leaf_rect")
+	if err != nil || hasChildren {
+		t.Errorf("leaf_rect HasChildElements = (%v, %v), want (false, nil)", hasChildren, err)
+	}
+
+	// 2. Empty group tags
+	count, err = ChildElementCount(svg, "empty_pair")
+	if err != nil || count != 0 {
+		t.Errorf("empty_pair count = (%d, %v), want (0, nil)", count, err)
+	}
+	count, err = ChildElementCount(svg, "empty_whitespace")
+	if err != nil || count != 0 {
+		t.Errorf("empty_whitespace count = (%d, %v), want (0, nil)", count, err)
+	}
+	count, err = ChildElementCount(svg, "self_closing_group")
+	if err != nil || count != 0 {
+		t.Errorf("self_closing_group count = (%d, %v), want (0, nil)", count, err)
+	}
+
+	// 3. Group containing only invisible <clipPath>
+	count, err = ChildElementCount(svg, "group_with_clip")
+	if err != nil || count != 1 {
+		t.Errorf("group_with_clip count = (%d, %v), want (1, nil)", count, err)
+	}
+	hasChildren, err = HasChildElements(svg, "group_with_clip")
+	if err != nil || !hasChildren {
+		t.Errorf("group_with_clip HasChildElements = (%v, %v), want (true, nil)", hasChildren, err)
+	}
+
+	// 4. Group with visible elements
+	count, err = ChildElementCount(svg, "group_with_visible")
+	if err != nil || count != 2 {
+		t.Errorf("group_with_visible count = (%d, %v), want (2, nil)", count, err)
+	}
+	hasChildren, err = HasChildElements(svg, "group_with_visible")
+	if err != nil || !hasChildren {
+		t.Errorf("group_with_visible HasChildElements = (%v, %v), want (true, nil)", hasChildren, err)
+	}
+
+	// 5. Non-existent ID
+	_, err = ChildElementCount(svg, "does_not_exist")
+	if err == nil {
+		t.Errorf("expected error for non-existent ID, got nil")
+	}
+}
+
+

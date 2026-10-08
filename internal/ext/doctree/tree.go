@@ -26,6 +26,7 @@ type DocNode struct {
 	Label       string // inkscape:label if set
 	IsLayer     bool   // true if inkscape:groupmode="layer"
 	IsGroup     bool   // true if tag == "g"
+	SyntheticID bool   // true if element lacked an SVG 'id' attribute
 	Directives  []Directive
 	LabelPrefix string // text before any motion directive (e.g. "Fade In: ")
 	LabelSuffix string // text after all motion directives (e.g. " · Preset")
@@ -182,7 +183,8 @@ func ParseTree(svgData []byte) ([]*DocNode, map[string]*DocNode, error) {
 				}
 			}
 
-			if id == "" {
+			hasRealID := id != ""
+			if !hasRealID {
 				// Generate a synthetic or fallback identifier for grouping
 				id = localTag
 			}
@@ -198,6 +200,7 @@ func ParseTree(svgData []byte) ([]*DocNode, map[string]*DocNode, error) {
 				Label:       label,
 				IsLayer:     groupMode == "layer",
 				IsGroup:     localTag == "g",
+				SyntheticID: !hasRealID,
 				Directives:  directives,
 				LabelPrefix: prefix,
 				LabelSuffix: suffix,
