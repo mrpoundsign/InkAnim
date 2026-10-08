@@ -44,6 +44,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Motion trajectory preview guides and travel distances now accurately reflect scaled and transformed guide paths ([#106](https://github.com/mrpoundsign/InkAnim/issues/106)).
 - **Clean Document Preservation on Extension Exit**:
   - Ensured that opening the Motion Editor and clicking "Apply Changes" or closing without making modifications does not falsely mark the Inkscape document as modified ([#107](https://github.com/mrpoundsign/InkAnim/issues/107)).
+- **Motion Editor Split Pane Stability & Inspector Layout**:
+  - Fixed an issue where adding or pasting multiple motion directives onto an element caused the inspector pane to expand horizontally and collapse the Objects tree into a narrow sliver ([#108](https://github.com/mrpoundsign/InkAnim/issues/108)).
+  - Removed redundant unwrapped debug label at the bottom of the inspector in favor of the per-card IAMS previews, tree hierarchy, and status bar ([#108](https://github.com/mrpoundsign/InkAnim/issues/108)).
+  - Flattened redundant nested scroll containers in the sidebar for smoother, more stable pane navigation ([#108](https://github.com/mrpoundsign/InkAnim/issues/108)).
 
 ## [0.5.0-beta] - 2026-10-07
 
