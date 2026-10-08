@@ -22,7 +22,7 @@ type Session struct {
 	CurrentMode      inksvg.FrameMode
 	CropBoundaryMode inksvg.BoundaryMode
 	CropPageIndex    int
-	Layers           []inksvg.Layer
+	Frames           []inksvg.Frame
 	Pages            []inksvg.Page
 	ExportOptions    gif.ExportOptions
 	RenderedFrames   []inksvg.RenderedFrame
@@ -95,8 +95,8 @@ func (s *Session) LoadSVGData(data []byte, filename string) error {
 	s.FilePath = filename
 	doc.ShowMotionLines = s.ShowMotionLines
 	s.Document = doc
-	s.Layers = make([]inksvg.Layer, len(doc.Layers))
-	copy(s.Layers, doc.Layers)
+	s.Frames = make([]inksvg.Frame, len(doc.Frames))
+	copy(s.Frames, doc.Frames)
 
 	s.Pages = make([]inksvg.Page, len(doc.Pages))
 	copy(s.Pages, doc.Pages)
@@ -202,12 +202,12 @@ func (s *Session) GetPreviewBoundaryRect() inksvg.Rect {
 }
 
 
-// ToggleLayerActive toggles whether a layer is included as a frame.
-func (s *Session) ToggleLayerActive(index int) error {
-	if index < 0 || index >= len(s.Layers) {
-		return fmt.Errorf("invalid layer index %d", index)
+// ToggleFrameActive toggles whether a frame is included in the animation.
+func (s *Session) ToggleFrameActive(index int) error {
+	if index < 0 || index >= len(s.Frames) {
+		return fmt.Errorf("invalid frame index %d", index)
 	}
-	s.Layers[index].IsActive = !s.Layers[index].IsActive
+	s.Frames[index].IsActive = !s.Frames[index].IsActive
 	s.invalidateCache()
 	if err := s.RerenderAllFrames(); err != nil {
 		return err
@@ -217,12 +217,12 @@ func (s *Session) ToggleLayerActive(index int) error {
 }
 
 
-// MoveLayer moves a layer up or down in the animation order.
-func (s *Session) MoveLayer(fromIndex, toIndex int) error {
-	if fromIndex < 0 || fromIndex >= len(s.Layers) || toIndex < 0 || toIndex >= len(s.Layers) {
+// MoveFrame moves a frame up or down in the animation order.
+func (s *Session) MoveFrame(fromIndex, toIndex int) error {
+	if fromIndex < 0 || fromIndex >= len(s.Frames) || toIndex < 0 || toIndex >= len(s.Frames) {
 		return fmt.Errorf("invalid move indices: %d -> %d", fromIndex, toIndex)
 	}
-	s.Layers[fromIndex], s.Layers[toIndex] = s.Layers[toIndex], s.Layers[fromIndex]
+	s.Frames[fromIndex], s.Frames[toIndex] = s.Frames[toIndex], s.Frames[fromIndex]
 	s.invalidateCache()
 	if err := s.RerenderAllFrames(); err != nil {
 		return err
@@ -240,13 +240,13 @@ func (s *Session) SetGlobalDuration(ms int) {
 	s.UpdateFrameDurations()
 }
 
-// SetFrameOverride enables or disables a custom duration override for a layer.
+// SetFrameOverride enables or disables a custom duration override for a frame.
 func (s *Session) SetFrameOverride(index int, hasOverride bool, ms int) {
-	if index >= 0 && index < len(s.Layers) {
-		s.Layers[index].HasOverride = hasOverride
+	if index >= 0 && index < len(s.Frames) {
+		s.Frames[index].HasOverride = hasOverride
 		if hasOverride && ms > 0 {
-			s.Layers[index].OverrideMs = ms
-			s.Layers[index].DurationMs = ms
+			s.Frames[index].OverrideMs = ms
+			s.Frames[index].DurationMs = ms
 		}
 	}
 	s.UpdateFrameDurations()
@@ -264,12 +264,12 @@ func (s *Session) UpdateFrameDurations() {
 
 	updateList := func(frames []inksvg.RenderedFrame) {
 		frameIdx := 0
-		for _, layer := range s.Layers {
-			if !layer.IsActive {
+		for _, frame := range s.Frames {
+			if !frame.IsActive {
 				continue
 			}
 			if frameIdx < len(frames) {
-				eff := layer.EffectiveDuration(s.ExportOptions.DefaultDurationMs)
+				eff := frame.EffectiveDuration(s.ExportOptions.DefaultDurationMs)
 				frames[frameIdx].DurationMs = eff
 				frameIdx++
 			}
@@ -282,7 +282,7 @@ func (s *Session) UpdateFrameDurations() {
 	}
 }
 
-// renderFramesForBoundary rasterizes the active layers into preview frames at the specified boundary rectangle.
+// renderFramesForBoundary rasterizes the active frames into preview frames at the specified boundary rectangle.
 func (s *Session) renderFramesForBoundary(boundaryRect inksvg.Rect) ([]inksvg.RenderedFrame, error) {
 	if s.Document == nil {
 		return nil, nil
@@ -305,21 +305,21 @@ func (s *Session) renderFramesForBoundary(boundaryRect inksvg.Rect) ([]inksvg.Re
 	renderW := int(math.Round(boundW * previewScale))
 	renderH := int(math.Round(boundH * previewScale))
 
-	type layerJob struct {
-		frameIdx int
-		layerIdx int
-		layer    inksvg.Layer
+	type frameJob struct {
+		frameIdx    int
+		docFrameIdx int
+		frame       inksvg.Frame
 	}
-	var jobs []layerJob
+	var jobs []frameJob
 
-	for i, layer := range s.Layers {
-		if !layer.IsActive {
+	for i, frame := range s.Frames {
+		if !frame.IsActive {
 			continue
 		}
-		jobs = append(jobs, layerJob{
-			frameIdx: len(jobs),
-			layerIdx: i,
-			layer:    layer,
+		jobs = append(jobs, frameJob{
+			frameIdx:    len(jobs),
+			docFrameIdx: i,
+			frame:       frame,
 		})
 	}
 
@@ -328,7 +328,7 @@ func (s *Session) renderFramesForBoundary(boundaryRect inksvg.Rect) ([]inksvg.Re
 		var buildErr error
 		for i, j := range jobs {
 			var frameSVG []byte
-			frameSVG, buildErr = inksvg.BuildTimelineFrameSVG(s.Document, j.layerIdx, boundaryRect)
+			frameSVG, buildErr = inksvg.BuildTimelineFrameSVG(s.Document, j.docFrameIdx, boundaryRect)
 			if buildErr != nil {
 				return nil, fmt.Errorf("failed to build frame %d: %w", j.frameIdx+1, buildErr)
 			}
@@ -339,10 +339,10 @@ func (s *Session) renderFramesForBoundary(boundaryRect inksvg.Rect) ([]inksvg.Re
 		if err == nil && len(images) == len(jobs) {
 			frames := make([]inksvg.RenderedFrame, len(jobs))
 			for i, j := range jobs {
-				dur := j.layer.EffectiveDuration(s.ExportOptions.DefaultDurationMs)
+				dur := j.frame.EffectiveDuration(s.ExportOptions.DefaultDurationMs)
 				frames[j.frameIdx] = inksvg.RenderedFrame{
-					Index:      j.layerIdx,
-					Label:      j.layer.Label,
+					Index:      j.docFrameIdx,
+					Label:      j.frame.Label,
 					Image:      images[i],
 					DurationMs: dur,
 				}
@@ -355,20 +355,20 @@ func (s *Session) renderFramesForBoundary(boundaryRect inksvg.Rect) ([]inksvg.Re
 	err := parallel.Run(len(jobs), func(idx int) error {
 		j := jobs[idx]
 		
-		frameSVG, err := inksvg.BuildTimelineFrameSVG(s.Document, j.layerIdx, boundaryRect)
+		frameSVG, err := inksvg.BuildTimelineFrameSVG(s.Document, j.docFrameIdx, boundaryRect)
 		if err != nil {
 			return fmt.Errorf("failed to build frame %d: %w", j.frameIdx+1, err)
 		}
 
 		img, err := inksvg.RenderSVGToRGBA(frameSVG, renderW, renderH)
 		if err != nil {
-			return fmt.Errorf("failed to render layer %s: %w", j.layer.Label, err)
+			return fmt.Errorf("failed to render frame %s: %w", j.frame.Label, err)
 		}
 
-		dur := j.layer.EffectiveDuration(s.ExportOptions.DefaultDurationMs)
+		dur := j.frame.EffectiveDuration(s.ExportOptions.DefaultDurationMs)
 		frames[j.frameIdx] = inksvg.RenderedFrame{
-			Index:      j.layerIdx,
-			Label:      j.layer.Label,
+			Index:      j.docFrameIdx,
+			Label:      j.frame.Label,
 			Image:      img,
 			DurationMs: dur,
 		}
@@ -571,21 +571,21 @@ func (s *Session) RenderExportFrames() ([]gif.FrameInput, error) {
 		fitH = 1
 	}
 
-	type layerExportJob struct {
-		frameIdx int
-		layerIdx int
-		layer    inksvg.Layer
+	type frameExportJob struct {
+		frameIdx    int
+		docFrameIdx int
+		frame       inksvg.Frame
 	}
-	var jobs []layerExportJob
+	var jobs []frameExportJob
 
-	for i, layer := range s.Layers {
-		if !layer.IsActive {
+	for i, frame := range s.Frames {
+		if !frame.IsActive {
 			continue
 		}
-		jobs = append(jobs, layerExportJob{
-			frameIdx: len(jobs),
-			layerIdx: i,
-			layer:    layer,
+		jobs = append(jobs, frameExportJob{
+			frameIdx:    len(jobs),
+			docFrameIdx: i,
+			frame:       frame,
 		})
 	}
 
@@ -593,14 +593,14 @@ func (s *Session) RenderExportFrames() ([]gif.FrameInput, error) {
 	err := parallel.Run(len(jobs), func(idx int) error {
 		j := jobs[idx]
 		
-		frameSVG, err := inksvg.BuildTimelineFrameSVG(s.Document, j.layerIdx, boundaryRect)
+		frameSVG, err := inksvg.BuildTimelineFrameSVG(s.Document, j.docFrameIdx, boundaryRect)
 		if err != nil {
 			return fmt.Errorf("failed to build frame %d: %w", j.frameIdx+1, err)
 		}
 
 		rawImg, err := inksvg.RenderSVGToRGBA(frameSVG, fitW, fitH)
 		if err != nil {
-			return fmt.Errorf("failed to rasterize layer %s at %dx%d: %w", j.layer.Label, fitW, fitH, err)
+			return fmt.Errorf("failed to rasterize frame %s at %dx%d: %w", j.frame.Label, fitW, fitH, err)
 		}
 
 		var finalImg *image.RGBA
@@ -615,10 +615,10 @@ func (s *Session) RenderExportFrames() ([]gif.FrameInput, error) {
 			finalImg = rawImg
 		}
 
-		dur := j.layer.EffectiveDuration(s.ExportOptions.DefaultDurationMs)
+		dur := j.frame.EffectiveDuration(s.ExportOptions.DefaultDurationMs)
 		frameInputs[j.frameIdx] = gif.FrameInput{
-			Index:      j.layerIdx,
-			Label:      j.layer.Label,
+			Index:      j.docFrameIdx,
+			Label:      j.frame.Label,
 			Image:      finalImg,
 			DurationMs: dur,
 		}

@@ -196,7 +196,7 @@ func (mw *MainWindow) loadData(data []byte, filename string) {
 	}
 
 	mw.fileLabel.SetText(fmt.Sprintf("%s (%0.0fx%0.0f)", filename, mw.session.Document.Width, mw.session.Document.Height))
-	mw.statusLabel.SetText(fmt.Sprintf("Loaded %d layers, %d pages. Ready to preview and export.", len(mw.session.Layers), len(mw.session.Pages)))
+	mw.statusLabel.SetText(fmt.Sprintf("Loaded %d frames, %d pages. Ready to preview and export.", len(mw.session.Frames), len(mw.session.Pages)))
 
 	mw.leftPanel.Refresh()
 	mw.centerPanel.Refresh()

@@ -665,8 +665,8 @@ func TestIntegration_PendulumAndComplexMotion(t *testing.T) {
 	if doc.DefaultMode != ModeTimeline {
 		t.Errorf("pendulum.svg DefaultMode = %s, want %s", doc.DefaultMode, ModeTimeline)
 	}
-	if len(doc.Layers) != 10 {
-		t.Errorf("pendulum.svg frame layers count = %d, want 10", len(doc.Layers))
+	if len(doc.Frames) != 10 {
+		t.Errorf("pendulum.svg frame count = %d, want 10", len(doc.Frames))
 	}
 	if len(doc.MotionPaths) != 1 {
 		t.Fatalf("pendulum.svg motion paths count = %d, want 1", len(doc.MotionPaths))
@@ -677,7 +677,7 @@ func TestIntegration_PendulumAndComplexMotion(t *testing.T) {
 	}
 
 	// Render all 10 frames to verify no panic or XML error
-	for i := 0; i < len(doc.Layers); i++ {
+	for i := 0; i < len(doc.Frames); i++ {
 		frameBytes, err := BuildTimelineFrameSVG(doc, i, doc.GetDrawingRect())
 		if err != nil {
 			t.Fatalf("BuildTimelineFrameSVG(pendulum, frame %d) failed: %v", i, err)
@@ -699,8 +699,8 @@ func TestIntegration_PendulumAndComplexMotion(t *testing.T) {
 	if doc2.DefaultMode != ModeTimeline {
 		t.Errorf("complex_motion.svg DefaultMode = %s, want %s", doc2.DefaultMode, ModeTimeline)
 	}
-	if len(doc2.Layers) != 60 {
-		t.Errorf("complex_motion.svg frame layers count = %d, want 60", len(doc2.Layers))
+	if len(doc2.Frames) != 60 {
+		t.Errorf("complex_motion.svg frame count = %d, want 60", len(doc2.Frames))
 	}
 	if len(doc2.MotionPaths) != 41 {
 		t.Fatalf("complex_motion.svg motion paths count = %d, want 41", len(doc2.MotionPaths))
@@ -778,7 +778,7 @@ func TestIntegration_PendulumAndComplexMotion(t *testing.T) {
 	}
 
 	// Render all 60 frames to verify compositing across overlapping Move, Rot, Scale, Fade, Show/Hide, and Depth
-	for i := 0; i < len(doc2.Layers); i++ {
+	for i := 0; i < len(doc2.Frames); i++ {
 		frameBytes, err := BuildTimelineFrameSVG(doc2, i, doc2.GetDrawingRect())
 		if err != nil {
 			t.Fatalf("BuildTimelineFrameSVG(complex_motion, frame %d) failed: %v", i, err)
@@ -951,15 +951,15 @@ func TestIntegration_ScaleTestSVG(t *testing.T) {
 	if doc.DefaultMode != ModeTimeline {
 		t.Errorf("scale_test.svg DefaultMode = %s, want %s", doc.DefaultMode, ModeTimeline)
 	}
-	if len(doc.Layers) != 15 {
-		t.Errorf("scale_test.svg frame count = %d, want 15", len(doc.Layers))
+	if len(doc.Frames) != 15 {
+		t.Errorf("scale_test.svg frame count = %d, want 15", len(doc.Frames))
 	}
 	if len(doc.MotionPaths) != 2 {
 		t.Fatalf("scale_test.svg motion paths count = %d, want 2", len(doc.MotionPaths))
 	}
 
 	// Render all 15 frames
-	for i := 0; i < len(doc.Layers); i++ {
+	for i := 0; i < len(doc.Frames); i++ {
 		frameBytes, err := BuildTimelineFrameSVG(doc, i, doc.GetDrawingRect())
 		if err != nil {
 			t.Fatalf("BuildTimelineFrameSVG(frame %d) failed: %v", i, err)
@@ -982,8 +982,8 @@ func TestIntegration_ColorTestSVG(t *testing.T) {
 	if doc.DefaultMode != ModeTimeline {
 		t.Errorf("color_test.svg DefaultMode = %s, want %s", doc.DefaultMode, ModeTimeline)
 	}
-	if len(doc.Layers) != 30 {
-		t.Errorf("color_test.svg frame count = %d, want 30", len(doc.Layers))
+	if len(doc.Frames) != 30 {
+		t.Errorf("color_test.svg frame count = %d, want 30", len(doc.Frames))
 	}
 	if len(doc.MotionPaths) != 2 {
 		t.Fatalf("color_test.svg motion paths count = %d, want 2", len(doc.MotionPaths))
@@ -1030,7 +1030,7 @@ func TestIntegration_ColorTestSVG(t *testing.T) {
 	}
 
 	// Render all 30 frames to RGBA
-	for i := 0; i < len(doc.Layers); i++ {
+	for i := 0; i < len(doc.Frames); i++ {
 		frameBytes, err := BuildTimelineFrameSVG(doc, i, doc.GetDrawingRect())
 		if err != nil {
 			t.Fatalf("BuildTimelineFrameSVG(frame %d) failed: %v", i, err)

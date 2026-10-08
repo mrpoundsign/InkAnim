@@ -39,11 +39,11 @@ func TestMainWindowInitAndLoad(t *testing.T) {
 		t.Errorf("expected exportBtn text to be 'Export Animated GIF...', got '%s'", mw.rightPanel.exportBtn.Text)
 	}
 
-	if len(mw.session.Layers) != 10 {
-		t.Errorf("expected 10 layers, got %d", len(mw.session.Layers))
+	if len(mw.session.Frames) != 10 {
+		t.Errorf("expected 10 frames, got %d", len(mw.session.Frames))
 	}
 	if len(mw.session.RenderedFrames) != 10 {
-		t.Errorf("expected 10 rendered layer frames, got %d", len(mw.session.RenderedFrames))
+		t.Errorf("expected 10 rendered frames, got %d", len(mw.session.RenderedFrames))
 	}
 
 	// Test loading second SVG with different frame count

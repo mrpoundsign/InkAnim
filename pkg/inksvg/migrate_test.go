@@ -145,8 +145,8 @@ func TestMigration_MovementLegacyFixture(t *testing.T) {
 		}
 	}
 
-	if len(legacyDoc.Layers) != 20 || len(currentDoc.Layers) != 20 {
-		t.Fatalf("layer count mismatch: legacy=%d, current=%d, want 20", len(legacyDoc.Layers), len(currentDoc.Layers))
+	if len(legacyDoc.Frames) != 20 || len(currentDoc.Frames) != 20 {
+		t.Fatalf("frame count mismatch: legacy=%d, current=%d, want 20", len(legacyDoc.Frames), len(currentDoc.Frames))
 	}
 
 	if len(legacyDoc.MotionPaths) != len(currentDoc.MotionPaths) {
@@ -162,7 +162,7 @@ func TestMigration_MovementLegacyFixture(t *testing.T) {
 	}
 
 	labelRe := regexp.MustCompile(`inkscape:label="[^"]*"`)
-	for i := 0; i < len(legacyDoc.Layers); i++ {
+	for i := 0; i < len(legacyDoc.Frames); i++ {
 		legacyFrameSVG, err := BuildTimelineFrameSVG(legacyDoc, i, legacyDoc.GetDocumentRect())
 		if err != nil {
 			t.Fatalf("BuildTimelineFrameSVG failed on legacy doc frame %d: %v", i, err)

@@ -57,11 +57,11 @@ func TestParseSVG(t *testing.T) {
 		t.Errorf("expected 200x100, got %fx%f", doc.Width, doc.Height)
 	}
 
-	if len(doc.Layers) != 1 {
-		t.Fatalf("expected 1 frame layer, got %d", len(doc.Layers))
+	if len(doc.Frames) != 1 {
+		t.Fatalf("expected 1 frame, got %d", len(doc.Frames))
 	}
-	if doc.Layers[0].ID != "timeline_frame_1" || doc.Layers[0].Label != "Frame 1" {
-		t.Errorf("unexpected frame layer: %+v", doc.Layers[0])
+	if doc.Frames[0].ID != "timeline_frame_1" || doc.Frames[0].Label != "Frame 1" {
+		t.Errorf("unexpected frame: %+v", doc.Frames[0])
 	}
 
 	if len(doc.Pages) != 2 {
@@ -219,8 +219,8 @@ func TestBouncingWalkerSVGLoadAndCrop(t *testing.T) {
 		t.Fatalf("failed to parse bouncing_walker.svg: %v", err)
 	}
 
-	if len(doc.Layers) != 1 {
-		t.Errorf("expected 1 frame layer, got %d", len(doc.Layers))
+	if len(doc.Frames) != 1 {
+		t.Errorf("expected 1 frame, got %d", len(doc.Frames))
 	}
 	if len(doc.Pages) != 2 {
 		t.Errorf("expected 2 pages, got %d", len(doc.Pages))
@@ -393,7 +393,7 @@ func TestAlertIconDrawingBounds(t *testing.T) {
 	}
 }
 
-func TestParseSVG_NoExplicitLayersFallback(t *testing.T) {
+func TestParseSVG_NoExplicitFramesFallback(t *testing.T) {
 	raw := `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">
 		<circle cx="50" cy="50" r="25" fill="#ff0000" />
 	</svg>`
@@ -401,11 +401,11 @@ func TestParseSVG_NoExplicitLayersFallback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseSVG failed: %v", err)
 	}
-	if len(doc.Layers) != 1 {
-		t.Fatalf("expected 1 fallback layer, got %d", len(doc.Layers))
+	if len(doc.Frames) != 1 {
+		t.Fatalf("expected 1 fallback frame, got %d", len(doc.Frames))
 	}
-	if doc.Layers[0].Label != "Frame 1" {
-		t.Errorf("expected layer label 'Frame 1', got %q", doc.Layers[0].Label)
+	if doc.Frames[0].Label != "Frame 1" {
+		t.Errorf("expected frame label 'Frame 1', got %q", doc.Frames[0].Label)
 	}
 
 	frameSVG, err := BuildTimelineFrameSVG(doc, 0, doc.GetDocumentRect())
