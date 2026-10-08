@@ -39,6 +39,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Fixed an issue where closing the Motion Editor after applying presets (such as auto-generated group anchors) closed without prompting, losing changes in Inkscape ([#101](https://github.com/mrpoundsign/InkAnim/issues/101)).
   - Ensured documents open in a clean state on launch without false-positive change prompts when closing unedited files ([#101](https://github.com/mrpoundsign/InkAnim/issues/101)).
   - Added change history tracking to document inspector actions in the status bar ([#101](https://github.com/mrpoundsign/InkAnim/issues/101), [#103](https://github.com/mrpoundsign/InkAnim/issues/103)).
+- **Windows System Fonts with 8.3 Short Filenames**:
+  - Resolved an issue where standard Windows fonts using historical 8.3 short filenames (e.g. `FRAHV.TTF` for Franklin Gothic Heavy, `GOTHIC.TTF` for Century Gothic, `GARA.TTF` for Garamond) failed to resolve and silently fell back to DejaVu Sans ([#78](https://github.com/mrpoundsign/InkAnim/issues/78)).
+  - Implemented fast native Windows font registry scanning to map typographic names to disk files without disk I/O overhead ([#78](https://github.com/mrpoundsign/InkAnim/issues/78)).
+  - Added cross-platform SFNT name table extraction fallback discovering `NameIDFamily`, `NameIDTypographicFamily`, and `NameIDFull` from binary font headers for non-registry and custom font locations ([#78](https://github.com/mrpoundsign/InkAnim/issues/78)).
 - **Scaled and Transformed Motion Paths**:
   - Fixed an issue where motion paths (such as spirals or splines) scaled, rotated, or transformed in Inkscape caused animated objects to follow the original unscaled trajectory instead of the visible shape ([#106](https://github.com/mrpoundsign/InkAnim/issues/106)).
   - Motion trajectory preview guides and travel distances now accurately reflect scaled and transformed guide paths ([#106](https://github.com/mrpoundsign/InkAnim/issues/106)).
