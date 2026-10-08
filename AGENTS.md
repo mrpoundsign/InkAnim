@@ -38,7 +38,7 @@ InkAnim/
 │       ├── parser.go     # SVG XML parser & IAMS motion directive evaluator
 │       ├── renderer.go   # Rasterization of SVG frames into RGBA images
 │       ├── text.go       # Embedded DejaVu Sans & TrueType glyph outline converter
-│       └── types.go      # Layer, Document, and MotionConfig models
+│       └── types.go      # Frame, Document, and MotionConfig models
 ├── internal/
 │   ├── app/              # Core application session, timeline state, boundary mode, orchestration
 │   │   ├── session.go    # Session state: Document, Timeline Frames, Duration, ExportOptions

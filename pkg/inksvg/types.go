@@ -30,8 +30,8 @@ type Rect struct {
 }
 
 
-// Layer represents an animation frame in the timeline.
-type Layer struct {
+// Frame represents an animation frame in the timeline.
+type Frame struct {
 	ID          string `json:"id"`
 	Label       string `json:"label"`
 	Index       int    `json:"index"`
@@ -43,15 +43,15 @@ type Layer struct {
 }
 
 // EffectiveDuration returns the override duration if set, otherwise the global default.
-func (l Layer) EffectiveDuration(globalDefault int) int {
-	if l.HasOverride && l.OverrideMs > 0 {
-		return l.OverrideMs
+func (f Frame) EffectiveDuration(globalDefault int) int {
+	if f.HasOverride && f.OverrideMs > 0 {
+		return f.OverrideMs
 	}
 	if globalDefault > 0 {
 		return globalDefault
 	}
-	if l.DurationMs > 0 {
-		return l.DurationMs
+	if f.DurationMs > 0 {
+		return f.DurationMs
 	}
 	return 100
 }
@@ -210,7 +210,7 @@ type SVGDocument struct {
 	ViewBoxW     float64
 	ViewBoxH     float64
 	DrawingRect  Rect
-	Layers       []Layer
+	Frames       []Frame
 	Pages        []Page
 	MotionPaths  []MotionPath
 	CameraPath   *MotionPath
@@ -221,6 +221,14 @@ type SVGDocument struct {
 	ShowMotionLines bool
 	timelineTpl     any
 	mu              sync.RWMutex
+}
+
+// FrameCount returns the number of animation frames in the document.
+func (d *SVGDocument) FrameCount() int {
+	if d == nil {
+		return 0
+	}
+	return len(d.Frames)
 }
 
 // GetElementRect returns the bounding rectangle of the specified element by ID,

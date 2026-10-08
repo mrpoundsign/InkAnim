@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0-beta2] - Unreleased
+
+### Changed
+- **Animation Frame Model Nomenclature**:
+  - Renamed `pkg/inksvg.Layer` to `pkg/inksvg.Frame` and `SVGDocument.Layers` to `SVGDocument.Frames` to clearly distinguish synthetic animation timeline frames from Inkscape SVG layers ([#105](https://github.com/mrpoundsign/InkAnim/issues/105)).
+  - Added `SVGDocument.FrameCount()` helper method for clean, direct frame count reads ([#105](https://github.com/mrpoundsign/InkAnim/issues/105)).
+  - Renamed `Session.Layers` to `Session.Frames`, `ToggleLayerActive` to `ToggleFrameActive`, and `MoveLayer` to `MoveFrame` in `internal/app` ([#105](https://github.com/mrpoundsign/InkAnim/issues/105)).
+  - Updated user-facing UI messages in native GUI and WebAssembly builds to report frame counts rather than layers ([#105](https://github.com/mrpoundsign/InkAnim/issues/105)).
+
 ## [0.5.0-beta] - 2026-10-07
 
 ### Added

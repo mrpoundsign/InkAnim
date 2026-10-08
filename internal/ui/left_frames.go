@@ -210,22 +210,22 @@ func (p *LeftFramesPanel) Refresh() {
 	}
 
 
-	if len(p.session.Layers) == 0 {
-		p.listContainer.Add(widget.NewLabel("No Inkscape layers found."))
+	if len(p.session.Frames) == 0 {
+		p.listContainer.Add(widget.NewLabel("No frames found."))
 		p.listContainer.Refresh()
 		return
 	}
 
-	for i, layer := range p.session.Layers {
+	for i, frame := range p.session.Frames {
 		idx := i
-		activeCheck := widget.NewCheck(fmt.Sprintf("%d. %s", idx+1, layer.Label), func(checked bool) {
-			_ = p.session.ToggleLayerActive(idx)
+		activeCheck := widget.NewCheck(fmt.Sprintf("%d. %s", idx+1, frame.Label), func(checked bool) {
+			_ = p.session.ToggleFrameActive(idx)
 			p.Refresh()
 			if p.onFramesChange != nil {
 				p.onFramesChange()
 			}
 		})
-		activeCheck.Checked = layer.IsActive
+		activeCheck.Checked = frame.IsActive
 
 
 		var durEntry *commitEntry
@@ -254,11 +254,11 @@ func (p *LeftFramesPanel) Refresh() {
 
 		durEntry = newCommitEntry(commitDur)
 		durVal := p.session.ExportOptions.DefaultDurationMs
-		if layer.HasOverride && layer.OverrideMs > 0 {
-			durVal = layer.OverrideMs
+		if frame.HasOverride && frame.OverrideMs > 0 {
+			durVal = frame.OverrideMs
 		}
 		durEntry.SetText(strconv.Itoa(durVal))
-		if !layer.HasOverride {
+		if !frame.HasOverride {
 			durEntry.Disable()
 		}
 
@@ -299,11 +299,11 @@ func (p *LeftFramesPanel) Refresh() {
 				p.onFramesChange()
 			}
 		})
-		overrideCheck.Checked = layer.HasOverride
+		overrideCheck.Checked = frame.HasOverride
 
 		upBtn := widget.NewButton("▲", func() {
 			if idx > 0 {
-				_ = p.session.MoveLayer(idx, idx-1)
+				_ = p.session.MoveFrame(idx, idx-1)
 				p.Refresh()
 				if p.onFramesChange != nil {
 					p.onFramesChange()
@@ -311,8 +311,8 @@ func (p *LeftFramesPanel) Refresh() {
 			}
 		})
 		downBtn := widget.NewButton("▼", func() {
-			if idx < len(p.session.Layers)-1 {
-				_ = p.session.MoveLayer(idx, idx+1)
+			if idx < len(p.session.Frames)-1 {
+				_ = p.session.MoveFrame(idx, idx+1)
 				p.Refresh()
 				if p.onFramesChange != nil {
 					p.onFramesChange()

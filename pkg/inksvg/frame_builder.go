@@ -361,7 +361,7 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 	copy(nodes, tpl.nodes)
 
 	frame1Idx := frameIndex + 1
-	maxF := len(doc.Layers)
+	maxF := doc.FrameCount()
 	if maxF == 0 {
 		for _, mp := range doc.MotionPaths {
 			if mp.Config.EndFrame > maxF {

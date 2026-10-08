@@ -384,9 +384,9 @@ func ParseSVG(data []byte) (*SVGDocument, error) {
 	}
 
 	if maxFrame > 0 {
-		doc.Layers = make([]Layer, maxFrame)
+		doc.Frames = make([]Frame, maxFrame)
 		for i := 0; i < maxFrame; i++ {
-			doc.Layers[i] = Layer{
+			doc.Frames[i] = Frame{
 				ID:         fmt.Sprintf("timeline_frame_%d", i+1),
 				Label:      fmt.Sprintf("Frame %d", i+1),
 				Index:      i,
@@ -397,7 +397,7 @@ func ParseSVG(data []byte) (*SVGDocument, error) {
 		}
 	} else {
 		// Single static frame representing the entire document
-		doc.Layers = []Layer{
+		doc.Frames = []Frame{
 			{
 				ID:         "timeline_frame_1",
 				Label:      "Frame 1",

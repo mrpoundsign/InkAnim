@@ -105,8 +105,8 @@ func (s *EditorState) ApplyPreset(p presets.Preset) (string, error) {
 		var cx, cy float64
 		totalFrames := 20
 		if err == nil {
-			if len(doc.Layers) > 0 {
-				totalFrames = len(doc.Layers)
+			if doc.FrameCount() > 0 {
+				totalFrames = doc.FrameCount()
 			}
 			measureID := s.ActiveNode.ID
 			rect := doc.GetElementRect(measureID)
@@ -147,8 +147,8 @@ func (s *EditorState) ApplyPreset(p presets.Preset) (string, error) {
 
 	// Applying preset directly to an existing anchor or directive-carrying shape
 	totalFrames := 20
-	if doc, err := inksvg.ParseSVG(s.ComputePatchedSVG()); err == nil && len(doc.Layers) > 0 {
-		totalFrames = len(doc.Layers)
+	if doc, err := inksvg.ParseSVG(s.ComputePatchedSVG()); err == nil && doc.FrameCount() > 0 {
+		totalFrames = doc.FrameCount()
 	}
 	label := p.FormatLabelForFrames(totalFrames)
 	prefix, directives, suffix := doctree.ParseDirectives(label)
@@ -367,8 +367,8 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 				// Detect total doc frames
 				doc, err := inksvg.ParseSVG(state.ComputePatchedSVG())
 				totalDocFrames := 20
-				if err == nil && len(doc.Layers) > 0 {
-					totalDocFrames = len(doc.Layers)
+				if err == nil && doc.FrameCount() > 0 {
+					totalDocFrames = doc.FrameCount()
 				}
 
 				for i := range node.Directives {

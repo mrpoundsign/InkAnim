@@ -70,7 +70,7 @@ func TestSessionGlobalAndOverrideDurations(t *testing.T) {
 	}
 }
 
-func TestSessionToggleLayerActive(t *testing.T) {
+func TestSessionToggleFrameActive(t *testing.T) {
 	testSVGPath, err := filepath.Abs("../../testdata/color_test.svg")
 	if err != nil {
 		t.Fatalf("failed to resolve test SVG path: %v", err)
@@ -87,8 +87,8 @@ func TestSessionToggleLayerActive(t *testing.T) {
 	}
 
 	// Disable frame 1
-	if err := sess.ToggleLayerActive(1); err != nil {
-		t.Fatalf("ToggleLayerActive(1) failed: %v", err)
+	if err := sess.ToggleFrameActive(1); err != nil {
+		t.Fatalf("ToggleFrameActive(1) failed: %v", err)
 	}
 	t.Logf("Frames count after disabling frame 1: %d", len(sess.RenderedFrames))
 	if len(sess.RenderedFrames) != initialCount-1 {
@@ -112,8 +112,8 @@ func TestSessionLoadSVGDataAndExportWriter(t *testing.T) {
 		t.Fatalf("LoadSVGData failed: %v", err)
 	}
 
-	if len(sess.Layers) != 10 {
-		t.Fatalf("expected 10 layers, got %d", len(sess.Layers))
+	if len(sess.Frames) != 10 {
+		t.Fatalf("expected 10 frames, got %d", len(sess.Frames))
 	}
 
 	// Test ExportGIFWriter
@@ -391,8 +391,8 @@ func TestSessionLoadSVGWithoutLayers(t *testing.T) {
 		t.Fatalf("failed to load fixture SVG: %v", err)
 	}
 
-	if len(sess.Layers) != 1 {
-		t.Fatalf("expected 1 fallback layer, got %d", len(sess.Layers))
+	if len(sess.Frames) != 1 {
+		t.Fatalf("expected 1 fallback frame, got %d", len(sess.Frames))
 	}
 	if len(sess.RenderedFrames) != 1 {
 		t.Fatalf("expected 1 rendered frame, got %d", len(sess.RenderedFrames))
