@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Standard keyboard shortcuts (`Ctrl+Z` for undo, `Ctrl+Shift+Z` or `Ctrl+Y` for redo) ([#103](https://github.com/mrpoundsign/InkAnim/issues/103)).
   - Smooth text and numeric editing with real-time live preview updates, coalescing input sequences into clean single undo steps upon pressing Enter or changing field focus ([#103](https://github.com/mrpoundsign/InkAnim/issues/103)).
   - Status bar feedback displaying the specific action that was undone or redone, and automatic clean state restoration when all changes are undone back to the initial document ([#103](https://github.com/mrpoundsign/InkAnim/issues/103)).
+- **Element Deletion in Motion Editor**:
+  - Ability to delete drawing elements, shapes, and motion anchors directly from the Motion Editor inspector or by pressing the `Delete` key ([#102](https://github.com/mrpoundsign/InkAnim/issues/102)).
+  - Groups and layers can be safely deleted once emptied, with protective validation preventing accidental deletion of non-empty groups or elements containing definitions ([#102](https://github.com/mrpoundsign/InkAnim/issues/102)).
+  - Clean XML byte-splicing that preserves surrounding SVG formatting, line endings, and comments without re-serializing untouched document content ([#102](https://github.com/mrpoundsign/InkAnim/issues/102)).
+  - Fully integrated with Undo and Redo (`Ctrl+Z` / `Ctrl+Y`), instantly restoring deleted elements and their animations ([#102](https://github.com/mrpoundsign/InkAnim/issues/102)).
 
 ### Changed
 - **Animation Frame Model Nomenclature**:

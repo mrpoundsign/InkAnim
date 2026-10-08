@@ -34,6 +34,10 @@ func TestTreeActualRendering(t *testing.T) {
 	var tree *widget.Tree
 	var findTree func(co fyne.CanvasObject)
 	findTree = func(co fyne.CanvasObject) {
+		if tr, ok := co.(*deletableTree); ok {
+			tree = &tr.Tree
+			return
+		}
 		if tr, ok := co.(*widget.Tree); ok {
 			tree = tr
 			return
@@ -844,6 +848,266 @@ func TestCommitEntry_Coalescing(t *testing.T) {
 		t.Errorf("expected document redo called once, got %d", redoCalls)
 	}
 }
+
+func TestCanDeleteElement(t *testing.T) {
+	svg := []byte(`<svg xmlns="http://www.w3.org/2000/svg">
+  <g id="layer1">
+    <rect id="rect1" width="10" height="10"/>
+    <circle r="5"/>
+  </g>
+  <g id="group_with_clip">
+    <clipPath id="cp1">
+      <rect width="10" height="10"/>
+    </clipPath>
+  </g>
+  <g id="empty_group">
+  </g>
+</svg>`)
+
+	state, err := NewEditorState(svg, "test.svg", nil)
+	if err != nil {
+		t.Fatalf("NewEditorState failed: %v", err)
+	}
+
+	// 1. Leaf element with ID: deletable
+	canDel, reason := state.CanDeleteElement("rect1")
+	if !canDel {
+		t.Errorf("expected rect1 to be deletable, got reason: %s", reason)
+	}
+
+	// 2. Element with synthetic ID (circle without id): not deletable
+	circleNode := state.NodeMap["circle"]
+	if circleNode == nil || !circleNode.SyntheticID {
+		t.Fatalf("expected synthetic ID node for circle")
+	}
+	canDel, _ = state.CanDeleteElement("circle")
+	if canDel {
+		t.Errorf("expected circle with synthetic ID to NOT be deletable")
+	}
+
+	// 3. Non-empty group (layer1 contains rect1 and circle): not deletable
+	canDel, reason = state.CanDeleteElement("layer1")
+	if canDel {
+		t.Errorf("expected non-empty layer1 to NOT be deletable")
+	}
+	if !strings.Contains(reason, "Group contains") {
+		t.Errorf("expected reason to mention child elements, got %q", reason)
+	}
+
+	// 4. Group containing only invisible <clipPath>: not deletable
+	canDel, reason = state.CanDeleteElement("group_with_clip")
+	if canDel {
+		t.Errorf("expected group_with_clip to NOT be deletable")
+	}
+	if !strings.Contains(reason, "Group contains 1 element") {
+		t.Errorf("expected reason to mention 1 element, got %q", reason)
+	}
+
+	// 5. Empty group: deletable
+	canDel, reason = state.CanDeleteElement("empty_group")
+	if !canDel {
+		t.Errorf("expected empty_group to be deletable, got reason: %s", reason)
+	}
+}
+
+func TestDeleteElement_UndoRedo(t *testing.T) {
+	svg := []byte(`<svg xmlns="http://www.w3.org/2000/svg">
+  <g id="layer1">
+    <rect id="rect1" width="10" height="10"/>
+    <rect id="rect2" width="20" height="20"/>
+  </g>
+</svg>`)
+
+	state, err := NewEditorState(svg, "test.svg", nil)
+	if err != nil {
+		t.Fatalf("NewEditorState failed: %v", err)
+	}
+
+	if state.IsDirty() {
+		t.Errorf("expected clean state initially")
+	}
+
+	// Select rect1
+	state.ActiveNode = state.NodeMap["rect1"]
+
+	// Delete rect1
+	err = state.DeleteElement("rect1")
+	if err != nil {
+		t.Fatalf("DeleteElement failed: %v", err)
+	}
+
+	// Verify rect1 is removed from SVGData and NodeMap
+	if state.NodeMap["rect1"] != nil {
+		t.Errorf("expected rect1 to be removed from NodeMap")
+	}
+	if strings.Contains(string(state.SVGData), "rect1") {
+		t.Errorf("expected rect1 to be removed from SVGData: %s", string(state.SVGData))
+	}
+	if !state.IsDirty() {
+		t.Errorf("expected state to be dirty after delete")
+	}
+	// ActiveNode should now be parent "layer1"
+	if state.ActiveNode == nil || state.ActiveNode.ID != "layer1" {
+		t.Errorf("expected ActiveNode to be parent 'layer1', got %+v", state.ActiveNode)
+	}
+	if !state.CanUndo() {
+		t.Errorf("expected CanUndo() == true after delete")
+	}
+
+	// Test Undo
+	desc, err := state.Undo()
+	if err != nil {
+		t.Fatalf("Undo failed: %v", err)
+	}
+	if !strings.Contains(desc, "Delete rect1") {
+		t.Errorf("expected undo description to mention Delete rect1, got %q", desc)
+	}
+	if state.NodeMap["rect1"] == nil {
+		t.Errorf("expected rect1 restored in NodeMap after undo")
+	}
+	if !strings.Contains(string(state.SVGData), "rect1") {
+		t.Errorf("expected rect1 restored in SVGData after undo")
+	}
+	if state.IsDirty() {
+		t.Errorf("expected clean state after undoing back to initial state")
+	}
+
+	// Test Redo
+	desc, err = state.Redo()
+	if err != nil {
+		t.Fatalf("Redo failed: %v", err)
+	}
+	if !strings.Contains(desc, "Delete rect1") {
+		t.Errorf("expected redo description to mention Delete rect1, got %q", desc)
+	}
+	if state.NodeMap["rect1"] != nil {
+		t.Errorf("expected rect1 removed in NodeMap after redo")
+	}
+	if strings.Contains(string(state.SVGData), "rect1") {
+		t.Errorf("expected rect1 removed from SVGData after redo")
+	}
+	if !state.IsDirty() {
+		t.Errorf("expected dirty state after redo")
+	}
+}
+
+func TestEditorWindow_DeleteElementUI(t *testing.T) {
+	svg := []byte(`<svg xmlns="http://www.w3.org/2000/svg">
+  <g id="layer1">
+    <rect id="rect1" width="10" height="10"/>
+    <rect id="rect2" width="20" height="20"/>
+  </g>
+</svg>`)
+
+	state, err := NewEditorState(svg, "test.svg", []string{"rect1"})
+	if err != nil {
+		t.Fatalf("NewEditorState failed: %v", err)
+	}
+
+	a := test.NewApp()
+	w := ShowEditorWindow(a, state)
+	defer w.Close()
+
+	// Find the Delete button in the window
+	var findDeleteBtn func(co fyne.CanvasObject) *widget.Button
+	findDeleteBtn = func(co fyne.CanvasObject) *widget.Button {
+		if btn, ok := co.(*widget.Button); ok && btn.Text == "Delete" && btn.Importance == widget.DangerImportance {
+			return btn
+		}
+		if s, ok := co.(*container.Split); ok {
+			if b := findDeleteBtn(s.Leading); b != nil {
+				return b
+			}
+			return findDeleteBtn(s.Trailing)
+		}
+		if tabs, ok := co.(*container.AppTabs); ok {
+			for _, item := range tabs.Items {
+				if b := findDeleteBtn(item.Content); b != nil {
+					return b
+				}
+			}
+		}
+		if c, ok := co.(*fyne.Container); ok {
+			for _, child := range c.Objects {
+				if b := findDeleteBtn(child); b != nil {
+					return b
+				}
+			}
+		}
+		if scr, ok := co.(*container.Scroll); ok {
+			return findDeleteBtn(scr.Content)
+		}
+		return nil
+	}
+
+	delBtn := findDeleteBtn(w.Content())
+	if delBtn == nil {
+		t.Fatalf("Delete button not found in UI inspector")
+	}
+	if delBtn.Disabled() {
+		t.Errorf("expected Delete button to be enabled for leaf rect1")
+	}
+
+	// Trigger Delete button
+	delBtn.Tapped(&fyne.PointEvent{})
+
+	// Verify rect1 is deleted and layer1 is selected
+	if state.NodeMap["rect1"] != nil {
+		t.Errorf("expected rect1 deleted from state after clicking Delete")
+	}
+	if state.ActiveNode == nil || state.ActiveNode.ID != "layer1" {
+		t.Errorf("expected layer1 to become active node, got %+v", state.ActiveNode)
+	}
+
+	// After deletion, active node is layer1 which still has child rect2, so Delete should be disabled!
+	delBtn2 := findDeleteBtn(w.Content())
+	if delBtn2 == nil {
+		t.Fatalf("Delete button not found after update")
+	}
+	if !delBtn2.Disabled() {
+		t.Errorf("expected Delete button to be disabled for non-empty layer1")
+	}
+
+	// Find deletableTree
+	var delTree *deletableTree
+	var findDelTree func(co fyne.CanvasObject)
+	findDelTree = func(co fyne.CanvasObject) {
+		if tr, ok := co.(*deletableTree); ok {
+			delTree = tr
+			return
+		}
+		if s, ok := co.(*container.Split); ok {
+			findDelTree(s.Leading)
+			findDelTree(s.Trailing)
+		}
+		if tabs, ok := co.(*container.AppTabs); ok {
+			for _, item := range tabs.Items {
+				findDelTree(item.Content)
+			}
+		}
+		if c, ok := co.(*fyne.Container); ok {
+			for _, child := range c.Objects {
+				findDelTree(child)
+			}
+		}
+	}
+	findDelTree(w.Content())
+	if delTree == nil {
+		t.Fatalf("deletableTree not found in window")
+	}
+
+	// Select remaining leaf rect2
+	delTree.Select("rect2")
+
+	// Trigger Delete key on the tree!
+	delTree.TypedKey(&fyne.KeyEvent{Name: fyne.KeyDelete})
+
+	// Verify rect2 was deleted via keyboard shortcut on tree
+	if state.NodeMap["rect2"] != nil {
+		t.Errorf("expected rect2 deleted after TypedKey(KeyDelete)")
+	}
+}
+
 
 
 
