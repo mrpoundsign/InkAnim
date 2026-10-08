@@ -9,6 +9,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/test"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	"inkanim/internal/ext/doctree"
@@ -263,12 +264,16 @@ func TestBuildDirectiveWidgetCard(t *testing.T) {
 	onModified := func() {
 		modifiedCalled = true
 	}
+	var copyCalled bool
+	onCopy := func() {
+		copyCalled = true
+	}
 	var deleteCalled bool
 	onDelete := func() {
 		deleteCalled = true
 	}
 
-	cardObj := buildDirectiveWidgetCard(dir, 20, onModified, nil, onDelete, nil, nil)
+	cardObj := buildDirectiveWidgetCard(dir, 20, onModified, nil, onCopy, onDelete, nil, nil)
 	card, ok := cardObj.(*fyne.Container)
 	if !ok {
 		t.Fatalf("expected card to be *fyne.Container")
@@ -277,6 +282,7 @@ func TestBuildDirectiveWidgetCard(t *testing.T) {
 	// Find the angle entry inside card
 	var angleEntry *widget.Entry
 	var allFramesCheck *widget.Check
+	var copyBtn *widget.Button
 	var deleteBtn *widget.Button
 
 	var walk func(co fyne.CanvasObject)
@@ -301,6 +307,9 @@ func TestBuildDirectiveWidgetCard(t *testing.T) {
 		if btn, ok := co.(*widget.Button); ok {
 			if btn.Importance == widget.DangerImportance {
 				deleteBtn = btn
+			}
+			if btn.Icon == theme.ContentCopyIcon() {
+				copyBtn = btn
 			}
 		}
 		if c, ok := co.(*fyne.Container); ok {
@@ -349,13 +358,22 @@ func TestBuildDirectiveWidgetCard(t *testing.T) {
 		t.Errorf("expected onDelete to be called when delete button tapped")
 	}
 
+	// Test copy button
+	if copyBtn == nil {
+		t.Fatalf("expected to find copy button in card")
+	}
+	copyBtn.Tapped(&fyne.PointEvent{})
+	if !copyCalled {
+		t.Errorf("expected onCopy to be called when copy button tapped")
+	}
+
 	// Test Depth: has frames, but no playback controls
 	depthDir := &doctree.Directive{
 		Type:   "Depth",
 		Params: "f: 1-10; order: 2",
 		Raw:    "Depth {f: 1-10; order: 2}",
 	}
-	depthCard := buildDirectiveWidgetCard(depthDir, 20, func() {}, nil, func() {}, nil, nil).(*fyne.Container)
+	depthCard := buildDirectiveWidgetCard(depthDir, 20, func() {}, nil, func() {}, func() {}, nil, nil).(*fyne.Container)
 	var depthHasFrames, depthHasEase bool
 	walk = func(co fyne.CanvasObject) {
 		if co == nil {
@@ -387,7 +405,7 @@ func TestBuildDirectiveWidgetCard(t *testing.T) {
 		Params: "factor: 0.5",
 		Raw:    "Dist {factor: 0.5}",
 	}
-	distCard := buildDirectiveWidgetCard(distDir, 20, func() {}, nil, func() {}, nil, nil).(*fyne.Container)
+	distCard := buildDirectiveWidgetCard(distDir, 20, func() {}, nil, func() {}, func() {}, nil, nil).(*fyne.Container)
 	var distHasFrames, distHasEase bool
 	walk = func(co fyne.CanvasObject) {
 		if co == nil {
@@ -1164,6 +1182,247 @@ func TestEditorWindow_ApplyChanges_CleanVsDirty(t *testing.T) {
 		t.Errorf("expected Applied == true when clicking Apply Changes on dirty document")
 	}
 }
+
+func TestCopyMotions(t *testing.T) {
+	svg := []byte(`<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape">
+  <path id="p1" inkscape:label="p1: Rot {f: 1-10; deg: 45} Scale {f: 1-10; scale: 1.5}" d="M0 0 L10 10" />
+  <path id="p2" d="M0 0 L10 10" />
+</svg>`)
+
+	state, err := NewEditorState(svg, "test.svg", []string{"p1"})
+	if err != nil {
+		t.Fatalf("NewEditorState failed: %v", err)
+	}
+
+	// 1. CopyMotions returns all directives
+	copied := state.CopyMotions(state.ActiveNode)
+	if !strings.Contains(copied, "Rot {f: 1-10; deg: 45}") || !strings.Contains(copied, "Scale {f: 1-10; scale: 1.5}") {
+		t.Errorf("unexpected copied directives: %q", copied)
+	}
+	if state.ClipboardDirectives != copied {
+		t.Errorf("expected ClipboardDirectives to match copied string, got %q", state.ClipboardDirectives)
+	}
+
+	// 2. CopySingleDirective
+	single := state.CopySingleDirective(state.ActiveNode.Directives[0])
+	if single != "Rot {f: 1-10; deg: 45}" {
+		t.Errorf("expected single directive 'Rot {f: 1-10; deg: 45}', got %q", single)
+	}
+	if state.ClipboardDirectives != single {
+		t.Errorf("expected ClipboardDirectives to be single directive, got %q", state.ClipboardDirectives)
+	}
+
+	// 3. Copy on node without directives returns empty string
+	p2 := state.NodeMap["p2"]
+	if p2 == nil {
+		t.Fatalf("p2 not found")
+	}
+	if res := state.CopyMotions(p2); res != "" {
+		t.Errorf("expected empty string when copying from p2, got %q", res)
+	}
+}
+
+func TestPasteMotions_Append(t *testing.T) {
+	svg := []byte(`<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape">
+  <path id="p1" inkscape:label="p1: Rot {f: 1-10; deg: 45}" d="M0 0 L10 10" />
+</svg>`)
+
+	state, err := NewEditorState(svg, "test.svg", []string{"p1"})
+	if err != nil {
+		t.Fatalf("NewEditorState failed: %v", err)
+	}
+
+	// Paste a Scale directive
+	resID, err := state.PasteMotions("Scale {f: 1-20; scale: 2.0}")
+	if err != nil {
+		t.Fatalf("PasteMotions failed: %v", err)
+	}
+	if resID != "p1" {
+		t.Errorf("expected resulting ID 'p1', got %q", resID)
+	}
+
+	node := state.NodeMap["p1"]
+	if len(node.Directives) != 2 {
+		t.Fatalf("expected 2 directives on p1, got %d", len(node.Directives))
+	}
+	if node.Directives[0].Type != "Rot" || node.Directives[1].Type != "Scale" {
+		t.Errorf("expected [Rot, Scale], got [%s, %s]", node.Directives[0].Type, node.Directives[1].Type)
+	}
+
+	// Check undo restores 1 directive
+	if !state.CanUndo() {
+		t.Fatalf("expected CanUndo == true after paste")
+	}
+	if _, err := state.Undo(); err != nil {
+		t.Fatalf("Undo failed: %v", err)
+	}
+	node = state.NodeMap["p1"]
+	if len(node.Directives) != 1 {
+		t.Errorf("expected 1 directive after Undo, got %d", len(node.Directives))
+	}
+}
+
+func TestPasteMotions_GroupAnchor(t *testing.T) {
+	svg := []byte(`<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape">
+  <g id="layer1" inkscape:groupmode="layer">
+    <rect id="r1" x="10" y="10" width="100" height="100" />
+  </g>
+</svg>`)
+
+	state, err := NewEditorState(svg, "test.svg", []string{"r1"})
+	if err != nil {
+		t.Fatalf("NewEditorState failed: %v", err)
+	}
+
+	// Active node is r1 (child drawing shape in layer1 without directives).
+	// Pasting should anchor to layer1 to avoid destroying r1.
+	resID, err := state.PasteMotions("Move {f: 1-20; ease: in-out}")
+	if err != nil {
+		t.Fatalf("PasteMotions failed: %v", err)
+	}
+	if !strings.HasPrefix(resID, "layer1_motion") {
+		t.Errorf("expected anchor ID starting with 'layer1_motion', got %q", resID)
+	}
+	if state.ActiveNode == nil || state.ActiveNode.ID != resID {
+		t.Errorf("expected ActiveNode to be the newly created anchor %q", resID)
+	}
+
+	// Verify the anchor element exists in layer1
+	patched := state.ComputePatchedSVG()
+	if !strings.Contains(string(patched), resID) {
+		t.Errorf("expected patched SVG to contain anchor %q", resID)
+	}
+
+	// Undo removes the anchor
+	if _, err := state.Undo(); err != nil {
+		t.Fatalf("Undo failed: %v", err)
+	}
+	if state.NodeMap[resID] != nil {
+		t.Errorf("expected anchor %q to be removed after Undo", resID)
+	}
+}
+
+func TestPasteMotions_PivotObject(t *testing.T) {
+	svg := []byte(`<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape">
+  <g id="layer1" inkscape:groupmode="layer">
+    <circle id="orig_pin" cx="50" cy="50" r="5" />
+    <path id="arm" inkscape:label="arm: Rot {f: 1-20; deg: 90; pivot: #orig_pin}" d="M 50 50 L 100 50" />
+  </g>
+  <g id="layer2" inkscape:groupmode="layer">
+    <path id="leg" d="M 0 0 L 20 20" />
+  </g>
+</svg>`)
+
+	state, err := NewEditorState(svg, "test.svg", []string{"arm"})
+	if err != nil {
+		t.Fatalf("NewEditorState failed: %v", err)
+	}
+
+	// Copy directives from arm
+	copied := state.CopyMotions(state.ActiveNode)
+	if !strings.Contains(copied, "pivot: #orig_pin") {
+		t.Fatalf("expected copied motions to contain 'pivot: #orig_pin', got %q", copied)
+	}
+
+	// Select leg in layer2
+	state.ActiveNode = state.NodeMap["leg"]
+
+	// Paste onto leg (child in layer2 without directives -> anchors in layer2)
+	anchorID, err := state.PasteMotions(copied)
+	if err != nil {
+		t.Fatalf("PasteMotions failed: %v", err)
+	}
+
+	anchorNode := state.NodeMap[anchorID]
+	if anchorNode == nil {
+		t.Fatalf("expected anchor node %q to exist", anchorID)
+	}
+	if len(anchorNode.Directives) != 1 {
+		t.Fatalf("expected 1 directive on anchor, got %d", len(anchorNode.Directives))
+	}
+
+	pastedDir := anchorNode.Directives[0]
+	// Directive should reference the newly created pivot in layer2, NOT orig_pin!
+	if strings.Contains(pastedDir.Params, "#orig_pin") {
+		t.Errorf("expected pivot reference to be rewritten, still contains '#orig_pin': %s", pastedDir.Params)
+	}
+	if !strings.Contains(pastedDir.Params, "pivot: #layer2_pivot") {
+		t.Errorf("expected pivot reference to point to new layer2 pivot, got: %s", pastedDir.Params)
+	}
+
+	// Verify the new pivot element exists in the tree at the measured coordinates
+	pivotNode := state.NodeMap["layer2_pivot"]
+	if pivotNode == nil {
+		t.Fatalf("expected new pivot node 'layer2_pivot' to exist in nodeMap")
+	}
+
+	// Undo should remove both the new pivot and the new anchor in one step
+	if _, err := state.Undo(); err != nil {
+		t.Fatalf("Undo failed: %v", err)
+	}
+	if state.NodeMap[anchorID] != nil {
+		t.Errorf("expected anchor %q to be gone after Undo", anchorID)
+	}
+	if state.NodeMap["layer2_pivot"] != nil {
+		t.Errorf("expected pivot 'layer2_pivot' to be gone after Undo", )
+	}
+}
+
+func TestCopyPasteWindowShortcuts(t *testing.T) {
+	svg := []byte(`<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape">
+  <path id="p1" inkscape:label="p1: Rot {f: 1-10; deg: 45}" d="M0 0 L10 10" />
+  <path id="p2" inkscape:label="p2: Fade {f: 1-10; from: 0; to: 1}" d="M0 0 L10 10" />
+</svg>`)
+
+	a := test.NewApp()
+	state, err := NewEditorState(svg, "test.svg", []string{"p1"})
+	if err != nil {
+		t.Fatalf("NewEditorState failed: %v", err)
+	}
+
+	w := ShowEditorWindow(a, state)
+	mainMenu := w.MainMenu()
+	if mainMenu == nil || len(mainMenu.Items) == 0 {
+		t.Fatalf("expected mainMenu")
+	}
+
+	editMenu := mainMenu.Items[0]
+	var copyItem, pasteItem *fyne.MenuItem
+	for _, item := range editMenu.Items {
+		if item.Label == "Copy Motions" {
+			copyItem = item
+		}
+		if item.Label == "Paste Motions" {
+			pasteItem = item
+		}
+	}
+
+	if copyItem == nil {
+		t.Fatalf("expected Copy Motions item in editMenu")
+	}
+	if pasteItem == nil {
+		t.Fatalf("expected Paste Motions item in editMenu")
+	}
+
+	// 1. Trigger Copy Motions menu item
+	copyItem.Action()
+	if !strings.Contains(state.ClipboardDirectives, "Rot {f: 1-10; deg: 45}") {
+		t.Errorf("expected ClipboardDirectives to contain copied Rot directive, got %q", state.ClipboardDirectives)
+	}
+
+	// 2. Select p2 and trigger Paste Motions menu item
+	state.ActiveNode = state.NodeMap["p2"]
+	pasteItem.Action()
+
+	p2 := state.NodeMap["p2"]
+	if len(p2.Directives) != 2 {
+		t.Fatalf("expected p2 to have 2 directives (Fade + Rot), got %d", len(p2.Directives))
+	}
+	if p2.Directives[0].Type != "Fade" || p2.Directives[1].Type != "Rot" {
+		t.Errorf("expected [Fade, Rot], got [%s, %s]", p2.Directives[0].Type, p2.Directives[1].Type)
+	}
+}
+
 
 
 

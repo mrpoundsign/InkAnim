@@ -19,6 +19,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Groups and layers can be safely deleted once emptied, with protective validation preventing accidental deletion of non-empty groups or elements containing definitions ([#102](https://github.com/mrpoundsign/InkAnim/issues/102)).
   - Clean XML byte-splicing that preserves surrounding SVG formatting, line endings, and comments without re-serializing untouched document content ([#102](https://github.com/mrpoundsign/InkAnim/issues/102)).
   - Fully integrated with Undo and Redo (`Ctrl+Z` / `Ctrl+Y`), instantly restoring deleted elements and their animations ([#102](https://github.com/mrpoundsign/InkAnim/issues/102)).
+- **Copy and Paste Motion Directives in Motion Editor**:
+  - Copy all motion directives from the selected element or copy individual directive cards directly to the system clipboard ([#104](https://github.com/mrpoundsign/InkAnim/issues/104)).
+  - Paste motion directives onto another element, appending directives to animated shapes or automatically generating centered motion anchors for groups and un-animated drawing elements ([#104](https://github.com/mrpoundsign/InkAnim/issues/104)).
+  - Intelligent object pivot recreation: when copying directives referencing an object pivot, a matching pivot object is automatically created at the measured location within the target's group, keeping motion decoupled across layers ([#104](https://github.com/mrpoundsign/InkAnim/issues/104)).
+  - Standard plaintext IAMS clipboard format allowing easy sharing and manual editing outside the application ([#104](https://github.com/mrpoundsign/InkAnim/issues/104)).
+  - Edit menu items and standard keyboard shortcuts (`Ctrl+C` / `Ctrl+V`), respecting focused text fields without interfering with text input ([#104](https://github.com/mrpoundsign/InkAnim/issues/104)).
+  - Fully integrated with Undo and Redo (`Ctrl+Z` / `Ctrl+Y`), rolling back pasted directives and auto-created pivots in a single step ([#104](https://github.com/mrpoundsign/InkAnim/issues/104)).
 
 ### Changed
 - **Animation Frame Model Nomenclature**:
