@@ -192,6 +192,31 @@
       border-radius: 4px;
       word-break: break-all;
     }
+    .tree-box {
+      background: #09090b;
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      border-radius: var(--radius-sm);
+      padding: 16px 20px;
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      line-height: 1.7;
+      margin-top: 10px;
+      box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.4);
+    }
+    .tree-folder {
+      color: #38bdf8;
+      font-weight: 700;
+    }
+    .tree-file {
+      color: #f1f5f9;
+    }
+    .tree-bin {
+      color: #34d399;
+      font-weight: 600;
+    }
+    .tree-dim {
+      color: #64748b;
+    }
     .beta-hero-preview {
       max-width: 980px;
       margin: 40px auto 0;
@@ -485,22 +510,23 @@
               <code>InkAnim_v0.5.0-beta_inkscape-extension_windows_amd64.zip</code>
             </div>
             <div class="platform-download-item">
-              <span class="os-tag">🍎 macOS / OS X (Apple Silicon)</span>
-              <code>InkAnim_v0.5.0-beta_inkscape-extension_darwin_arm64.zip</code>
-            </div>
-            <div class="platform-download-item">
-              <span class="os-tag">🍎 macOS / OS X (Intel x86_64)</span>
-              <code>InkAnim_v0.5.0-beta_inkscape-extension_darwin_amd64.zip</code>
+              <span class="os-tag">🍎 macOS (Apple Silicon &amp; Intel Universal)</span>
+              <code>InkAnim_v0.5.0-beta_inkscape-extension_darwin_all.zip</code>
             </div>
             <div class="platform-download-item">
               <span class="os-tag">🐧 Linux (x86_64)</span>
-              <code>InkAnim_v0.5.0-beta_inkscape-extension_linux_amd64.zip</code>
+              <code>InkAnim_v0.5.0-beta_inkscape-extension_linux_amd64.tar.xz</code>
             </div>
           </div>
         </li>
         <li class="install-step-item">
           <h4>Extract into Your Inkscape Extensions Directory</h4>
-          <p style="margin-bottom: 12px;">Extract the archive contents into an <code>inkanim/</code> subfolder inside your Inkscape user extensions directory:</p>
+          <p style="margin-bottom: 8px;">
+            <strong>Quick shortcut in Inkscape:</strong> Open <code>Edit &rarr; Preferences &rarr; System</code> (or <code>Inkscape &rarr; Settings &rarr; System</code> on macOS) and click the <strong>Open</strong> button next to <strong>User extensions</strong>.
+          </p>
+          <p style="margin-bottom: 12px;">
+            Extract the archive into an <code>inkanim/</code> subfolder inside your user extensions directory:
+          </p>
           <div class="path-guide">
             <div class="path-guide-row">
               <span class="path-os">🪟 Windows:</span>
@@ -515,8 +541,24 @@
               <code class="path-code">~/.config/inkscape/extensions/inkanim/</code>
             </div>
           </div>
-          <p style="margin-top: 12px; font-size: 0.88rem; color: #94a3b8;">
-            💡 <em>On macOS and Linux, verify execution permission after extracting:</em> <code style="color: #38bdf8;">chmod +x inkanim-ext</code>
+
+          <div style="margin-top: 16px;">
+            <p style="margin-bottom: 6px; font-size: 0.9rem; font-weight: 600; color: #fff;">
+              📂 Expected Directory Layout After Extraction:
+            </p>
+            <div class="tree-box">
+              <div><span class="tree-folder">📁 extensions/</span></div>
+              <div>&nbsp;&nbsp;└── <span class="tree-folder">📁 inkanim/</span></div>
+              <div>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├── <span class="tree-file">📄 motion_editor.inx</span> <span class="tree-dim">&lt;!-- Inkscape menu descriptor --&gt;</span></div>
+              <div>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├── <span class="tree-file">🖼️ icon.png</span> <span class="tree-dim">&lt;!-- Extension studio icon --&gt;</span></div>
+              <div>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└── <span class="tree-folder">📁 bin/</span></div>
+              <div>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└── <span class="tree-bin">⚙️ inkanim-ext.exe</span> <span class="tree-dim">(Windows)</span></div>
+              <div>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="tree-dim">or</span> <span class="tree-bin">inkanim-ext</span> <span class="tree-dim">(macOS &amp; Linux)</span></div>
+            </div>
+          </div>
+
+          <p style="margin-top: 14px; font-size: 0.88rem; color: #94a3b8;">
+            💡 <em>On macOS and Linux, ensure the binary in <code>bin/</code> has executable permission:</em> <code style="color: #38bdf8;">chmod +x bin/inkanim-ext</code>
           </p>
         </li>
         <li class="install-step-item">
