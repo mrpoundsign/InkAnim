@@ -405,3 +405,118 @@ func TestBuildDirectiveWidgetCard(t *testing.T) {
 		t.Errorf("expected Dist card to NOT include playback/ease row")
 	}
 }
+
+func TestEditorState_IsDirty_ApplyPreset(t *testing.T) {
+	cleanSVG := `<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="100" height="100">
+  <g id="layer1" inkscape:groupmode="layer" inkscape:label="Layer 1">
+    <g id="g_rocket" inkscape:label="Rocket">
+      <rect id="rect_rocket" width="10" height="20" inkscape:label="Body" />
+    </g>
+  </g>
+</svg>`
+	data := []byte(cleanSVG)
+
+	state, err := NewEditorState(data, "clean.svg", []string{"g_rocket"})
+	if err != nil {
+		t.Fatalf("NewEditorState failed: %v", err)
+	}
+
+	if state.IsDirty() {
+		t.Fatalf("expected state to be clean initially")
+	}
+	if len(state.History) != 0 {
+		t.Fatalf("expected empty history initially, got %d", len(state.History))
+	}
+
+	spinPreset, ok := presets.FindPreset("spin")
+	if !ok {
+		t.Fatalf("spin preset not found")
+	}
+
+	_, err = state.ApplyPreset(spinPreset)
+	if err != nil {
+		t.Fatalf("ApplyPreset failed: %v", err)
+	}
+
+	if !state.IsDirty() {
+		t.Errorf("expected state.IsDirty() == true after applying preset to group")
+	}
+	if len(state.History) != 1 {
+		t.Fatalf("expected 1 history change, got %d", len(state.History))
+	}
+	if !strings.Contains(state.History[0].Description, "Spin") {
+		t.Errorf("expected history description to mention Spin, got %q", state.History[0].Description)
+	}
+}
+
+func TestEditorState_IsDirty_LabelRevert(t *testing.T) {
+	cleanSVG := `<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="100" height="100">
+  <g id="layer1" inkscape:groupmode="layer" inkscape:label="Layer 1">
+    <g id="g_rocket" inkscape:label="Rocket">
+      <rect id="rect_rocket" width="10" height="20" inkscape:label="Body" />
+    </g>
+  </g>
+</svg>`
+	data := []byte(cleanSVG)
+
+	state, err := NewEditorState(data, "clean.svg", nil)
+	if err != nil {
+		t.Fatalf("NewEditorState failed: %v", err)
+	}
+
+	rectNode := state.NodeMap["rect_rocket"]
+	if rectNode == nil {
+		t.Fatalf("expected rect_rocket in NodeMap")
+	}
+
+	// 1. Initially clean
+	if state.IsDirty() {
+		t.Errorf("expected state to be clean initially")
+	}
+
+	// 2. Add directive -> becomes dirty
+	rectNode.Directives = append(rectNode.Directives, doctree.Directive{
+		Type:   "Scale",
+		Params: "f: 1-10; from: 1; to: 2",
+		Raw:    "Scale {f: 1-10; from: 1; to: 2}",
+	})
+	state.ModifiedIDs["rect_rocket"] = true
+	state.RecordChange("Add Scale")
+
+	if !state.IsDirty() {
+		t.Errorf("expected state.IsDirty() == true after adding directive")
+	}
+
+	// 3. Revert directives back to original -> becomes clean
+	rectNode.Directives = nil
+	if state.IsDirty() {
+		t.Errorf("expected state.IsDirty() == false after reverting label back to original")
+	}
+}
+
+func TestEditorState_InitialStateCleanOnLoad(t *testing.T) {
+	for _, name := range []string{"pendulum.svg", "complex_motion.svg", "scale_test.svg", "color_test.svg", "spline_test.svg"} {
+		p := filepath.Join("..", "..", "testdata", name)
+		data, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		st, err := NewEditorState(data, p, nil)
+		if err != nil {
+			t.Errorf("%s: NewEditorState err: %v", name, err)
+			continue
+		}
+		if st.IsDirty() {
+			t.Errorf("%s: expected clean state on load, but IsDirty() == true", name)
+		}
+		if len(st.ModifiedIDs) > 0 {
+			t.Errorf("%s: expected 0 ModifiedIDs on load, got %d: %v", name, len(st.ModifiedIDs), st.ModifiedIDs)
+		}
+		if len(st.History) > 0 {
+			t.Errorf("%s: expected empty History on load, got %d changes", name, len(st.History))
+		}
+	}
+}
+
+
+
