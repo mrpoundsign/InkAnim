@@ -9,6 +9,8 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/dialog"
+
+	"inkanim/internal/prof"
 )
 
 func (mw *MainWindow) initPlatform() {
@@ -244,8 +246,10 @@ func (p *RightExportPanel) PromptExport() {
 }
 
 func (mw *MainWindow) loadDataAsync(data []byte, filename string, onLoaded func()) {
+	prof.Logf("START LOADING SVG: %s (%d bytes)", filename, len(data))
 	if mw.centerPanel != nil {
 		mw.centerPanel.Pause()
+		mw.centerPanel.BeginLoading("Rasterizing frames…")
 	}
 	mw.statusLabel.SetText("Loading: " + filename)
 
@@ -253,6 +257,7 @@ func (mw *MainWindow) loadDataAsync(data []byte, filename string, onLoaded func(
 		err := mw.session.LoadSVGData(data, filename)
 		fyne.Do(func() {
 			if err != nil {
+				mw.centerPanel.EndLoading()
 				dialog.ShowError(err, mw.window)
 				mw.statusLabel.SetText("Failed to load SVG.")
 			} else {
@@ -260,11 +265,11 @@ func (mw *MainWindow) loadDataAsync(data []byte, filename string, onLoaded func(
 				mw.statusLabel.SetText(fmt.Sprintf("Loaded %d frames, %d pages. Ready to preview and export.", len(mw.session.Frames), len(mw.session.Pages)))
 
 				mw.leftPanel.Refresh()
-				mw.centerPanel.Refresh()
+				mw.centerPanel.Refresh() // starts the async preview build; overlay stays up until it swaps in
 				mw.rightPanel.syncOptions()
 
 				if len(mw.session.RenderedFrames) > 1 {
-					mw.centerPanel.Play()
+					mw.centerPanel.Play() // deferred until the preview cache is ready
 				}
 			}
 			if onLoaded != nil {

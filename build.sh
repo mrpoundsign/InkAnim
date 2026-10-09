@@ -224,7 +224,23 @@ build_ext_all() {
 verify_wasm() {
     echo "==> Verifying WebAssembly compilation..."
     GOOS=js GOARCH=wasm go build -tags migrated_fynedo -o /dev/null ./cmd/inkanim
-    echo "✓ WebAssembly compilation verified!"
+    GOOS=js GOARCH=wasm go build -tags "migrated_fynedo profile" -o /dev/null ./cmd/inkanim
+    echo "✓ WebAssembly compilation verified (release + profile)!"
+}
+
+# Symbolized WASM build with [Profiler] phase timers (internal/prof, -tags profile),
+# swapped into the served demo dir. Rebuild with `./build.sh wasm` to restore release.
+build_wasm_profile() {
+    local PAGES_DIR="$BUILD_DIR/web"
+    if [ ! -f "$PAGES_DIR/demo/InkAnim.wasm" ]; then
+        build_wasm
+    fi
+    echo "==> Building symbolized WASM with profile timers..."
+    GOOS=js GOARCH=wasm go build -trimpath -tags "migrated_fynedo profile" \
+        -o "$PAGES_DIR/demo/InkAnim.wasm" ./cmd/inkanim
+    cp "$ROOT_DIR/web/demo/index.html" "$PAGES_DIR/demo/index.html"
+    cp "$ROOT_DIR/web/demo/worker.js" "$PAGES_DIR/demo/worker.js"
+    echo "✓ Profile build in $PAGES_DIR/demo (hard-reload the page; timers log to the console)"
 }
 
 build_wasm() {
@@ -347,6 +363,9 @@ case "$TARGET" in
     wasm)
         build_wasm
         ;;
+    wasm-profile)
+        build_wasm_profile
+        ;;
     wasm-check)
         verify_wasm
         ;;
@@ -369,7 +388,7 @@ case "$TARGET" in
         clean_artifacts
         ;;
     *)
-        echo "Unknown target: $TARGET. Available: all, cli, gui, gui-win, ext-win, ext-linux, ext-darwin, ext-all, wasm, serve, test, test-update-golden, lint, cross, clean"
+        echo "Unknown target: $TARGET. Available: all, cli, gui, gui-win, ext-win, ext-linux, ext-darwin, ext-all, wasm, wasm-profile, wasm-check, serve, test, test-update-golden, lint, cross, clean"
         exit 1
         ;;
 esac
