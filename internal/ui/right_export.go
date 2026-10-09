@@ -58,6 +58,7 @@ func NewRightExportPanel(sess *app.Session, win fyne.Window, onOptionsChange fun
 
 	// Pre-allocate status label first so callbacks are safe
 	p.twitchStatusLabel = widget.NewLabel("Twitch Status: Ready")
+	p.twitchStatusLabel.Wrapping = fyne.TextWrapWord
 
 	p.squareSizeInput = NewNumericCommitInput(512, 16, 4096, "Resolution (px):", func(val int) {
 		p.session.ExportOptions.SquareSize = val
@@ -196,7 +197,7 @@ func NewRightExportPanel(sess *app.Session, win fyne.Window, onOptionsChange fun
 	})
 	p.colorsSelect.Selected = "256"
 
-	p.ditherCheck = widget.NewCheck("Dithering (Floyd-Steinberg)", func(b bool) {
+	p.ditherCheck = widget.NewCheck("Dithering (Bayer 8x8)", func(b bool) {
 		p.session.ExportOptions.Dither = b
 		p.validateTwitch()
 		if p.onOptionsChange != nil {
