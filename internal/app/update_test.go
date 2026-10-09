@@ -59,10 +59,12 @@ func TestCheckForUpdateWithURL(t *testing.T) {
 				t.Errorf("expected User-Agent InkAnim-UpdateChecker, got %s", r.Header.Get("User-Agent"))
 			}
 			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(githubRelease{
-				TagName: "v0.1.3",
-				HTMLURL: "https://github.com/mrpoundsign/InkAnim/releases/tag/v0.1.3",
-				Body:    "Fixed crop boundary issues and added update checking.",
+			_ = json.NewEncoder(w).Encode([]githubRelease{
+				{
+					TagName: "v0.1.3",
+					HTMLURL: "https://github.com/mrpoundsign/InkAnim/releases/tag/v0.1.3",
+					Body:    "Fixed crop boundary issues and added update checking.",
+				},
 			})
 		}))
 		defer ts.Close()
@@ -88,10 +90,12 @@ func TestCheckForUpdateWithURL(t *testing.T) {
 	t.Run("Already on latest release", func(t *testing.T) {
 		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(githubRelease{
-				TagName: "v0.1.2",
-				HTMLURL: "https://github.com/mrpoundsign/InkAnim/releases/tag/v0.1.2",
-				Body:    "Release notes for v0.1.2",
+			_ = json.NewEncoder(w).Encode([]githubRelease{
+				{
+					TagName: "v0.1.2",
+					HTMLURL: "https://github.com/mrpoundsign/InkAnim/releases/tag/v0.1.2",
+					Body:    "Release notes for v0.1.2",
+				},
 			})
 		}))
 		defer ts.Close()
@@ -108,9 +112,11 @@ func TestCheckForUpdateWithURL(t *testing.T) {
 	t.Run("Current version is dev", func(t *testing.T) {
 		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(githubRelease{
-				TagName: "v0.1.2",
-				HTMLURL: "https://github.com/mrpoundsign/InkAnim/releases/tag/v0.1.2",
+			_ = json.NewEncoder(w).Encode([]githubRelease{
+				{
+					TagName: "v0.1.2",
+					HTMLURL: "https://github.com/mrpoundsign/InkAnim/releases/tag/v0.1.2",
+				},
 			})
 		}))
 		defer ts.Close()
@@ -172,9 +178,11 @@ func TestCheckForUpdateWithURL(t *testing.T) {
 
 func TestCheckForUpdateAsync(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode(githubRelease{
-			TagName: "v0.1.3",
-			HTMLURL: "https://github.com/mrpoundsign/InkAnim/releases/tag/v0.1.3",
+		_ = json.NewEncoder(w).Encode([]githubRelease{
+			{
+				TagName: "v0.1.3",
+				HTMLURL: "https://github.com/mrpoundsign/InkAnim/releases/tag/v0.1.3",
+			},
 		})
 	}))
 	defer ts.Close()
@@ -201,3 +209,83 @@ func TestCheckForUpdateAsync(t *testing.T) {
 		t.Errorf("expected IsOutdated true")
 	}
 }
+
+func TestFindBestUpdateCandidate(t *testing.T) {
+	tests := []struct {
+		name     string
+		current  string
+		releases []githubRelease
+		want     string // "" if nil expected
+	}{
+		{
+			name:     "Stable user ignores beta",
+			current:  "0.1.0",
+			releases: []githubRelease{{TagName: "0.2.0-beta"}},
+			want:     "",
+		},
+		{
+			name:     "Stable user gets newer stable",
+			current:  "0.1.1",
+			releases: []githubRelease{{TagName: "0.1.10"}},
+			want:     "0.1.10",
+		},
+		{
+			name:     "Beta user ignores older stable",
+			current:  "0.2.0-beta",
+			releases: []githubRelease{{TagName: "0.1.0"}},
+			want:     "",
+		},
+		{
+			name:     "Beta user gets newer beta",
+			current:  "0.2.0-beta",
+			releases: []githubRelease{{TagName: "0.2.0-beta1"}, {TagName: "0.1.0"}},
+			want:     "0.2.0-beta1",
+		},
+		{
+			name:     "Beta user gets newer numbered beta",
+			current:  "0.2.0-beta1",
+			releases: []githubRelease{{TagName: "0.2.0-beta3"}, {TagName: "0.2.0-beta"}},
+			want:     "0.2.0-beta3",
+		},
+		{
+			name:     "Beta user jumps to stable",
+			current:  "0.2.0-beta3",
+			releases: []githubRelease{{TagName: "0.2.0"}, {TagName: "0.2.0-beta4"}},
+			want:     "0.2.0",
+		},
+		{
+			name:     "Beta user jumps to highest stable, ignores newer betas",
+			current:  "0.2.0-beta3",
+			releases: []githubRelease{{TagName: "0.2.0"}, {TagName: "0.4.0"}, {TagName: "0.5.0-beta"}},
+			want:     "0.4.0",
+		},
+		{
+			name:     "Drafts are ignored",
+			current:  "0.1.0",
+			releases: []githubRelease{{TagName: "0.2.0", Draft: true}},
+			want:     "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := findBestUpdateCandidate(tt.current, tt.releases)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if tt.want == "" {
+				if got != nil {
+					t.Errorf("expected no candidate, got %s", got.TagName)
+				}
+			} else {
+				if got == nil {
+					t.Fatalf("expected %s, got nil", tt.want)
+				}
+				if got.TagName != tt.want {
+					t.Errorf("expected %s, got %s", tt.want, got.TagName)
+				}
+			}
+		})
+	}
+}
+

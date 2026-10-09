@@ -156,6 +156,7 @@ func NewMainWindow(appInstance fyne.App) *MainWindow {
 
 // ShowAndRun displays the window.
 func (mw *MainWindow) ShowAndRun() {
+	CheckStartupUpdate(mw.window, app.Version)
 	mw.window.ShowAndRun()
 }
 

@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.5.0-beta2] - Unreleased
 
 ### Added
+- **Startup Version Checking**:
+  - Automatically queries the GitHub Releases API on startup to notify users when a new version of InkAnim is available ([#109](https://github.com/mrpoundsign/InkAnim/issues/109)).
+  - Includes a "Remind Me Later" (24-hour snooze) and "Skip This Version" functionality directly in the update modal ([#109](https://github.com/mrpoundsign/InkAnim/issues/109)).
+  - Seamlessly integrated into both the native desktop Studio and the Inkscape Extension UI ([#109](https://github.com/mrpoundsign/InkAnim/issues/109)).
 - **Undo and Redo in Motion Editor**:
   - Full bidirectional undo and redo history for all motion edits, including adding and deleting motion directives, adjusting timing and playback properties, applying motion presets, and renaming object label prefixes ([#103](https://github.com/mrpoundsign/InkAnim/issues/103)).
   - Dedicated Undo and Redo toolbar icon buttons placed directly above the document object tree in the Layers & Motion panel ([#103](https://github.com/mrpoundsign/InkAnim/issues/103)).

@@ -739,9 +739,7 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 		}
 	})
 
-	rightPanel = ui.NewRightExportPanel(sess, w, func() {
-		preview.Refresh()
-	}, func() func() {
+	pausePlayback := func() func() {
 		wasPlaying := preview.IsPlaying()
 		if wasPlaying {
 			preview.Pause()
@@ -751,7 +749,11 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 				preview.Play()
 			}
 		}
-	})
+	}
+
+	rightPanel = ui.NewRightExportPanel(sess, w, func() {
+		preview.Refresh()
+	}, pausePlayback)
 
 	hasExported := false
 	rightPanel.SetOnExportSuccess(func(outputPath string) {
@@ -1596,8 +1598,15 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 	filePathLabel := widget.NewLabel("SVG: " + state.InputPath)
 	filePathLabel.Truncation = fyne.TextTruncateClip
 
+	aboutBtn := widget.NewButtonWithIcon(fmt.Sprintf("About (v%s)", app.Version), theme.InfoIcon(), func() {
+		resume := pausePlayback()
+		ui.ShowAboutDialog(w, app.Version, resume)
+	})
+
+	topToolbar := container.NewBorder(nil, nil, filePathLabel, aboutBtn)
+
 	rootContent := container.NewBorder(
-		container.NewVBox(filePathLabel, widget.NewSeparator()),
+		container.NewVBox(topToolbar, widget.NewSeparator()),
 		container.NewVBox(widget.NewSeparator(), bottomBar),
 		nil,
 		nil,
@@ -1611,6 +1620,8 @@ func ShowEditorWindow(a fyne.App, state *EditorState) fyne.Window {
 	}
 	refreshInspector()
 	w.Show()
+	ui.CheckStartupUpdate(w, app.Version)
+
 	return w
 }
 
