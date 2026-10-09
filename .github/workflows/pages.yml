@@ -1,17 +1,6 @@
-name: Deploy GitHub Pages
+name: Deploy GitHub Pages Redirect
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'cmd/**'
-      - 'internal/**'
-      - 'pkg/**'
-      - 'web/**'
-      - 'assets/**'
-      - 'build.sh'
-      - '.github/workflows/pages.yml'
   workflow_dispatch:
 
 permissions:
@@ -25,27 +14,37 @@ concurrency:
 
 jobs:
   build:
-    name: Build WASM & Assemble Site
+    name: Build Redirect Artifact
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.27'
-          cache: true
-
-      - name: Build WebAssembly and Assemble Site
+      - name: Create Redirect Page
         run: |
-          chmod +x ./build.sh
-          ./build.sh wasm
+          mkdir -p build/redirect
+          cat << 'EOF' > build/redirect/index.html
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <meta charset="UTF-8">
+              <meta http-equiv="refresh" content="0; url=https://inkanim.poundsigndesign.com/" />
+              <title>InkAnim is moving...</title>
+              <style>
+                  body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background-color: #0d1117; color: #c9d1d9; margin: 0; }
+                  a { color: #58a6ff; text-decoration: none; }
+                  a:hover { text-decoration: underline; }
+              </style>
+          </head>
+          <body>
+              <h1>InkAnim is moving!</h1>
+              <p>We've migrated to a new high-performance WebAssembly host.</p>
+              <p>If you are not redirected automatically, <a href="https://inkanim.poundsigndesign.com/">click here</a>.</p>
+          </body>
+          </html>
+          EOF
 
       - name: Upload Pages Artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: build/gh-pages
+          path: build/redirect
 
   deploy:
     name: Deploy to GitHub Pages

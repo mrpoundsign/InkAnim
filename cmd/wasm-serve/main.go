@@ -10,7 +10,7 @@ import (
 
 func main() {
 	port := flag.String("port", "8080", "Port to serve on")
-	dir := flag.String("dir", "build/gh-pages", "Directory to serve")
+	dir := flag.String("dir", "build/web", "Directory to serve")
 	flag.Parse()
 
 	_ = mime.AddExtensionType(".wasm", "application/wasm")

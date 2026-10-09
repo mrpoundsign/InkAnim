@@ -259,7 +259,7 @@ function Verify-WASM {
 
 function Build-WASM {
     Write-Host "`n==> Packaging WebAssembly demo & assembling GitHub Pages site..." -ForegroundColor Cyan
-    $pagesDir = Join-Path $BuildDir "gh-pages"
+    $pagesDir = Join-Path $BuildDir "web"
     $wasmTemp = Join-Path $BuildDir "wasm-tmp"
     if (Test-Path $pagesDir) { Remove-Item $pagesDir -Recurse -Force }
     if (Test-Path $wasmTemp) { Remove-Item $wasmTemp -Recurse -Force }
@@ -295,7 +295,7 @@ function Build-WASM {
 }
 
 function Serve-Web {
-    $pagesDir = Join-Path $BuildDir "gh-pages"
+    $pagesDir = Join-Path $BuildDir "web"
     $wasmBinary = Join-Path $pagesDir "demo\InkAnim.wasm"
     if (-not (Test-Path $wasmBinary)) {
         Write-Host "Web site not built yet. Building first..." -ForegroundColor DarkGray
