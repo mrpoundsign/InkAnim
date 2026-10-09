@@ -91,6 +91,9 @@ type CenterPreviewPanel struct {
 	speedFactor    float64
 	cachedFrames   []cachedPreviewFrame
 
+	buttonText       string
+	buttonImportance widget.Importance
+
 	onPingPongChange func()
 
 	// Async preview build state (guarded by mu)
@@ -257,8 +260,10 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 		loop:           true,
 		showCropGuides: true,
 		wysiwygColors:  true,
-		speedFactor:    1.0,
-		currentBg:      BgCheckerboard,
+		speedFactor:      1.0,
+		currentBg:        BgCheckerboard,
+		buttonText:       "Play",
+		buttonImportance: widget.DangerImportance,
 	}
 
 	p.bgContainer = container.NewStack(p.makeBackgroundObject(BgCheckerboard))
@@ -637,12 +642,21 @@ func (p *CenterPreviewPanel) IsPlaying() bool {
 	return p.isPlaying
 }
 
+// PlayPauseButtonState returns the current play/pause button text and importance under lock.
+func (p *CenterPreviewPanel) PlayPauseButtonState() (string, widget.Importance) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.buttonText, p.buttonImportance
+}
+
 func (p *CenterPreviewPanel) pauseLocked() {
 	p.animGen++
 	if !p.isPlaying {
 		return
 	}
 	p.isPlaying = false
+	p.buttonText = "Play"
+	p.buttonImportance = widget.DangerImportance
 	btn := p.playPauseBtn
 	if btn != nil {
 		fyne.Do(func() {
@@ -690,6 +704,8 @@ func (p *CenterPreviewPanel) playLocked() {
 	p.animGen++
 	currentGen := p.animGen
 	p.isPlaying = true
+	p.buttonText = "Pause"
+	p.buttonImportance = widget.SuccessImportance
 	btn := p.playPauseBtn
 	if btn != nil {
 		fyne.Do(func() {

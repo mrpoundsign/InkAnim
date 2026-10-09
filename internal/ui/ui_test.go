@@ -296,33 +296,32 @@ func TestNoLoopPlaybackAndButtonStates(t *testing.T) {
 	waitForPreview(mw)
 
 	// Initial stopped state: text is Play and Importance is DangerImportance (Red)
-	if mw.centerPanel.playPauseBtn.Text != "Play" {
-		t.Errorf("expected button text 'Play', got %s", mw.centerPanel.playPauseBtn.Text)
+	txt, imp := mw.centerPanel.PlayPauseButtonState()
+	if txt != "Play" {
+		t.Errorf("expected button text 'Play', got %s", txt)
 	}
-	if mw.centerPanel.playPauseBtn.Importance != widget.DangerImportance {
-		t.Errorf("expected DangerImportance (Red), got %v", mw.centerPanel.playPauseBtn.Importance)
+	if imp != widget.DangerImportance {
+		t.Errorf("expected DangerImportance (Red), got %v", imp)
 	}
-
-	// Set speed fast so test completes in 200ms (10 frames at 20ms = 200ms)
-	mw.session.SetGlobalDuration(20)
 
 	// Disable loop
 	mw.centerPanel.loopCheck.SetChecked(false)
 
-	// Start play from frame 0
+	// Start play from frame 0 (10 frames at default 100ms = 1,000ms total)
 	mw.centerPanel.StepFrame(0)
 	mw.centerPanel.Play()
 
 	// While playing: text is Pause and Importance is SuccessImportance (Green)
-	if mw.centerPanel.playPauseBtn.Text != "Pause" {
-		t.Errorf("expected button text 'Pause' while playing, got %s", mw.centerPanel.playPauseBtn.Text)
+	txt, imp = mw.centerPanel.PlayPauseButtonState()
+	if txt != "Pause" {
+		t.Errorf("expected button text 'Pause' while playing, got %s", txt)
 	}
-	if mw.centerPanel.playPauseBtn.Importance != widget.SuccessImportance {
-		t.Errorf("expected SuccessImportance (Green) while playing, got %v", mw.centerPanel.playPauseBtn.Importance)
+	if imp != widget.SuccessImportance {
+		t.Errorf("expected SuccessImportance (Green) while playing, got %v", imp)
 	}
 
-	// Wait for playback to complete (20ms * 10 frames = 200ms + buffer)
-	time.Sleep(350 * time.Millisecond)
+	// Wait for playback to complete (10 frames * 100ms = 1,000ms + buffer)
+	time.Sleep(1200 * time.Millisecond)
 
 	mw.centerPanel.mu.Lock()
 	playing := mw.centerPanel.isPlaying
@@ -337,11 +336,12 @@ func TestNoLoopPlaybackAndButtonStates(t *testing.T) {
 	}
 
 	// Button should automatically be back to Play and DangerImportance
-	if mw.centerPanel.playPauseBtn.Text != "Play" {
-		t.Errorf("expected button text 'Play' after stopping at end, got %s", mw.centerPanel.playPauseBtn.Text)
+	txt, imp = mw.centerPanel.PlayPauseButtonState()
+	if txt != "Play" {
+		t.Errorf("expected button text 'Play' after stopping at end, got %s", txt)
 	}
-	if mw.centerPanel.playPauseBtn.Importance != widget.DangerImportance {
-		t.Errorf("expected DangerImportance (Red) after stopping at end, got %v", mw.centerPanel.playPauseBtn.Importance)
+	if imp != widget.DangerImportance {
+		t.Errorf("expected DangerImportance (Red) after stopping at end, got %v", imp)
 	}
 
 	// Pressing Play again should restart from frame 0
