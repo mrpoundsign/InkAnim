@@ -11,8 +11,8 @@ import (
 	"time"
 )
 
-// DefaultReleaseURL points to the GitHub Releases latest endpoint for InkAnim.
-const DefaultReleaseURL = "https://api.github.com/repos/mrpoundsign/InkAnim/releases/latest"
+// DefaultReleaseURL points to the GitHub Releases endpoint for InkAnim.
+const DefaultReleaseURL = "https://api.github.com/repos/mrpoundsign/InkAnim/releases"
 
 // UpdateResult contains the version check results and metadata.
 type UpdateResult struct {
@@ -25,10 +25,11 @@ type UpdateResult struct {
 
 // githubRelease represents the subset of GitHub Release API response we inspect.
 type githubRelease struct {
-	TagName string `json:"tag_name"`
-	HTMLURL string `json:"html_url"`
-	Body    string `json:"body"`
-	Message string `json:"message"`
+	TagName    string `json:"tag_name"`
+	HTMLURL    string `json:"html_url"`
+	Body       string `json:"body"`
+	Message    string `json:"message"`
+	Draft      bool   `json:"draft"`
 }
 
 // CheckForUpdate queries the GitHub Releases API to check if a newer version exists.
@@ -78,39 +79,104 @@ func CheckForUpdateWithURL(currentVersion, apiURL string, client *http.Client) (
 		return nil, fmt.Errorf("GitHub API returned HTTP %d", resp.StatusCode)
 	}
 
-	var release githubRelease
-	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+	var releases []githubRelease
+	if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
 		return nil, fmt.Errorf("failed to parse release information: %w", err)
 	}
 
-	latestVersion := release.TagName
-	if latestVersion == "" {
-		return nil, errors.New("release response contained no version tag")
+	if len(releases) == 0 {
+		return nil, errors.New("no releases found in repository")
 	}
 
-	// Compare current version with latest version
-	cmp, err := CompareSemver(currentVersion, latestVersion)
+	bestRelease, err := findBestUpdateCandidate(currentVersion, releases)
 	if err != nil {
-		// If current is "dev" or invalid, treat as outdated if latest is valid, but don't fail hard
+		// If current is "dev" or invalid, treat as up-to-date or use first release if we just want to show something
 		if strings.EqualFold(strings.TrimSpace(currentVersion), "dev") {
 			return &UpdateResult{
 				CurrentVersion: currentVersion,
-				LatestVersion:  latestVersion,
+				LatestVersion:  releases[0].TagName,
 				IsOutdated:     false,
-				ReleaseURL:     release.HTMLURL,
-				ReleaseNotes:   release.Body,
+				ReleaseURL:     releases[0].HTMLURL,
+				ReleaseNotes:   releases[0].Body,
 			}, nil
 		}
 		return nil, fmt.Errorf("version comparison error: %w", err)
 	}
 
+	if bestRelease == nil {
+		return &UpdateResult{
+			CurrentVersion: currentVersion,
+			LatestVersion:  currentVersion,
+			IsOutdated:     false,
+		}, nil
+	}
+
 	return &UpdateResult{
 		CurrentVersion: currentVersion,
-		LatestVersion:  latestVersion,
-		IsOutdated:     cmp < 0,
-		ReleaseURL:     release.HTMLURL,
-		ReleaseNotes:   release.Body,
+		LatestVersion:  bestRelease.TagName,
+		IsOutdated:     true,
+		ReleaseURL:     bestRelease.HTMLURL,
+		ReleaseNotes:   bestRelease.Body,
 	}, nil
+}
+
+func findBestUpdateCandidate(currentVersion string, releases []githubRelease) (*githubRelease, error) {
+	curSem, err := ParseSemver(currentVersion)
+	if err != nil {
+		return nil, err
+	}
+	currentIsStable := curSem.Prerelease == ""
+
+	var newerStables []githubRelease
+	var newerPrereleases []githubRelease
+
+	for _, rel := range releases {
+		if rel.TagName == "" || rel.Draft {
+			continue
+		}
+		cmp, err := CompareSemver(rel.TagName, currentVersion)
+		if err != nil {
+			continue
+		}
+		if cmp > 0 {
+			relSem, err := ParseSemver(rel.TagName)
+			if err == nil {
+				if relSem.Prerelease == "" {
+					newerStables = append(newerStables, rel)
+				} else {
+					newerPrereleases = append(newerPrereleases, rel)
+				}
+			}
+		}
+	}
+
+	findHighest := func(list []githubRelease) *githubRelease {
+		if len(list) == 0 {
+			return nil
+		}
+		best := &list[0]
+		for i := 1; i < len(list); i++ {
+			cmp, _ := CompareSemver(list[i].TagName, best.TagName)
+			if cmp > 0 {
+				best = &list[i]
+			}
+		}
+		return best
+	}
+
+	if len(newerStables) > 0 {
+		return findHighest(newerStables), nil
+	}
+
+	if currentIsStable {
+		return nil, nil // Stable does not upgrade to prerelease
+	}
+
+	if len(newerPrereleases) > 0 {
+		return findHighest(newerPrereleases), nil
+	}
+
+	return nil, nil
 }
 
 // CheckForUpdateAsync runs CheckForUpdate on a background goroutine and invokes callback with results.
