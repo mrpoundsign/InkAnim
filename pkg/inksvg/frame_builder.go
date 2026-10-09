@@ -49,9 +49,17 @@ func BuildPageFrameSVG(doc *SVGDocument, page Page, boundary Rect) ([]byte, erro
 		case xml.StartElement:
 			if elem.Name.Local == "svg" && !processedRoot {
 				processedRoot = true
-				applyBoundaryToSVG(&elem, boundary)
+				cleanRoot := sanitizeRootElement(elem, boundary)
+				if err := encoder.EncodeToken(cleanRoot); err != nil {
+					return nil, err
+				}
+				continue
 			}
-			if err := encoder.EncodeToken(elem); err != nil {
+			if err := encoder.EncodeToken(sanitizeElementForOutput(elem)); err != nil {
+				return nil, err
+			}
+		case xml.EndElement:
+			if err := encoder.EncodeToken(xml.EndElement{Name: xml.Name{Local: elem.Name.Local}}); err != nil {
 				return nil, err
 			}
 		default:
@@ -66,6 +74,59 @@ func BuildPageFrameSVG(doc *SVGDocument, page Page, boundary Rect) ([]byte, erro
 	}
 
 	return buf.Bytes(), nil
+}
+
+// sanitizeAttrForOutput filters out xmlns declarations, editor metadata (inkscape, sodipodi),
+// and mangled namespace prefixes so that re-serialized SVG elements contain clean, standard XML.
+func sanitizeAttrForOutput(attr xml.Attr) (xml.Attr, bool) {
+	if attr.Name.Local == "xmlns" || attr.Name.Space == "xmlns" || attr.Name.Space == "_xmlns" || strings.HasPrefix(attr.Name.Local, "xmlns:") {
+		return xml.Attr{}, false
+	}
+	if strings.Contains(attr.Name.Space, "inkscape") || strings.Contains(attr.Name.Space, "sodipodi") {
+		return xml.Attr{}, false
+	}
+	if strings.HasPrefix(attr.Name.Local, "inkscape:") || strings.HasPrefix(attr.Name.Local, "sodipodi:") {
+		return xml.Attr{}, false
+	}
+	if (strings.Contains(attr.Name.Space, "xlink") || attr.Name.Space == "xlink") && attr.Name.Local == "href" {
+		return xml.Attr{Name: xml.Name{Local: "xlink:href"}, Value: attr.Value}, true
+	}
+	if attr.Name.Local == "xlink:href" {
+		return xml.Attr{Name: xml.Name{Local: "xlink:href"}, Value: attr.Value}, true
+	}
+	return xml.Attr{Name: xml.Name{Local: attr.Name.Local}, Value: attr.Value}, true
+}
+
+// sanitizeRootElement returns a clean root <svg> element with canonical xmlns and xlink attributes,
+// with all editor metadata stripped, and boundary dimensions/viewBox applied.
+func sanitizeRootElement(elem xml.StartElement, boundary Rect) xml.StartElement {
+	res := xml.StartElement{
+		Name: xml.Name{Local: "svg"},
+		Attr: []xml.Attr{
+			{Name: xml.Name{Local: "xmlns"}, Value: "http://www.w3.org/2000/svg"},
+			{Name: xml.Name{Local: "xmlns:xlink"}, Value: "http://www.w3.org/1999/xlink"},
+		},
+	}
+	for _, a := range elem.Attr {
+		if clean, ok := sanitizeAttrForOutput(a); ok {
+			res.Attr = append(res.Attr, clean)
+		}
+	}
+	applyBoundaryToSVG(&res, boundary)
+	return res
+}
+
+// sanitizeElementForOutput strips editor metadata and clears namespace prefixes on child SVG elements.
+func sanitizeElementForOutput(elem xml.StartElement) xml.StartElement {
+	res := xml.StartElement{
+		Name: xml.Name{Local: elem.Name.Local},
+	}
+	for _, a := range elem.Attr {
+		if clean, ok := sanitizeAttrForOutput(a); ok {
+			res.Attr = append(res.Attr, clean)
+		}
+	}
+	return res
 }
 
 // applyBoundaryToSVG applies viewBox, width, height, and overflow:hidden to the root SVG element.
@@ -349,12 +410,9 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 		doc.mu.Unlock()
 	}
 
-	rootElem := tpl.rootElem
-	rootElem.Attr = append([]xml.Attr(nil), tpl.rootElem.Attr...)
-	applyBoundaryToSVG(&rootElem, boundary)
+	rootElem := sanitizeRootElement(tpl.rootElem, boundary)
 
 	preamble := tpl.preamble
-	rootEnd := tpl.rootEnd
 	postTokens := tpl.postTokens
 
 	nodes := make([]topLevelNode, len(tpl.nodes))
@@ -533,7 +591,7 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 		}
 	}
 
-	if err := encoder.EncodeToken(rootEnd); err != nil {
+	if err := encoder.EncodeToken(xml.EndElement{Name: xml.Name{Local: "svg"}}); err != nil {
 		return nil, err
 	}
 	for _, tok := range postTokens {
@@ -671,7 +729,7 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 						}
 						currentGDepth--
 						setElementHidden(&elem)
-						if err := encoder.EncodeToken(elem); err != nil {
+						if err := encoder.EncodeToken(sanitizeElementForOutput(elem)); err != nil {
 							return err
 						}
 						depth := 1
@@ -684,7 +742,7 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 								depth--
 							}
 						}
-						if err := encoder.EncodeToken(elem.End()); err != nil {
+						if err := encoder.EncodeToken(xml.EndElement{Name: xml.Name{Local: elem.Name.Local}}); err != nil {
 							return err
 						}
 						continue
@@ -982,7 +1040,7 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 				}
 			}
 
-			if err := encoder.EncodeToken(elem); err != nil {
+			if err := encoder.EncodeToken(sanitizeElementForOutput(elem)); err != nil {
 				return err
 			}
 
@@ -996,7 +1054,7 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 				}
 				currentGDepth--
 			}
-			if err := encoder.EncodeToken(elem); err != nil {
+			if err := encoder.EncodeToken(xml.EndElement{Name: xml.Name{Local: elem.Name.Local}}); err != nil {
 				return err
 			}
 

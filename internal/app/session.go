@@ -6,6 +6,7 @@ import (
 	"image"
 	"image/draw"
 	"io"
+	"log"
 	"math"
 	"os"
 	"sync"
@@ -348,6 +349,9 @@ func (s *Session) renderFramesForBoundary(boundaryRect inksvg.Rect) ([]inksvg.Re
 				}
 			}
 			return frames, nil
+		}
+		if err != nil {
+			log.Printf("CustomBatchRasterizer failed: %v (falling back to per-frame rasterization)", err)
 		}
 	}
 
