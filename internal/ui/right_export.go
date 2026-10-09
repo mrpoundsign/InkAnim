@@ -246,9 +246,6 @@ func (p *RightExportPanel) SetOnExportSuccess(fn func(outputPath string)) {
 
 func (p *RightExportPanel) syncOptions() {
 	p.validateTwitch()
-	if p.onOptionsChange != nil {
-		p.onOptionsChange()
-	}
 }
 
 func (p *RightExportPanel) validateTwitch() {

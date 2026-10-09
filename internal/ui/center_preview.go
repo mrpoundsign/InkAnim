@@ -5,8 +5,8 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
-	"math"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -17,7 +17,7 @@ import (
 	xdraw "golang.org/x/image/draw"
 
 	"inkanim/internal/app"
-	"inkanim/internal/gif"
+	"inkanim/internal/prof"
 )
 
 type cachedPreviewFrame struct {
@@ -27,6 +27,11 @@ type cachedPreviewFrame struct {
 	twitch56      *image.RGBA
 	twitch28      *image.RGBA
 }
+
+// dispatchUI hands async preview-build callbacks to the UI thread. Tests swap it
+// for a queue drained on the test goroutine, because the Fyne test driver runs
+// fyne.Do inline on the calling goroutine instead of the main thread.
+var dispatchUI = fyne.Do
 
 // PreviewBackground defines the background style rendered under the main preview canvas.
 type PreviewBackground string
@@ -87,6 +92,18 @@ type CenterPreviewPanel struct {
 	cachedFrames   []cachedPreviewFrame
 
 	onPingPongChange func()
+
+	// Async preview build state (guarded by mu)
+	rebuildGen int            // bumped per requested build; stale results are dropped
+	rebuilding bool           // a build for rebuildGen is in flight
+	loadStart  time.Time      // set by BeginLoading; used for the profile-only first-paint timer
+	rebuildsInFlight atomic.Int32 // builds whose result has not been dispatched yet (lets tests wait)
+
+	// Loading / progress overlay shown over the preview while building
+	progressOverlay *fyne.Container
+	progressLabel   *widget.Label
+	progressBar     *widget.ProgressBar
+	progressBarInf  *widget.ProgressBarInfinite
 
 	mu      sync.Mutex
 	timer   *time.Timer
@@ -253,9 +270,30 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 	p.mainCanvasImage.ScaleMode = canvas.ImageScaleFastest
 	p.mainCanvasImage.SetMinSize(fyne.NewSize(150, 150))
 
+	// Loading / progress overlay
+	p.progressLabel = widget.NewLabelWithStyle("", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
+	p.progressBar = widget.NewProgressBar()
+	p.progressBarInf = widget.NewProgressBarInfinite()
+	p.progressBarInf.Stop()
+	p.progressBarInf.Hide()
+	progressCardBg := canvas.NewRectangle(color.RGBA{R: 15, G: 17, B: 21, A: 235})
+	progressCardBg.StrokeColor = color.RGBA{R: 56, G: 189, B: 248, A: 160} // Electric Sky Blue (#38BDF8)
+	progressCardBg.StrokeWidth = 1
+	progressCardBg.CornerRadius = 8
+	progressCard := container.NewStack(
+		progressCardBg,
+		container.NewPadded(container.NewVBox(
+			p.progressLabel,
+			container.NewStack(p.progressBar, p.progressBarInf),
+		)),
+	)
+	p.progressOverlay = container.NewCenter(container.New(&fixedWidthLayout{width: 280}, progressCard))
+	p.progressOverlay.Hide()
+
 	p.stageStack = container.NewStack(
 		p.bgContainer,
 		p.mainCanvasImage,
+		p.progressOverlay,
 	)
 
 	p.frameLabel = widget.NewLabelWithStyle("Frame: 0 / 0", fyne.TextAlignCenter, fyne.TextStyle{})
@@ -303,7 +341,7 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 		if p.session != nil {
 			_ = p.session.SetShowMotionLines(checked)
 		}
-		p.rebuildCachedFramesLocked()
+		p.requestRebuildLocked()
 		p.renderCurrentFrameLocked()
 		p.mu.Unlock()
 	})
@@ -335,11 +373,14 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 	p.bgSelect.SetSelected(string(BgCheckerboard))
 
 	p.inspectorCheck = widget.NewCheck("Scale Inspector", func(checked bool) {
+		p.mu.Lock()
 		if checked {
 			p.twitchEmulationBox.Show()
+			p.renderCurrentFrameLocked()
 		} else {
 			p.twitchEmulationBox.Hide()
 		}
+		p.mu.Unlock()
 		if p.container != nil {
 			p.container.Refresh()
 		}
@@ -349,7 +390,7 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 	p.wysiwygCheck = widget.NewCheck("WYSIWYG", func(checked bool) {
 		p.mu.Lock()
 		p.wysiwygColors = checked
-		p.rebuildCachedFramesLocked()
+		p.requestRebuildLocked()
 		p.renderCurrentFrameLocked()
 		p.mu.Unlock()
 	})
@@ -511,13 +552,18 @@ func (p *CenterPreviewPanel) Refresh() {
 
 	frames := p.session.RenderedFrames
 	if len(frames) == 0 {
+		p.rebuildGen++ // drop any in-flight build
+		p.rebuilding = false
+		p.hideProgressLocked()
 		p.cachedFrames = nil
 		p.frameLabel.SetText("Frame: 0 / 0")
 		p.pauseLocked()
 		return
 	}
 
-	p.rebuildCachedFramesLocked()
+	// Build the preview cache in the background. Until it lands, playback keeps
+	// showing the previous cache if it still matches, otherwise playback waits.
+	p.requestRebuildLocked()
 
 	totalFrames := len(frames)
 	if p.pingPongCheck != nil {
@@ -730,105 +776,125 @@ func (p *CenterPreviewPanel) playLocked() {
 		p.mu.Unlock()
 	}
 
+	// Playback state is set (button shows Pause), but the first tick waits until
+	// the preview cache matches the frames; applyRebuildResult starts it.
+	if len(p.cachedFrames) != len(frames) {
+		return
+	}
+
 	p.timer = time.AfterFunc(tickDelay, func() {
 		fyne.Do(scheduleNextFrame)
 	})
 }
 
-func (p *CenterPreviewPanel) rebuildCachedFramesLocked() {
-	frames := p.session.RenderedFrames
-	if len(frames) == 0 {
-		p.cachedFrames = nil
+// requestRebuildLocked starts a background build of the preview cache from a
+// snapshot of the current session. Results from superseded builds are dropped.
+func (p *CenterPreviewPanel) requestRebuildLocked() {
+	p.rebuildGen++
+	gen := p.rebuildGen
+	p.rebuilding = true
+	snap := p.snapshotLocked()
+	p.showProgressLocked("Preparing previews…", 0, 0)
+
+	p.rebuildsInFlight.Add(1)
+	go func() {
+		defer p.rebuildsInFlight.Add(-1)
+		frames := buildPreviewCache(snap, func(stage string, done, total int) {
+			dispatchUI(func() {
+				p.mu.Lock()
+				defer p.mu.Unlock()
+				if gen == p.rebuildGen {
+					p.showProgressLocked(stage, done, total)
+				}
+			})
+		})
+		dispatchUI(func() { p.applyRebuildResult(gen, frames) })
+	}()
+}
+
+// applyRebuildResult swaps in a finished preview cache if it is still current.
+func (p *CenterPreviewPanel) applyRebuildResult(gen int, frames []cachedPreviewFrame) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if gen != p.rebuildGen {
+		return // superseded by a newer request
+	}
+	if len(frames) != len(p.session.RenderedFrames) {
+		p.requestRebuildLocked() // session frames changed under us; build again
 		return
 	}
 
-	p.cachedFrames = make([]cachedPreviewFrame, len(frames))
-	previewRect := p.session.GetPreviewBoundaryRect()
+	p.cachedFrames = frames
+	p.rebuilding = false
+	if p.currentIdx >= len(frames) {
+		p.currentIdx = 0
+	}
+	p.hideProgressLocked()
+	p.renderCurrentFrameLocked()
+	if !p.loadStart.IsZero() {
+		prof.Since(p.loadStart, "TOTAL load -> first paint")
+		p.loadStart = time.Time{}
+	}
+	if p.isPlaying && p.timer == nil {
+		p.playLocked() // start playback that was requested while building
+	}
+}
 
-	displayImgs := make([]*image.RGBA, len(frames))
-	for i, curr := range frames {
-		if curr.Image == nil {
-			continue
-		}
-		if p.session.ExportOptions.ExportSquare {
-			displayImgs[i] = gif.MakeSquare(curr.Image, 0)
-		} else {
-			displayImgs[i] = curr.Image
+// BeginLoading clears the preview and shows the loading overlay while a new
+// document is rasterized. The overlay stays up until its preview cache lands.
+func (p *CenterPreviewPanel) BeginLoading(stage string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.rebuildGen++ // drop any in-flight build for the previous document
+	p.rebuilding = false
+	p.cachedFrames = nil
+	p.currentIdx = 0
+	p.pingPongDir = 1
+	p.loadStart = time.Now()
+	p.mainCanvasImage.Image = image.NewRGBA(image.Rect(0, 0, 1, 1))
+	p.mainCanvasImage.Refresh()
+	p.showProgressLocked(stage, 0, 0)
+}
+
+// EndLoading hides the loading overlay (e.g. when loading failed).
+func (p *CenterPreviewPanel) EndLoading() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.loadStart = time.Time{}
+	if !p.rebuilding {
+		p.hideProgressLocked()
+	}
+}
+
+// showProgressLocked updates the overlay. total == 0 shows an indeterminate bar.
+func (p *CenterPreviewPanel) showProgressLocked(stage string, done, total int) {
+	if p.progressOverlay == nil {
+		return
+	}
+	if total > 0 {
+		p.progressLabel.SetText(fmt.Sprintf("%s %d/%d", stage, done, total))
+		p.progressBarInf.Stop()
+		p.progressBarInf.Hide()
+		p.progressBar.Max = float64(total)
+		p.progressBar.SetValue(float64(done))
+		p.progressBar.Show()
+	} else {
+		p.progressLabel.SetText(stage)
+		p.progressBar.Hide()
+		p.progressBarInf.Show()
+		if !p.progressBarInf.Running() {
+			p.progressBarInf.Start()
 		}
 	}
+	p.progressOverlay.Show()
+}
 
-	// Apply WYSIWYG quantization and dithering if enabled
-	if p.wysiwygColors {
-		numColors := p.session.ExportOptions.NumColors
-		if numColors <= 0 || numColors > 256 {
-			numColors = 256
-		}
-		alphaThreshold := p.session.ExportOptions.AlphaThreshold
-		if alphaThreshold == 0 {
-			alphaThreshold = 128
-		}
-
-		palette := gif.GeneratePalette(displayImgs, numColors, alphaThreshold)
-		palettedList, _ := gif.QuantizeFrames(displayImgs, palette, alphaThreshold, p.session.ExportOptions.Dither)
-		
-		for i, pal := range palettedList {
-			if pal != nil {
-				displayImgs[i] = gif.PalettedToRGBA(pal)
-			}
-		}
+func (p *CenterPreviewPanel) hideProgressLocked() {
+	if p.progressOverlay == nil {
+		return
 	}
-
-	for i, curr := range frames {
-		if curr.Image == nil {
-			continue
-		}
-
-		activeRect := p.session.GetActiveBoundaryRect(i)
-		scaleX := float64(curr.Image.Bounds().Dx()) / previewRect.Width
-		scaleY := float64(curr.Image.Bounds().Dy()) / previewRect.Height
-		cropX0 := int(math.Round((activeRect.X - previewRect.X) * scaleX))
-		cropY0 := int(math.Round((activeRect.Y - previewRect.Y) * scaleY))
-		cropW := int(math.Round(activeRect.Width * scaleX))
-		cropH := int(math.Round(activeRect.Height * scaleY))
-		cropRect := image.Rect(cropX0, cropY0, cropX0+cropW, cropY0+cropH)
-
-		displayImg := displayImgs[i]
-		var contentRect image.Rectangle
-		if p.session.ExportOptions.ExportSquare {
-			origB := curr.Image.Bounds()
-			sqB := displayImg.Bounds()
-			offsetX := (sqB.Dx() - origB.Dx()) / 2
-			offsetY := (sqB.Dy() - origB.Dy()) / 2
-			contentRect = cropRect.Add(image.Pt(offsetX, offsetY))
-		} else {
-			contentRect = cropRect
-		}
-
-		croppedForTwitch := cropImage(displayImg, contentRect)
-
-		withGuides := drawCropGuides(displayImg, contentRect)
-		withoutGuides := displayImg
-
-		var twitchDisplayImg *image.RGBA
-		if p.session.ExportOptions.ExportSquare {
-			twitchDisplayImg = gif.MakeSquare(croppedForTwitch, 0)
-		} else {
-			twitchDisplayImg = croppedForTwitch
-		}
-
-		// Pre-scale Twitch thumbnails once to exact target dimensions
-		twitch112 := scaleRGBA(twitchDisplayImg, 112, 112)
-		twitch56 := scaleRGBA(twitchDisplayImg, 56, 56)
-		twitch28 := scaleRGBA(twitchDisplayImg, 28, 28)
-
-		p.cachedFrames[i] = cachedPreviewFrame{
-			withGuides:    withGuides,
-			withoutGuides: withoutGuides,
-			twitch112:     twitch112,
-			twitch56:      twitch56,
-			twitch28:      twitch28,
-		}
-	}
+	p.progressBarInf.Stop()
+	p.progressOverlay.Hide()
 }
 
 func (p *CenterPreviewPanel) renderCurrentFrameLocked() {
@@ -838,10 +904,10 @@ func (p *CenterPreviewPanel) renderCurrentFrameLocked() {
 	}
 
 	if len(p.cachedFrames) != len(frames) {
-		p.rebuildCachedFramesLocked()
-	}
-	if len(p.cachedFrames) <= p.currentIdx {
-		return
+		if !p.rebuilding {
+			p.requestRebuildLocked()
+		}
+		return // drawn once the cache lands
 	}
 
 	curr := frames[p.currentIdx]
@@ -866,20 +932,23 @@ func (p *CenterPreviewPanel) renderCurrentFrameLocked() {
 	}
 	p.mainCanvasImage.Refresh()
 
-	// Update Twitch scale emulation images (matching exact widget sizes, zero GL painter scaling)
-	p.twitch112Dark.Image = cached.twitch112
-	p.twitch112Dark.Refresh()
-	p.twitch56Dark.Image = cached.twitch56
-	p.twitch56Dark.Refresh()
-	p.twitch28Dark.Image = cached.twitch28
-	p.twitch28Dark.Refresh()
+	// Update Twitch scale emulation images (matching exact widget sizes, zero GL painter scaling).
+	// Skipped while the inspector is hidden; its toggle re-renders when shown.
+	if p.inspectorCheck != nil && p.inspectorCheck.Checked {
+		p.twitch112Dark.Image = cached.twitch112
+		p.twitch112Dark.Refresh()
+		p.twitch56Dark.Image = cached.twitch56
+		p.twitch56Dark.Refresh()
+		p.twitch28Dark.Image = cached.twitch28
+		p.twitch28Dark.Refresh()
 
-	p.twitch112Light.Image = cached.twitch112
-	p.twitch112Light.Refresh()
-	p.twitch56Light.Image = cached.twitch56
-	p.twitch56Light.Refresh()
-	p.twitch28Light.Image = cached.twitch28
-	p.twitch28Light.Refresh()
+		p.twitch112Light.Image = cached.twitch112
+		p.twitch112Light.Refresh()
+		p.twitch56Light.Image = cached.twitch56
+		p.twitch56Light.Refresh()
+		p.twitch28Light.Image = cached.twitch28
+		p.twitch28Light.Refresh()
+	}
 }
 
 func scaleRGBA(src *image.RGBA, w, h int) *image.RGBA {

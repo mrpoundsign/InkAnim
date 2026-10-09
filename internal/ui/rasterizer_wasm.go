@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"image"
 	"syscall/js"
+	"time"
 
+	"inkanim/internal/prof"
 	"inkanim/pkg/inksvg"
 )
 
@@ -42,10 +44,12 @@ func rasterizeBatchWASM(svgList [][]byte, targetW, targetH int) ([]*image.RGBA, 
 		return nil, errors.New("browser native rasterizer not available")
 	}
 
+	tMarshal := time.Now()
 	jsList := js.Global().Get("Array").New(len(svgList))
 	for i, svg := range svgList {
 		jsList.SetIndex(i, string(svg))
 	}
+	prof.Since(tMarshal, "L3 Go->JS array marshal (%d frames)", len(svgList))
 
 	done := make(chan batchRasterResult, 1)
 
@@ -61,6 +65,7 @@ func rasterizeBatchWASM(svgList [][]byte, targetW, targetH int) ([]*image.RGBA, 
 			return nil
 		}
 
+		tCopy := time.Now()
 		jsFrames := args[0]
 		count := jsFrames.Length()
 		frames := make([]*image.RGBA, count)
@@ -74,6 +79,7 @@ func rasterizeBatchWASM(svgList [][]byte, targetW, targetH int) ([]*image.RGBA, 
 			}
 			frames[i] = img
 		}
+		prof.Since(tCopy, "L5 JS->Go CopyBytesToGo (%d frames, %0.1f MB)", count, float64(count*expectedBytes)/(1024*1024))
 
 		done <- batchRasterResult{frames: frames}
 		return nil

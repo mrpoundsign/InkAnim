@@ -1041,6 +1041,10 @@
 
       var total = svgList.length;
       var results = new Array(total);
+      var tStart = performance.now();
+      if (window.inkanimProfile) {
+        console.log(`[Profiler] L4 inkanimRasterizeBatchNative start: ${total} frames (${targetW}x${targetH})`);
+      }
 
       // Process in batches of 4 to prevent V8 main thread lockup and GPU stalling
       var batchSize = 4;
@@ -1086,6 +1090,10 @@
           }));
         }
         await Promise.all(batchPromises);
+      }
+      if (window.inkanimProfile) {
+        var elapsed = (performance.now() - tStart).toFixed(1);
+        console.log(`[Profiler] L4 inkanimRasterizeBatchNative complete: ${total} frames in ${elapsed} ms`);
       }
       return results;
     };

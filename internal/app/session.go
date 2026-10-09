@@ -10,9 +10,11 @@ import (
 	"math"
 	"os"
 	"sync"
+	"time"
 
 	"inkanim/internal/gif"
 	"inkanim/internal/parallel"
+	"inkanim/internal/prof"
 	"inkanim/pkg/inksvg"
 )
 
@@ -88,10 +90,12 @@ func (s *Session) LoadSVG(filePath string) error {
 
 // LoadSVGData parses an SVG from in-memory byte slice with a filename.
 func (s *Session) LoadSVGData(data []byte, filename string) error {
+	t0 := time.Now()
 	doc, err := inksvg.ParseSVG(data)
 	if err != nil {
 		return fmt.Errorf("failed to parse SVG: %w", err)
 	}
+	prof.Since(t0, "L1 ParseSVG (%s)", filename)
 
 	s.FilePath = filename
 	doc.ShowMotionLines = s.ShowMotionLines
@@ -108,11 +112,12 @@ func (s *Session) LoadSVGData(data []byte, filename string) error {
 
 	s.invalidateCache()
 
+	tRerender := time.Now()
 	if err := s.RerenderAllFrames(); err != nil {
 		return err
 	}
+	prof.Since(tRerender, "Active boundary RerenderAllFrames total")
 
-	s.PrerenderPages()
 	return nil
 }
 
@@ -325,6 +330,7 @@ func (s *Session) renderFramesForBoundary(boundaryRect inksvg.Rect) ([]inksvg.Re
 	}
 
 	if inksvg.CustomBatchRasterizer != nil && len(jobs) > 0 {
+		tBuild := time.Now()
 		svgList := make([][]byte, len(jobs))
 		var buildErr error
 		for i, j := range jobs {
@@ -335,8 +341,11 @@ func (s *Session) renderFramesForBoundary(boundaryRect inksvg.Rect) ([]inksvg.Re
 			}
 			svgList[i] = frameSVG
 		}
+		prof.Since(tBuild, "L2 BuildTimelineFrameSVG (%d frames)", len(jobs))
 
+		tRaster := time.Now()
 		images, err := inksvg.CustomBatchRasterizer(svgList, renderW, renderH)
+		prof.Since(tRaster, "L4 CustomBatchRasterizer call (%d frames)", len(jobs))
 		if err == nil && len(images) == len(jobs) {
 			frames := make([]inksvg.RenderedFrame, len(jobs))
 			for i, j := range jobs {
@@ -426,6 +435,9 @@ func (s *Session) PrerenderPagesSync() {
 	if s.Document == nil {
 		return
 	}
+	tPrerender := time.Now()
+	prof.Logf("A1 PrerenderPagesSync started")
+	defer prof.Since(tPrerender, "A1 PrerenderPagesSync finished")
 
 	s.cacheMu.RLock()
 	currentGen := s.renderGen

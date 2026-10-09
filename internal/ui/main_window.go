@@ -190,7 +190,9 @@ func (mw *MainWindow) loadData(data []byte, filename string) {
 		mw.centerPanel.Pause()
 	}
 	mw.statusLabel.SetText("Loading: " + filename)
+	mw.centerPanel.BeginLoading("Rasterizing frames…")
 	if err := mw.session.LoadSVGData(data, filename); err != nil {
+		mw.centerPanel.EndLoading()
 		dialog.ShowError(err, mw.window)
 		mw.statusLabel.SetText("Failed to load SVG.")
 		return

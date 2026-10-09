@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -13,11 +14,104 @@ import (
 	appkg "inkanim/internal/app"
 )
 
+// uiQueue receives async preview-build callbacks in tests. The Fyne test driver
+// runs fyne.Do inline on the calling goroutine, which would let build goroutines
+// mutate widgets concurrently with the test goroutine; draining this queue from
+// the test goroutine restores production's single-UI-thread semantics.
+var uiQueue = make(chan func(), 4096)
+
+func TestMain(m *testing.M) {
+	dispatchUI = func(f func()) { uiQueue <- f }
+	os.Exit(m.Run())
+}
+
+// waitForPreview runs queued UI callbacks on the calling (test) goroutine until
+// no preview build is in flight and nothing is left to apply.
+func waitForPreview(mw *MainWindow) {
+	p := mw.centerPanel
+	for {
+		select {
+		case f := <-uiQueue:
+			f()
+			continue
+		default:
+		}
+		// A build enqueues its result before decrementing the counter, so once it
+		// reads zero every result is already queued; applying one may start another.
+		if p.rebuildsInFlight.Load() == 0 && len(uiQueue) == 0 {
+			return
+		}
+		select {
+		case f := <-uiQueue:
+			f()
+		case <-time.After(time.Millisecond):
+		}
+	}
+}
+
+// loadAndWait loads a file and waits for its async preview build to be applied.
+func loadAndWait(mw *MainWindow, path string) {
+	mw.loadFilePath(path)
+	waitForPreview(mw)
+}
+
+func TestAsyncPreviewBuildAndInspectorFollowsPlayback(t *testing.T) {
+	testApp := test.NewApp()
+	defer testApp.Quit()
+
+	mw := NewMainWindow(testApp)
+	defer waitForPreview(mw) // settle async preview builds before the next test
+	testSVGPath, err := filepath.Abs("../../testdata/pendulum.svg")
+	if err != nil {
+		t.Fatalf("failed to resolve test SVG path: %v", err)
+	}
+
+	loadAndWait(mw, testSVGPath)
+	mw.centerPanel.Pause()
+	waitForPreview(mw)
+
+	p := mw.centerPanel
+	p.mu.Lock()
+	if p.rebuilding {
+		t.Errorf("expected no build in flight after waiting")
+	}
+	if p.progressOverlay.Visible() {
+		t.Errorf("expected progress overlay hidden once the preview cache is applied")
+	}
+	if len(p.cachedFrames) != len(mw.session.RenderedFrames) {
+		t.Fatalf("expected %d cached frames, got %d", len(mw.session.RenderedFrames), len(p.cachedFrames))
+	}
+	for i, c := range p.cachedFrames {
+		if c.withGuides == nil || c.withoutGuides == nil || c.twitch112 == nil || c.twitch56 == nil || c.twitch28 == nil {
+			t.Fatalf("frame %d: expected all preview images precomputed", i)
+		}
+		if b := c.twitch28.Bounds(); b.Dx() != 28 || b.Dy() != 28 {
+			t.Errorf("frame %d: expected 28x28 thumbnail, got %v", i, b)
+		}
+	}
+
+	// Inspector must update on every frame step, including while playing (regression).
+	p.isPlaying = true
+	for step := range 3 {
+		p.currentIdx = step + 1
+		p.renderCurrentFrameLocked()
+		if p.twitch112Dark.Image != p.cachedFrames[p.currentIdx].twitch112 {
+			t.Errorf("step %d: inspector 112px dark not updated during playback", step)
+		}
+		if p.twitch28Light.Image != p.cachedFrames[p.currentIdx].twitch28 {
+			t.Errorf("step %d: inspector 28px light not updated during playback", step)
+		}
+	}
+	p.isPlaying = false
+	p.mu.Unlock()
+}
+
 func TestMainWindowInitAndLoad(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
 
 	mw := NewMainWindow(app)
+	defer waitForPreview(mw) // settle async preview builds before the next test
 	if mw == nil {
 		t.Fatalf("expected NewMainWindow to succeed")
 	}
@@ -32,7 +126,7 @@ func TestMainWindowInitAndLoad(t *testing.T) {
 		t.Fatalf("failed to resolve test SVG path: %v", err)
 	}
 
-	mw.loadFilePath(testSVGPath)
+	loadAndWait(mw, testSVGPath)
 	mw.centerPanel.Pause()
 
 	if mw.rightPanel.exportBtn.Text != "Export Animated GIF..." {
@@ -52,7 +146,7 @@ func TestMainWindowInitAndLoad(t *testing.T) {
 		t.Fatalf("failed to resolve color_test SVG path: %v", err)
 	}
 
-	mw.loadFilePath(secondSVGPath)
+	loadAndWait(mw, secondSVGPath)
 	mw.centerPanel.Pause()
 	if len(mw.session.RenderedFrames) != 30 {
 		t.Errorf("expected 30 frames, got %d", len(mw.session.RenderedFrames))
@@ -60,17 +154,17 @@ func TestMainWindowInitAndLoad(t *testing.T) {
 
 	// Switch back and forth between SVGs with different frame counts
 	for range 5 {
-		mw.loadFilePath(testSVGPath)
+		loadAndWait(mw, testSVGPath)
 		mw.centerPanel.Pause()
 		mw.centerPanel.StepFrame(2)
-		mw.loadFilePath(secondSVGPath)
+		loadAndWait(mw, secondSVGPath)
 		mw.centerPanel.Pause()
 		mw.centerPanel.StepFrame(1)
 	}
 	mw.centerPanel.Pause()
 
 	// Test changing global speed
-	mw.loadFilePath(testSVGPath)
+	loadAndWait(mw, testSVGPath)
 	mw.centerPanel.Pause()
 	mw.leftPanel.speedPresetSelect.SetSelected("20 FPS (50ms)")
 	if mw.session.ExportOptions.DefaultDurationMs != 50 {
@@ -90,17 +184,17 @@ func TestMainWindowInitAndLoad(t *testing.T) {
 	}
 
 	// Verify that switching between SVGs does not double the list items
-	mw.loadFilePath(testSVGPath)
+	loadAndWait(mw, testSVGPath)
 	mw.centerPanel.Pause()
 	if len(mw.leftPanel.listContainer.Objects) != 10 {
 		t.Errorf("expected exactly 10 frame objects in list, got %d", len(mw.leftPanel.listContainer.Objects))
 	}
-	mw.loadFilePath(secondSVGPath)
+	loadAndWait(mw, secondSVGPath)
 	mw.centerPanel.Pause()
 	if len(mw.leftPanel.listContainer.Objects) != 30 {
 		t.Errorf("expected exactly 30 frame objects in list, got %d", len(mw.leftPanel.listContainer.Objects))
 	}
-	mw.loadFilePath(testSVGPath)
+	loadAndWait(mw, testSVGPath)
 	mw.centerPanel.Pause()
 	if len(mw.leftPanel.listContainer.Objects) != 10 {
 		t.Errorf("expected exactly 10 frame objects in list after switching back, got %d", len(mw.leftPanel.listContainer.Objects))
@@ -112,12 +206,13 @@ func TestAnimationPlayback(t *testing.T) {
 	defer app.Quit()
 
 	mw := NewMainWindow(app)
+	defer waitForPreview(mw) // settle async preview builds before the next test
 	testSVGPath, err := filepath.Abs("../../testdata/pendulum.svg")
 	if err != nil {
 		t.Fatalf("failed to resolve test SVG path: %v", err)
 	}
 
-	mw.loadFilePath(testSVGPath)
+	loadAndWait(mw, testSVGPath)
 
 	t.Logf("Initial isPlaying: %v", mw.centerPanel.isPlaying)
 	mw.centerPanel.TogglePlay()
@@ -140,12 +235,13 @@ func TestCheckFrameDifferences(t *testing.T) {
 	defer app.Quit()
 
 	mw := NewMainWindow(app)
+	defer waitForPreview(mw) // settle async preview builds before the next test
 	testSVGPath, err := filepath.Abs("../../testdata/pendulum.svg")
 	if err != nil {
 		t.Fatalf("failed to resolve test SVG path: %v", err)
 	}
 
-	mw.loadFilePath(testSVGPath)
+	loadAndWait(mw, testSVGPath)
 	mw.centerPanel.Pause()
 	frames := mw.session.RenderedFrames
 	if len(frames) != 10 {
@@ -189,13 +285,15 @@ func TestNoLoopPlaybackAndButtonStates(t *testing.T) {
 	defer app.Quit()
 
 	mw := NewMainWindow(app)
+	defer waitForPreview(mw) // settle async preview builds before the next test
 	testSVGPath, err := filepath.Abs("../../testdata/pendulum.svg")
 	if err != nil {
 		t.Fatalf("failed to resolve test SVG path: %v", err)
 	}
 
-	mw.loadFilePath(testSVGPath)
+	loadAndWait(mw, testSVGPath)
 	mw.centerPanel.Pause()
+	waitForPreview(mw)
 
 	// Initial stopped state: text is Play and Importance is DangerImportance (Red)
 	if mw.centerPanel.playPauseBtn.Text != "Play" {
@@ -263,12 +361,13 @@ func TestPingPongPlaybackAndExportUI(t *testing.T) {
 	defer app.Quit()
 
 	mw := NewMainWindow(app)
+	defer waitForPreview(mw) // settle async preview builds before the next test
 	testSVGPath, err := filepath.Abs("../../testdata/pendulum.svg")
 	if err != nil {
 		t.Fatalf("failed to resolve test SVG path: %v", err)
 	}
 
-	mw.loadFilePath(testSVGPath)
+	loadAndWait(mw, testSVGPath)
 	mw.centerPanel.Pause()
 
 	// 1. pendulum.svg has 10 frames -> Ping-Pong should be enabled
@@ -303,7 +402,7 @@ func TestPingPongPlaybackAndExportUI(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to resolve Alert Icon SVG path: %v", err)
 	}
-	mw.loadFilePath(staticPath)
+	loadAndWait(mw, staticPath)
 	mw.centerPanel.Pause()
 
 	if len(mw.session.RenderedFrames) != 1 {
@@ -319,6 +418,7 @@ func TestCropBoundaryUIAndGuides(t *testing.T) {
 	defer app.Quit()
 
 	mw := NewMainWindow(app)
+	defer waitForPreview(mw) // settle async preview builds before the next test
 	if mw == nil {
 		t.Fatalf("expected NewMainWindow to succeed")
 	}
@@ -328,7 +428,7 @@ func TestCropBoundaryUIAndGuides(t *testing.T) {
 		t.Fatalf("failed to resolve multipage SVG path: %v", err)
 	}
 
-	mw.loadFilePath(multiPagePath)
+	loadAndWait(mw, multiPagePath)
 	mw.centerPanel.Pause()
 
 	// Initially in Page boundary mode
@@ -380,12 +480,13 @@ func TestPausePlaybackModal(t *testing.T) {
 	defer app.Quit()
 
 	mw := NewMainWindow(app)
+	defer waitForPreview(mw) // settle async preview builds before the next test
 	testSVGPath, err := filepath.Abs("../../testdata/pendulum.svg")
 	if err != nil {
 		t.Fatalf("failed to resolve test SVG path: %v", err)
 	}
 
-	mw.loadFilePath(testSVGPath)
+	loadAndWait(mw, testSVGPath)
 
 	// Ensure playing
 	mw.centerPanel.Play()
@@ -598,6 +699,7 @@ func TestSidebarTabs(t *testing.T) {
 	defer testApp.Quit()
 
 	mw := NewMainWindow(testApp)
+	defer waitForPreview(mw) // settle async preview builds before the next test
 	if mw.sidebarTabs == nil {
 		t.Fatal("expected sidebarTabs to be non-nil")
 	}
@@ -629,6 +731,7 @@ func TestScaleInspectorToggle(t *testing.T) {
 	defer testApp.Quit()
 
 	mw := NewMainWindow(testApp)
+	defer waitForPreview(mw) // settle async preview builds before the next test
 	if mw.centerPanel.inspectorCheck == nil {
 		t.Fatal("expected inspectorCheck to be non-nil")
 	}
@@ -676,12 +779,13 @@ func TestWysiwygPreview(t *testing.T) {
 	defer testApp.Quit()
 
 	mw := NewMainWindow(testApp)
+	defer waitForPreview(mw) // settle async preview builds before the next test
 	testSVGPath, err := filepath.Abs("../../testdata/bouncing_walker.svg")
 	if err != nil {
 		t.Fatalf("failed to resolve test SVG path: %v", err)
 	}
 
-	mw.loadFilePath(testSVGPath)
+	loadAndWait(mw, testSVGPath)
 	mw.centerPanel.Pause()
 
 	if mw.centerPanel.wysiwygCheck == nil {
@@ -701,6 +805,7 @@ func TestWysiwygPreview(t *testing.T) {
 
 	// Toggle WYSIWYG off
 	mw.centerPanel.wysiwygCheck.SetChecked(false)
+	waitForPreview(mw)
 	if mw.centerPanel.wysiwygColors {
 		t.Errorf("expected wysiwygColors to be false after unchecking")
 	}
@@ -712,17 +817,20 @@ func TestWysiwygPreview(t *testing.T) {
 
 	// Change palette colors to 32 and re-enable WYSIWYG
 	mw.rightPanel.colorsSelect.SetSelected("32")
+	waitForPreview(mw)
 	if mw.session.ExportOptions.NumColors != 32 {
 		t.Errorf("expected 32 colors in session options, got %d", mw.session.ExportOptions.NumColors)
 	}
 
 	mw.centerPanel.SetWysiwyg(true)
+	waitForPreview(mw)
 	if !mw.centerPanel.wysiwygCheck.Checked || !mw.centerPanel.wysiwygColors {
 		t.Errorf("expected wysiwyg enabled after SetWysiwyg(true)")
 	}
 
 	// Toggle Dithering
 	mw.rightPanel.ditherCheck.SetChecked(true)
+	waitForPreview(mw)
 	if !mw.session.ExportOptions.Dither {
 		t.Errorf("expected session Dither to be true")
 	}
@@ -733,6 +841,7 @@ func TestPreviewBackgroundSwitcher(t *testing.T) {
 	defer app.Quit()
 
 	mw := NewMainWindow(app)
+	defer waitForPreview(mw) // settle async preview builds before the next test
 	if mw.centerPanel.bgSelect == nil {
 		t.Fatal("expected bgSelect to be non-nil")
 	}
