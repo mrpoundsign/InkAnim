@@ -208,10 +208,10 @@ func TestValidateTwitchEmote(t *testing.T) {
 
 func TestPalettedToRGBA(t *testing.T) {
 	pal := color.Palette{
-		color.RGBA{R: 0, G: 0, B: 0, A: 0},       // 0: transparent
-		color.RGBA{R: 255, G: 0, B: 0, A: 255},   // 1: red
-		color.RGBA{R: 0, G: 255, B: 0, A: 255},   // 2: green
-		color.RGBA{R: 0, G: 0, B: 255, A: 255},   // 3: blue
+		color.RGBA{R: 0, G: 0, B: 0, A: 0},     // 0: transparent
+		color.RGBA{R: 255, G: 0, B: 0, A: 255}, // 1: red
+		color.RGBA{R: 0, G: 255, B: 0, A: 255}, // 2: green
+		color.RGBA{R: 0, G: 0, B: 255, A: 255}, // 3: blue
 	}
 
 	p := image.NewPaletted(image.Rect(0, 0, 2, 2), pal)
@@ -441,6 +441,77 @@ func BenchmarkWriteGIFToWriter(b *testing.B) {
 		n, err := WriteGIFToWriter(io.Discard, frames, opts)
 		if err != nil || n <= 0 {
 			b.Fatalf("WriteGIFToWriter failed: %v", err)
+		}
+	}
+}
+
+func TestGeneratePalette_DeterministicAndCorrect(t *testing.T) {
+	// 1. Transparent-only frame returns transparency + default white
+	blank := image.NewRGBA(image.Rect(0, 0, 16, 16))
+	pal := GeneratePalette([]*image.RGBA{blank}, 256, 128)
+	if len(pal) != 2 {
+		t.Fatalf("expected 2 colors for transparent image, got %d", len(pal))
+	}
+	if pal[0] != (color.RGBA{R: 0, G: 0, B: 0, A: 0}) {
+		t.Errorf("slot 0 must be transparent, got %+v", pal[0])
+	}
+	if pal[1] != (color.RGBA{R: 255, G: 255, B: 255, A: 255}) {
+		t.Errorf("slot 1 must be default white, got %+v", pal[1])
+	}
+
+	// 2. Frequency ordering with 5-bit quantization
+	img := image.NewRGBA(image.Rect(0, 0, 100, 100))
+	// 5000 pixels of red (255, 0, 0) -> clustered to (248, 0, 0)
+	for y := range 50 {
+		for x := range 100 {
+			img.Set(x, y, color.RGBA{R: 255, G: 0, B: 0, A: 255})
+		}
+	}
+	// 3000 pixels of green (0, 255, 0) -> clustered to (0, 248, 0)
+	for y := 50; y < 80; y++ {
+		for x := range 100 {
+			img.Set(x, y, color.RGBA{R: 0, G: 255, B: 0, A: 255})
+		}
+	}
+	// 2000 pixels of blue (0, 0, 255) -> clustered to (0, 0, 248)
+	for y := 80; y < 100; y++ {
+		for x := range 100 {
+			img.Set(x, y, color.RGBA{R: 0, G: 0, B: 255, A: 255})
+		}
+	}
+
+	// Limit palette to 3 colors: [0: transparent, 1: most frequent (red), 2: second most frequent (green)]
+	palLimited := GeneratePalette([]*image.RGBA{img}, 3, 128)
+	if len(palLimited) != 3 {
+		t.Fatalf("expected 3 colors, got %d", len(palLimited))
+	}
+	if palLimited[0] != (color.RGBA{R: 0, G: 0, B: 0, A: 0}) {
+		t.Errorf("slot 0 must be transparent, got %+v", palLimited[0])
+	}
+	if palLimited[1] != (color.RGBA{R: 248, G: 0, B: 0, A: 255}) {
+		t.Errorf("slot 1 must be red (248, 0, 0), got %+v", palLimited[1])
+	}
+	if palLimited[2] != (color.RGBA{R: 0, G: 248, B: 0, A: 255}) {
+		t.Errorf("slot 2 must be green (0, 248, 0), got %+v", palLimited[2])
+	}
+
+	// 3. Sub-image non-contiguous row scan verification
+	sub := img.SubImage(image.Rect(10, 10, 30, 70)).(*image.RGBA)
+	palSub := GeneratePalette([]*image.RGBA{sub}, 4, 128)
+	if len(palSub) < 2 {
+		t.Errorf("expected valid palette from sub-image, got %d entries", len(palSub))
+	}
+
+	// 4. Pool reuse consistency: 10 repeated calls must produce bit-identical results
+	for iter := range 10 {
+		rep := GeneratePalette([]*image.RGBA{img}, 3, 128)
+		if len(rep) != len(palLimited) {
+			t.Fatalf("iter %d: length mismatch %d vs %d", iter, len(rep), len(palLimited))
+		}
+		for cIdx := range rep {
+			if rep[cIdx] != palLimited[cIdx] {
+				t.Fatalf("iter %d, slot %d: color mismatch %+v vs %+v", iter, cIdx, rep[cIdx], palLimited[cIdx])
+			}
 		}
 	}
 }

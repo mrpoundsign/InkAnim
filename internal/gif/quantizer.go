@@ -6,11 +6,13 @@ import (
 	"image/color"
 	"math"
 	"slices"
+	"sync"
 )
 
-// rgbKey represents an RGB triplet for palette generation.
-type rgbKey struct {
-	r, g, b uint8
+var countArrayPool = sync.Pool{
+	New: func() any {
+		return new([32768]uint32)
+	},
 }
 
 type paletteEntry struct {
@@ -34,17 +36,39 @@ func GeneratePalette(frames []*image.RGBA, maxColors int, alphaThreshold uint8) 
 	}
 
 	// Always reserve index 0 for transparency
-	palette := color.Palette{color.RGBA{R: 0, G: 0, B: 0, A: 0}}
+	palette := make(color.Palette, 1, maxColors)
+	palette[0] = color.RGBA{R: 0, G: 0, B: 0, A: 0}
 
-	// Collect color frequencies from visible pixels using direct byte slice scanning
-	colorCounts := make(map[rgbKey]int)
+	counts := countArrayPool.Get().(*[32768]uint32)
+	seen := make([]uint16, 0, 256)
+
 	for _, frame := range frames {
 		bounds := frame.Bounds()
 		w := bounds.Dx()
 		h := bounds.Dy()
+		if w <= 0 || h <= 0 {
+			continue
+		}
+
 		minX := bounds.Min.X - frame.Rect.Min.X
 		minY := bounds.Min.Y - frame.Rect.Min.Y
 
+		// Fast path: contiguous full buffer scan
+		if frame.Stride == w*4 && minX == 0 && minY == 0 && bounds == frame.Rect {
+			pix := frame.Pix
+			for x := 0; x < len(pix); x += 4 {
+				if pix[x+3] >= alphaThreshold {
+					idx := (uint32(pix[x]>>3) << 10) | (uint32(pix[x+1]>>3) << 5) | uint32(pix[x+2]>>3)
+					if counts[idx] == 0 {
+						seen = append(seen, uint16(idx))
+					}
+					counts[idx]++
+				}
+			}
+			continue
+		}
+
+		// Sub-image / row-by-row scan
 		for y := range h {
 			rowStart := (minY+y)*frame.Stride + minX*4
 			rowEnd := rowStart + w*4
@@ -52,44 +76,49 @@ func GeneratePalette(frames []*image.RGBA, maxColors int, alphaThreshold uint8) 
 
 			for x := 0; x < len(row); x += 4 {
 				if row[x+3] >= alphaThreshold {
-					// Quantize slightly to 5-bit per channel to cluster close colors
-					key := rgbKey{
-						r: row[x] & 0xF8,
-						g: row[x+1] & 0xF8,
-						b: row[x+2] & 0xF8,
+					idx := (uint32(row[x]>>3) << 10) | (uint32(row[x+1]>>3) << 5) | uint32(row[x+2]>>3)
+					if counts[idx] == 0 {
+						seen = append(seen, uint16(idx))
 					}
-					colorCounts[key]++
+					counts[idx]++
 				}
 			}
 		}
 	}
 
 	availableSlots := maxColors - 1
-	if len(colorCounts) <= availableSlots {
-		for k := range colorCounts {
-			palette = append(palette, color.RGBA{R: k.r, G: k.g, B: k.b, A: 255})
+	if len(seen) <= availableSlots {
+		for _, idx := range seen {
+			r := uint8((idx>>10)&0x1F) << 3
+			g := uint8((idx>>5)&0x1F) << 3
+			b := uint8(idx&0x1F) << 3
+			palette = append(palette, color.RGBA{R: r, G: g, B: b, A: 255})
 		}
 	} else {
-		// Take top availableSlots most frequent colors
-		type colorFreq struct {
-			key   rgbKey
-			count int
-		}
-		list := make([]colorFreq, 0, len(colorCounts))
-		for k, count := range colorCounts {
-			list = append(list, colorFreq{key: k, count: count})
-		}
-
-		// Sort by frequency descending using pdqsort (O(N log N))
-		slices.SortFunc(list, func(a, b colorFreq) int {
-			return cmp.Compare(b.count, a.count)
+		// Sort by frequency descending with deterministic tie-breaking
+		slices.SortFunc(seen, func(a, b uint16) int {
+			ca := counts[a]
+			cb := counts[b]
+			if cb != ca {
+				return cmp.Compare(cb, ca)
+			}
+			return cmp.Compare(a, b)
 		})
 
-		for i := 0; i < availableSlots && i < len(list); i++ {
-			k := list[i].key
-			palette = append(palette, color.RGBA{R: k.r, G: k.g, B: k.b, A: 255})
+		for i := range availableSlots {
+			idx := seen[i]
+			r := uint8((idx>>10)&0x1F) << 3
+			g := uint8((idx>>5)&0x1F) << 3
+			b := uint8(idx&0x1F) << 3
+			palette = append(palette, color.RGBA{R: r, G: g, B: b, A: 255})
 		}
 	}
+
+	// Clean up borrowed count array for next pool reuse
+	for _, idx := range seen {
+		counts[idx] = 0
+	}
+	countArrayPool.Put(counts)
 
 	// If palette has only 1 color (e.g. all pixels are transparent), add a default color
 	if len(palette) < 2 {
@@ -140,13 +169,13 @@ func QuantizeFrame(src *image.RGBA, palette color.Palette, alphaThreshold uint8,
 
 	// Bayer 8x8 matrix for ordered dithering
 	var bayer8x8 = [64]int32{
-		 0, 32,  8, 40,  2, 34, 10, 42,
+		0, 32, 8, 40, 2, 34, 10, 42,
 		48, 16, 56, 24, 50, 18, 58, 26,
-		12, 44,  4, 36, 14, 46,  6, 38,
+		12, 44, 4, 36, 14, 46, 6, 38,
 		60, 28, 52, 20, 62, 30, 54, 22,
-		 3, 35, 11, 43,  1, 33,  9, 41,
+		3, 35, 11, 43, 1, 33, 9, 41,
 		51, 19, 59, 27, 49, 17, 57, 25,
-		15, 47,  7, 39, 13, 45,  5, 37,
+		15, 47, 7, 39, 13, 45, 5, 37,
 		63, 31, 55, 23, 61, 29, 53, 21,
 	}
 
@@ -179,9 +208,21 @@ func QuantizeFrame(src *image.RGBA, palette color.Palette, alphaThreshold uint8,
 				g += threshold
 				b += threshold
 
-				if r < 0 { r = 0 } else if r > 255 { r = 255 }
-				if g < 0 { g = 0 } else if g > 255 { g = 255 }
-				if b < 0 { b = 0 } else if b > 255 { b = 255 }
+				if r < 0 {
+					r = 0
+				} else if r > 255 {
+					r = 255
+				}
+				if g < 0 {
+					g = 0
+				} else if g > 255 {
+					g = 255
+				}
+				if b < 0 {
+					b = 0
+				} else if b > 255 {
+					b = 255
+				}
 			}
 
 			rgb := uint32(r)<<16 | uint32(g)<<8 | uint32(b)
