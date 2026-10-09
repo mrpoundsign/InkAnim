@@ -7,6 +7,7 @@ import (
 	"image"
 	"image/color"
 	"io"
+	"log"
 	"math"
 	"reflect"
 	"strings"
@@ -29,8 +30,12 @@ var CustomBatchRasterizer func(svgList [][]byte, targetW, targetH int) ([]*image
 // If width or height is <= 0, the native SVG dimensions are used.
 func RenderSVGToRGBA(svgData []byte, targetW, targetH int) (*image.RGBA, error) {
 	if CustomRasterizer != nil {
-		if img, err := CustomRasterizer(svgData, targetW, targetH); err == nil && img != nil {
+		img, err := CustomRasterizer(svgData, targetW, targetH)
+		if err == nil && img != nil {
 			return img, nil
+		}
+		if err != nil {
+			log.Printf("CustomRasterizer failed: %v (falling back to oksvg)", err)
 		}
 	}
 
