@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"image"
 	"image/color"
-	"image/draw"
 	"math"
 	"slices"
 )
@@ -128,21 +127,6 @@ func QuantizeFrame(src *image.RGBA, palette color.Palette, alphaThreshold uint8,
 	dstMinX := bounds.Min.X - paletted.Rect.Min.X
 	dstMinY := bounds.Min.Y - paletted.Rect.Min.Y
 
-	if dither {
-		draw.FloydSteinberg.Draw(paletted, bounds, src, bounds.Min)
-		// Post-process to re-enforce transparency using direct slice indexing
-		for y := range h {
-			srcRow := src.Pix[(srcMinY+y)*src.Stride+srcMinX*4 : (srcMinY+y)*src.Stride+(srcMinX+w)*4]
-			dstRow := paletted.Pix[(dstMinY+y)*paletted.Stride+dstMinX : (dstMinY+y)*paletted.Stride+dstMinX+w]
-			for x := range w {
-				if srcRow[x*4+3] < alphaThreshold {
-					dstRow[x] = 0
-				}
-			}
-		}
-		return paletted
-	}
-
 	entries := unpackPalette(palette)
 	if len(entries) == 0 {
 		return paletted
@@ -154,9 +138,23 @@ func QuantizeFrame(src *image.RGBA, palette color.Palette, alphaThreshold uint8,
 	// 4096-entry direct-mapped color cache (32 KB, fits entirely in CPU L1 data cache)
 	var cache [4096]colorCacheEntry
 
+	// Bayer 8x8 matrix for ordered dithering
+	var bayer8x8 = [64]int32{
+		 0, 32,  8, 40,  2, 34, 10, 42,
+		48, 16, 56, 24, 50, 18, 58, 26,
+		12, 44,  4, 36, 14, 46,  6, 38,
+		60, 28, 52, 20, 62, 30, 54, 22,
+		 3, 35, 11, 43,  1, 33,  9, 41,
+		51, 19, 59, 27, 49, 17, 57, 25,
+		15, 47,  7, 39, 13, 45,  5, 37,
+		63, 31, 55, 23, 61, 29, 53, 21,
+	}
+
 	for y := range h {
 		srcRow := src.Pix[(srcMinY+y)*src.Stride+srcMinX*4 : (srcMinY+y)*src.Stride+(srcMinX+w)*4]
 		dstRow := paletted.Pix[(dstMinY+y)*paletted.Stride+dstMinX : (dstMinY+y)*paletted.Stride+dstMinX+w]
+
+		bayerRowIdx := (y & 7) * 8
 
 		for x := range w {
 			p := x * 4
@@ -170,9 +168,21 @@ func QuantizeFrame(src *image.RGBA, palette color.Palette, alphaThreshold uint8,
 				continue
 			}
 
-			r := srcRow[p]
-			g := srcRow[p+1]
-			b := srcRow[p+2]
+			r := int32(srcRow[p])
+			g := int32(srcRow[p+1])
+			b := int32(srcRow[p+2])
+
+			if dither {
+				// Offset RGB by Bayer threshold mapped to roughly [-16, +15] to spread the quantization error
+				threshold := (bayer8x8[bayerRowIdx+(x&7)] - 32) / 2
+				r += threshold
+				g += threshold
+				b += threshold
+
+				if r < 0 { r = 0 } else if r > 255 { r = 255 }
+				if g < 0 { g = 0 } else if g > 255 { g = 255 }
+				if b < 0 { b = 0 } else if b > 255 { b = 255 }
+			}
 
 			rgb := uint32(r)<<16 | uint32(g)<<8 | uint32(b)
 			tag := rgb | 0x01000000
@@ -184,14 +194,13 @@ func QuantizeFrame(src *image.RGBA, palette color.Palette, alphaThreshold uint8,
 			}
 
 			// Cache miss: search pre-unpacked palette entries with integer squared Euclidean distance
-			r32, g32, b32 := int32(r), int32(g), int32(b)
 			bestIdx := entries[0].idx
 			bestDist := int32(math.MaxInt32)
 
 			for i := range entries {
-				dr := r32 - entries[i].r
-				dg := g32 - entries[i].g
-				db := b32 - entries[i].b
+				dr := r - entries[i].r
+				dg := g - entries[i].g
+				db := b - entries[i].b
 				dist := dr*dr*299 + dg*dg*587 + db*db*114
 				if dist < bestDist {
 					bestDist = dist

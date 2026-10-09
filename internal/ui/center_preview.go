@@ -769,10 +769,11 @@ func (p *CenterPreviewPanel) rebuildCachedFramesLocked() {
 		}
 
 		palette := gif.GeneratePalette(displayImgs, numColors, alphaThreshold)
-		for i, img := range displayImgs {
-			if img != nil {
-				paletted := gif.QuantizeFrame(img, palette, alphaThreshold, p.session.ExportOptions.Dither)
-				displayImgs[i] = gif.PalettedToRGBA(paletted)
+		palettedList, _ := gif.QuantizeFrames(displayImgs, palette, alphaThreshold, p.session.ExportOptions.Dither)
+		
+		for i, pal := range palettedList {
+			if pal != nil {
+				displayImgs[i] = gif.PalettedToRGBA(pal)
 			}
 		}
 	}

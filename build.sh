@@ -234,7 +234,7 @@ build_wasm() {
     rm -rf "$PAGES_DIR" "$WASM_TEMP"
     mkdir -p "$PAGES_DIR/demo" "$PAGES_DIR/samples" "$WASM_TEMP"
 
-    echo "==> Compiling WebAssembly binary..."
+    echo "==> Compiling WebAssembly binaries..."
     (
         cd "$WASM_TEMP"
         go run fyne.io/tools/cmd/fyne@latest package -os web --release \
@@ -242,13 +242,16 @@ build_wasm() {
             --source-dir "$ROOT_DIR/cmd/inkanim" \
             --icon "$ROOT_DIR/assets/icon.png" \
             --name InkAnim
+            
+        GOOS=js GOARCH=wasm go build -trimpath -o wasm/worker.wasm "$ROOT_DIR/cmd/inkanim-worker"
     )
 
     cp "$WASM_TEMP/wasm/"* "$PAGES_DIR/demo/"
     rm -rf "$WASM_TEMP"
 
-    # Overlay our custom demo template
+    # Overlay our custom demo templates and workers
     cp "$ROOT_DIR/web/demo/index.html" "$PAGES_DIR/demo/index.html"
+    cp "$ROOT_DIR/web/demo/worker.js" "$PAGES_DIR/demo/worker.js"
 
     # Copy landing page assets to root
     cp -r "$ROOT_DIR/web/landing/"* "$PAGES_DIR/"
@@ -267,6 +270,7 @@ serve_web() {
     else
         # Overlay latest HTML/CSS templates so changes reflect immediately
         cp "$ROOT_DIR/web/demo/index.html" "$PAGES_DIR/demo/index.html"
+        cp "$ROOT_DIR/web/demo/worker.js" "$PAGES_DIR/demo/worker.js"
         cp -r "$ROOT_DIR/web/landing/"* "$PAGES_DIR/"
         cp -r "$ROOT_DIR/web/samples/"* "$PAGES_DIR/samples/"
     fi
