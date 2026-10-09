@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -39,6 +40,14 @@ func CheckForUpdate(currentVersion string, client *http.Client) (*UpdateResult, 
 
 // CheckForUpdateWithURL checks for updates against a specified API endpoint (useful for testing).
 func CheckForUpdateWithURL(currentVersion, apiURL string, client *http.Client) (*UpdateResult, error) {
+	if runtime.GOOS == "js" {
+		return &UpdateResult{
+			CurrentVersion: currentVersion,
+			LatestVersion:  currentVersion,
+			IsOutdated:     false,
+		}, nil
+	}
+
 	if client == nil {
 		client = &http.Client{
 			Timeout: 5 * time.Second,

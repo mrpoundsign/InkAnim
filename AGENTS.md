@@ -94,7 +94,7 @@ Active issues and feature requests are tracked exclusively via **[GitHub Issues]
 
 ### GitHub Pages & WebAssembly Deployment
 - **Model**: Automated modern GitHub Pages deployment (artifact-based, zero extra branches) managed by `.github/workflows/pages.yml`.
-- **Packaging**: `./build.sh wasm` (or `.\build.ps1 -Target wasm`) compiles the app into `build/gh-pages/demo/`, assembles the project landing page into `build/gh-pages/`, and copies sample assets into `build/gh-pages/samples/`.
+- **Packaging**: `./build.sh wasm` (or `.\build.ps1 -Target wasm`) compiles the app into `build/web/demo/`, assembles the project landing page into `build/web/`, and copies sample assets into `build/web/samples/`.
 - **Local Testing**: Run `./build.sh serve` (or `.\build.ps1 -Target serve`) to launch a local Go static server with `application/wasm` MIME support at `http://localhost:8080`.
 
 ---

@@ -50,7 +50,7 @@ You can build, test, and package everything with a single command:
 .\build.ps1                # Run tests and build both GUI (inkanim.exe) and CLI (inkanim-cli.exe)
 .\build.ps1 -Target gui    # Build Desktop GUI only (automatically uses Zig CGo)
 .\build.ps1 -Target cli    # Build CLI only (Pure-Go, Zero CGo)
-.\build.ps1 -Target wasm   # Package WebAssembly demo & landing page into build/gh-pages
+.\build.ps1 -Target wasm   # Package WebAssembly demo & landing page into build/web
 .\build.ps1 -Target serve  # Run local preview server at http://localhost:8080
 .\build.ps1 -Target test   # Run unit tests
 .\build.ps1 -Target cross  # Cross-compile CLI for Windows, Linux, and macOS into dist/
@@ -63,7 +63,7 @@ You can build, test, and package everything with a single command:
 ./build.sh                 # Run tests and build both GUI and CLI
 ./build.sh cli             # Build CLI only
 ./build.sh gui             # Build GUI only
-./build.sh wasm            # Package WebAssembly demo & landing page into build/gh-pages
+./build.sh wasm            # Package WebAssembly demo & landing page into build/web
 ./build.sh serve           # Run local preview server at http://localhost:8080
 ./build.sh cross           # Cross-compile CLI for all targets
 ./build.sh test            # Run unit tests

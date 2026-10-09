@@ -11,7 +11,7 @@ set -euo pipefail
 #   ./build.sh ext-linux  # Build Inkscape extension for Linux into build/
 #   ./build.sh ext-darwin # Build Inkscape extension for macOS into build/
 #   ./build.sh ext-all    # Build all available Inkscape extensions
-#   ./build.sh wasm       # Package WebAssembly demo into build/gh-pages
+#   ./build.sh wasm       # Package WebAssembly demo into build/web
 #   ./build.sh wasm-check # Verify WebAssembly compilation
 #   ./build.sh test       # Run unit tests
 #   ./build.sh cross      # Cross-compile CLI for multiple targets
@@ -229,7 +229,7 @@ verify_wasm() {
 
 build_wasm() {
     echo "==> Packaging WebAssembly demo & assembling GitHub Pages site..."
-    local PAGES_DIR="$BUILD_DIR/gh-pages"
+    local PAGES_DIR="$BUILD_DIR/web"
     local WASM_TEMP="$BUILD_DIR/wasm-tmp"
     rm -rf "$PAGES_DIR" "$WASM_TEMP"
     mkdir -p "$PAGES_DIR/demo" "$PAGES_DIR/samples" "$WASM_TEMP"
@@ -260,7 +260,7 @@ build_wasm() {
 }
 
 serve_web() {
-    local PAGES_DIR="$BUILD_DIR/gh-pages"
+    local PAGES_DIR="$BUILD_DIR/web"
     if [ ! -f "$PAGES_DIR/demo/InkAnim.wasm" ]; then
         echo "Web site not built yet. Building first..."
         build_wasm
