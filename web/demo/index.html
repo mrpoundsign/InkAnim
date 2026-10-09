@@ -1031,23 +1031,24 @@
     }
 
     // Native browser SVG-to-RGBA batch rasterizer (GPU/Skia accelerated)
-    window.inkanimRasterizeBatchNative = function(svgList, targetW, targetH) {
+    window.inkanimRasterizeBatchNative = async function(svgList, targetW, targetH) {
       targetW = targetW || 512;
       targetH = targetH || 512;
 
-      return new Promise(function(resolve, reject) {
-        if (!svgList || svgList.length === 0) {
-          resolve([]);
-          return;
-        }
+      if (!svgList || svgList.length === 0) {
+        return [];
+      }
 
-        var total = svgList.length;
-        var completed = 0;
-        var hasError = false;
-        var results = new Array(total);
+      var total = svgList.length;
+      var results = new Array(total);
 
-        for (var i = 0; i < total; i++) {
-          (function(idx) {
+      // Process in batches of 4 to prevent V8 main thread lockup and GPU stalling
+      var batchSize = 4;
+      for (var i = 0; i < total; i += batchSize) {
+        var batchPromises = [];
+        for (var j = 0; j < batchSize && (i + j) < total; j++) {
+          let idx = i + j;
+          batchPromises.push(new Promise((resolve, reject) => {
             var svgStr = svgList[idx];
             var blob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
             var url = URL.createObjectURL(blob);
@@ -1055,8 +1056,6 @@
 
             img.onload = function() {
               URL.revokeObjectURL(url);
-              if (hasError) return;
-
               try {
                 var canvas;
                 if (typeof OffscreenCanvas !== 'undefined') {
@@ -1072,31 +1071,101 @@
                 ctx.drawImage(img, 0, 0, targetW, targetH);
                 var imgData = ctx.getImageData(0, 0, targetW, targetH);
                 results[idx] = new Uint8Array(imgData.data.buffer.slice(0));
-                completed++;
-
-                if (completed === total) {
-                  resolve(results);
-                }
+                resolve();
               } catch(e) {
-                if (!hasError) {
-                  hasError = true;
-                  reject(e);
-                }
+                reject(e);
               }
             };
 
             img.onerror = function(err) {
               URL.revokeObjectURL(url);
-              if (!hasError) {
-                hasError = true;
-                reject(new Error("Failed to rasterize SVG frame " + idx));
-              }
+              reject(new Error("Failed to rasterize SVG frame " + idx));
             };
 
             img.src = url;
-          })(i);
+          }));
         }
-      });
+        await Promise.all(batchPromises);
+      }
+      return results;
+    };
+
+    var _quantizeWorkerPool = [];
+    var _quantizeTaskQueue = [];
+
+    function _pumpQuantizeQueue() {
+      var worker = _quantizeWorkerPool.find(w => w.ready && !w.active);
+      if (worker && _quantizeTaskQueue.length > 0) {
+        var task = _quantizeTaskQueue.shift();
+        worker.active = true;
+        worker.resolver = task.resolve;
+        worker.rejecter = task.reject;
+        worker.w.postMessage(task.payload, task.transfers);
+      }
+    }
+
+    window.inkanimQuantizeBatch = async function(framesData, width, height, paletteArray, alphaThreshold, dither) {
+      if (!framesData || framesData.length === 0) return [];
+      
+      // Initialize pool on first use
+      if (_quantizeWorkerPool.length === 0) {
+        var maxWorkers = navigator.hardwareConcurrency || 4;
+        if (maxWorkers > 8) maxWorkers = 8; // Cap at 8 to prevent memory blowout
+        for (var i = 0; i < maxWorkers; i++) {
+          var worker = new Worker('worker.js');
+          
+          worker.onmessage = function(e) {
+            var workerState = _quantizeWorkerPool.find(w => w.w === this);
+            if (!workerState) return;
+
+            if (e.data === 'READY') {
+              workerState.ready = true;
+              _pumpQuantizeQueue();
+            } else if (e.data && e.data.id !== undefined) {
+              workerState.active = false;
+              var resolver = workerState.resolver;
+              workerState.resolver = null;
+              workerState.rejecter = null;
+              if (resolver) resolver(e.data.palettedBuf ? new Uint8Array(e.data.palettedBuf) : null);
+              _pumpQuantizeQueue();
+            }
+          };
+          worker.onerror = function(err) {
+            var workerState = _quantizeWorkerPool.find(w => w.w === this);
+            if (workerState && workerState.rejecter) {
+              workerState.rejecter(err);
+            }
+          };
+          _quantizeWorkerPool.push({ w: worker, ready: false, active: false, resolver: null, rejecter: null });
+        }
+      }
+
+      var promises = [];
+      for (var i = 0; i < framesData.length; i++) {
+        promises.push(new Promise((resolve, reject) => {
+          if (!framesData[i]) {
+            resolve(null);
+            return;
+          }
+          var payload = {
+            id: i,
+            rgbaBuf: framesData[i].buffer,
+            width: width,
+            height: height,
+            palette: paletteArray,
+            alphaThreshold: alphaThreshold,
+            dither: dither
+          };
+          _quantizeTaskQueue.push({
+            payload: payload,
+            transfers: [framesData[i].buffer],
+            resolve: resolve,
+            reject: reject
+          });
+          _pumpQuantizeQueue();
+        }));
+      }
+      return await Promise.all(promises);
     };
 
     window.inkanimRasterizeNative = function(svgStr, targetW, targetH) {

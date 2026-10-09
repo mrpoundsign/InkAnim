@@ -82,11 +82,10 @@ func EncodeAnimatedGIF(frames []FrameInput, opts ExportOptions) (*gif.GIF, error
 	palette := GeneratePalette(processedFrames, numColors, alphaThreshold)
 
 	// 3. Quantize frames in parallel
-	palettedList := make([]*image.Paletted, len(processedFrames))
-	_ = parallel.Run(len(processedFrames), func(i int) error {
-		palettedList[i] = QuantizeFrame(processedFrames[i], palette, alphaThreshold, opts.Dither)
-		return nil
-	})
+	palettedList, err := QuantizeFrames(processedFrames, palette, alphaThreshold, opts.Dither)
+	if err != nil {
+		return nil, fmt.Errorf("failed to quantize frames: %w", err)
+	}
 
 	animGIF := &gif.GIF{
 		Image:     palettedList,
