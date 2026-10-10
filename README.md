@@ -108,7 +108,7 @@ CLI options:
   -colors int
         Max palette colors: 2-256 (default: 256)
   -dither
-        Apply Floyd-Steinberg dithering (default: false)
+        Apply Bayer 8x8 dithering (default: false)
   -check-twitch
         Validate output against Twitch animated emote specifications (default: true)
 ```

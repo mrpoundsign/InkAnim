@@ -17,7 +17,7 @@
 
 - **Primary Repository**: `mrpoundsign/InkAnim`
 - **Visual Identity**: Obsidian Slate, Chrome White & Electric Sky Blue (`#38BDF8`) theme derived from the studio icon.
-- **Stack**: Go 1.27.0, [Fyne v2](https://fyne.io/) (v2.8.1 GUI toolkit with WebGL/WASM support), standard library imaging/gif with Floyd-Steinberg dithering and neural/median-cut color quantization.
+- **Stack**: Go 1.27.0, [Fyne v2](https://fyne.io/) (v2.8.1 GUI toolkit with WebGL/WASM support), standard library image/gif with ordered Bayer 8×8 dithering and 15-bit color quantization.
 - **Targets**:
   - Native Desktop (Windows `inkanim.exe`, Linux, macOS `InkAnim.app`)
   - WebAssembly (interactive in-browser demo canvas via `fyne package -os web` / `fyne serve` and offline web zip)
@@ -45,7 +45,7 @@ InkAnim/
 │   │   └── session_test.go
 │   ├── gif/              # GIF compilation, palette generation, twitch validation
 │   │   ├── encoder.go    # Animated GIF encoding (WriteGIFToFile, WriteGIFToWriter)
-│   │   ├── palette.go    # Color quantization, Floyd-Steinberg dithering
+│   │   ├── quantizer.go  # Color quantization, Bayer 8×8 dithering, palette generation
 │   │   └── twitch.go     # Twitch emote specifications & validation checks
 │   └── ui/               # Fyne GUI components
 │       ├── main_window.go    # Top header, window layout, drag-and-drop, file loading

@@ -527,7 +527,7 @@ Color {f:1-60 angle:-45 r:4 target:stroke}</code></pre>
         <ul>
           <li><strong>Auto-Square Padding</strong>: Automatically centers your artwork on a 1:1 square canvas with transparent padding, fulfilling Twitch emote submission rules without stretching.</li>
           <li><strong>Target Resolution</strong>: Export at standard emote resolutions (512×512, 112×112) or custom dimensions.</li>
-          <li><strong>Color Quantization & Dithering</strong>: Select your palette depth (2 to 256 colors) and toggle Floyd-Steinberg dithering for smooth color gradients.</li>
+          <li><strong>Color Quantization & Dithering</strong>: Select your palette depth (2 to 256 colors) and toggle Bayer 8×8 dithering for smooth color gradients.</li>
           <li><strong>Size Validator</strong>: InkAnim automatically verifies that the output GIF complies with Twitch's 1.0 MB file size limit.</li>
         </ul>
 
@@ -588,7 +588,7 @@ Color {f:1-60 angle:-45 r:4 target:stroke}</code></pre>
               <tr>
                 <td><code>-dither</code></td>
                 <td><code>false</code></td>
-                <td>Apply Floyd-Steinberg error diffusion dithering for smooth color gradients.</td>
+                <td>Apply ordered Bayer 8×8 dithering for smooth color gradients.</td>
               </tr>
               <tr>
                 <td><code>-pingpong</code></td>
