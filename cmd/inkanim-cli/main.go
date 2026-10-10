@@ -36,7 +36,7 @@ func run() error {
 	height := flag.Int("height", 0, "Custom target height (if not using square mode)")
 	fps := flag.Int("fps", 10, "Frames per second (playback speed)")
 	colors := flag.Int("colors", 256, "Max palette colors (2-256)")
-	dither := flag.Bool("dither", false, "Apply Floyd-Steinberg dithering")
+	dither := flag.Bool("dither", false, "Apply Bayer 8x8 dithering")
 	pingpong := flag.Bool("pingpong", false, "Enable Ping-Pong (bounce/reverse) loop playback")
 	checkTwitch := flag.Bool("check-twitch", true, "Validate output against Twitch animated emote specifications")
 	cpuprofile := flag.String("cpuprofile", "", "Write cpu profile to file")

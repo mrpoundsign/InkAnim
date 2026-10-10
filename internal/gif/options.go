@@ -14,7 +14,7 @@ type ExportOptions struct {
 	LoopCount         int   `json:"loopCount"`         // 0 = infinite loop
 	NumColors         int   `json:"numColors"`         // palette size (up to 256)
 	AlphaThreshold    uint8 `json:"alphaThreshold"`    // pixels with alpha < threshold become transparent (default 128)
-	Dither            bool  `json:"dither"`            // whether to apply Floyd-Steinberg dithering
+	Dither            bool  `json:"dither"`            // whether to apply ordered Bayer 8x8 dithering
 	PingPong          bool  `json:"pingPong"`          // whether to loop in ping-pong (bounce/reverse) mode
 }
 

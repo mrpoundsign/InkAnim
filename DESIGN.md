@@ -61,7 +61,7 @@ The InkAnim visual brand derives directly from the studio icon (`assets/icon.svg
 6. **Twitch Emote Scale Inspector (Live Emulation)**:
    - Simultaneous live playback at **112x112**, **56x56**, and **28x28** over both Twitch Dark (`#18181B`) and Twitch Light (`#FFFFFF`) backgrounds.
 7. **Color & Alpha Optimization**:
-   - High-fidelity palette quantization (32–256 colors) with Floyd-Steinberg dithering and clean alpha thresholding.
+   - High-fidelity palette quantization (2–256 colors) with ordered Bayer 8×8 dithering and clean alpha thresholding.
 
 ---
 
