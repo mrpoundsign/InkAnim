@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -67,6 +68,7 @@ type CenterPreviewPanel struct {
 	currentBg          PreviewBackground
 	bgSelect           *widget.Select
 	frameLabel         *widget.Label
+	fpsWarningText     string
 	playPauseBtn       *widget.Button
 	loopCheck          *widget.Check
 	pingPongCheck      *widget.Check
@@ -123,9 +125,14 @@ type CenterPreviewPanel struct {
 	progressBar     *widget.ProgressBar
 	progressBarInf  *widget.ProgressBarInfinite
 
-	mu      sync.Mutex
-	timer   *time.Timer
-	animGen int
+	mu                 sync.Mutex
+	timer              *time.Timer
+	animGen            int
+	fpsLastTickTime    time.Time
+	fpsPendingExpected time.Duration
+	fpsAccumFrames     int
+	fpsAccumExpected   time.Duration
+	fpsAccumActual     time.Duration
 }
 
 func createCheckerboardImage(w, h int) image.Image {
@@ -319,7 +326,6 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 	)
 
 	p.frameLabel = widget.NewLabelWithStyle("Frame: 0 / 0", fyne.TextAlignCenter, fyne.TextStyle{})
-	p.frameLabel.Truncation = fyne.TextTruncateEllipsis
 
 	p.playPauseBtn = widget.NewButtonWithIcon("Play", theme.MediaPlayIcon(), func() {
 		p.TogglePlay()
@@ -396,6 +402,7 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 		default:
 			p.speedFactor = 1.0
 		}
+		p.resetFPSMonitorLocked()
 	})
 	speedSelect.SetSelected("1x")
 
@@ -610,6 +617,7 @@ func (p *CenterPreviewPanel) Refresh() {
 		p.hideProgressLocked()
 		p.cachedFrames = nil
 		p.frameLabel.SetText("Frame: 0 / 0")
+		p.resetFPSMonitorLocked()
 		p.pauseLocked()
 		return
 	}
@@ -697,8 +705,54 @@ func (p *CenterPreviewPanel) PlayPauseButtonState() (string, widget.Importance) 
 	return p.buttonText, p.buttonImportance
 }
 
+// FPSWarning returns the current text of the low FPS warning and whether it is active under lock.
+func (p *CenterPreviewPanel) FPSWarning() (string, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.fpsWarningText, p.fpsWarningText != ""
+}
+
+func (p *CenterPreviewPanel) resetFPSMonitorLocked() {
+	p.fpsAccumFrames = 0
+	p.fpsAccumActual = 0
+	p.fpsAccumExpected = 0
+	p.fpsLastTickTime = time.Time{}
+	if p.fpsWarningText != "" {
+		p.fpsWarningText = ""
+		p.renderCurrentFrameLocked()
+	}
+}
+
+func (p *CenterPreviewPanel) evaluateFPSSampleLocked(elapsed, expected time.Duration, isLoopWrap bool, totalFrames int) {
+	p.fpsAccumFrames++
+	p.fpsAccumActual += elapsed
+	p.fpsAccumExpected += expected
+
+	minFrames := min(totalFrames, 5)
+	if (p.fpsAccumActual >= time.Second && p.fpsAccumFrames >= minFrames) || (isLoopWrap && p.fpsAccumFrames >= minFrames) {
+		if p.fpsAccumActual > 0 && p.fpsAccumExpected > 0 {
+			actualFPS := float64(p.fpsAccumFrames) / p.fpsAccumActual.Seconds()
+			expectedFPS := float64(p.fpsAccumFrames) / p.fpsAccumExpected.Seconds()
+
+			prevWarn := p.fpsWarningText
+			if actualFPS < expectedFPS*0.75 {
+				p.fpsWarningText = fmt.Sprintf("  ⚠️ ~%.0f FPS (Target: %.0f FPS) — Throttled", actualFPS, expectedFPS)
+			} else {
+				p.fpsWarningText = ""
+			}
+			if p.fpsWarningText != prevWarn {
+				p.renderCurrentFrameLocked()
+			}
+		}
+		p.fpsAccumFrames = 0
+		p.fpsAccumActual = 0
+		p.fpsAccumExpected = 0
+	}
+}
+
 func (p *CenterPreviewPanel) pauseLocked() {
 	p.animGen++
+	p.resetFPSMonitorLocked()
 	if !p.isPlaying {
 		return
 	}
@@ -773,6 +827,16 @@ func (p *CenterPreviewPanel) playLocked() {
 		speed = 1.0
 	}
 	tickDelay := max(time.Duration(float64(durMs)/speed)*time.Millisecond, 10*time.Millisecond)
+	expectedDur := time.Duration(float64(durMs)/speed) * time.Millisecond
+	if expectedDur <= 0 {
+		expectedDur = 100 * time.Millisecond
+	}
+
+	p.fpsLastTickTime = time.Now()
+	p.fpsPendingExpected = expectedDur
+	p.fpsAccumFrames = 0
+	p.fpsAccumActual = 0
+	p.fpsAccumExpected = 0
 
 	var scheduleNextFrame func()
 	scheduleNextFrame = func() {
@@ -783,6 +847,7 @@ func (p *CenterPreviewPanel) playLocked() {
 		}
 
 		totalFrames := len(p.session.RenderedFrames)
+		isLoopWrap := false
 		if p.pingPong && totalFrames >= 3 {
 			if p.pingPongDir <= 0 {
 				p.pingPongDir = -1
@@ -805,6 +870,7 @@ func (p *CenterPreviewPanel) playLocked() {
 				}
 				p.pingPongDir = 1
 				nextIdx = 1
+				isLoopWrap = true
 			}
 			p.currentIdx = nextIdx
 		} else {
@@ -818,9 +884,17 @@ func (p *CenterPreviewPanel) playLocked() {
 					return
 				}
 				nextIdx = 0
+				isLoopWrap = true
 			}
 			p.currentIdx = nextIdx
 		}
+
+		now := time.Now()
+		if !p.fpsLastTickTime.IsZero() {
+			elapsed := now.Sub(p.fpsLastTickTime)
+			p.evaluateFPSSampleLocked(elapsed, p.fpsPendingExpected, isLoopWrap, totalFrames)
+		}
+		p.fpsLastTickTime = now
 
 		p.renderCurrentFrameLocked()
 
@@ -833,6 +907,11 @@ func (p *CenterPreviewPanel) playLocked() {
 			s = 1.0
 		}
 		delay := max(time.Duration(float64(dur)/s)*time.Millisecond, 10*time.Millisecond)
+		nextExpected := time.Duration(float64(dur)/s) * time.Millisecond
+		if nextExpected <= 0 {
+			nextExpected = 100 * time.Millisecond
+		}
+		p.fpsPendingExpected = nextExpected
 
 		p.timer = time.AfterFunc(delay, func() {
 			fyne.Do(scheduleNextFrame)
@@ -1026,6 +1105,7 @@ func (p *CenterPreviewPanel) BeginLoading(stage string) {
 	p.activeFrameIdx = -1
 	p.currentIdx = 0
 	p.pingPongDir = 1
+	p.resetFPSMonitorLocked()
 	p.loadStart = time.Now()
 	p.mainCanvasImage.Image = image.NewRGBA(image.Rect(0, 0, 1, 1))
 	p.mainCanvasImage.Show()
@@ -1099,7 +1179,18 @@ func (p *CenterPreviewPanel) renderCurrentFrameLocked() {
 		}
 	}
 
-	p.frameLabel.SetText(fmt.Sprintf("Frame %d of %d - %s - %dms", displayIdx+1, displayTotal, curr.Label, curr.DurationMs))
+	labelPart := ""
+	if curr.Label != "" &&
+		!strings.EqualFold(curr.Label, fmt.Sprintf("Frame %d", displayIdx+1)) &&
+		!strings.EqualFold(curr.Label, fmt.Sprintf("Frame %d", p.currentIdx+1)) &&
+		!strings.EqualFold(curr.Label, fmt.Sprintf("frame_%02d", p.currentIdx)) &&
+		!strings.EqualFold(curr.Label, fmt.Sprintf("frame_%d", p.currentIdx)) &&
+		!strings.EqualFold(curr.Label, fmt.Sprintf("frame_%02d", p.currentIdx+1)) &&
+		!strings.EqualFold(curr.Label, fmt.Sprintf("frame_%d", p.currentIdx+1)) {
+		labelPart = fmt.Sprintf(" (%s)", curr.Label)
+	}
+
+	p.frameLabel.SetText(fmt.Sprintf("Frame %d of %d%s - %dms%s", displayIdx+1, displayTotal, labelPart, curr.DurationMs, p.fpsWarningText))
 
 	cached := p.cachedFrames[p.currentIdx]
 
