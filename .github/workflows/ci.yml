@@ -61,12 +61,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/go/bin/golangci-lint-v2
-          key: ${{ runner.os }}-golangci-lint-v2-2.13.2
+          key: ${{ runner.os }}-golangci-lint-v2-2.14.0
 
       - name: Install golangci-lint-v2
         if: steps.cache-golangci-lint-v2.outputs.cache-hit != 'true'
         run: |
-          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2
+          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0
           mv ~/go/bin/golangci-lint ~/go/bin/golangci-lint-v2
 
       - name: Run golangci-lint-v2
