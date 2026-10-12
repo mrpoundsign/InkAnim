@@ -1001,6 +1001,62 @@
   </style>
 
   <script>
+    // GPU Hardware Acceleration Diagnostics & WebGL Texture Logger
+    (function initGPUDiagnostics() {
+      try {
+        const testCanvas = document.createElement('canvas');
+        const gl = testCanvas.getContext('webgl2') || testCanvas.getContext('webgl') || testCanvas.getContext('experimental-webgl');
+        if (!gl) {
+          console.warn('[GPU Diagnostics] ❌ WebGL is not supported on this browser/hardware.');
+          return;
+        }
+        const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+        const vendor = dbg ? gl.getParameter(dbg.UNMASKED_VENDOR_WEBGL) : gl.getParameter(gl.VENDOR);
+        const renderer = dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
+        const version = gl.getParameter(gl.VERSION);
+        const glsl = gl.getParameter(gl.SHADING_LANGUAGE_VERSION);
+        const maxTex = gl.getParameter(gl.MAX_TEXTURE_SIZE);
+
+        console.log(
+          '%c[GPU Diagnostics] 🚀 Hardware-Accelerated WebGL Active',
+          'background: #0f172a; color: #38bdf8; font-weight: bold; font-size: 13px; padding: 4px 8px; border-radius: 4px; border: 1px solid #38bdf8;'
+        );
+        console.log(`  🎮 GPU Renderer:   ${renderer}`);
+        console.log(`  🏢 GPU Vendor:     ${vendor}`);
+        console.log(`  ⚡ WebGL Version:  ${version}`);
+        console.log(`  🎨 GLSL Version:   ${glsl}`);
+        console.log(`  🖼️ Max Texture:    ${maxTex}x${maxTex} px`);
+
+        // Hook WebGL texture upload to verify GPU-resident playback
+        function hookGL(proto, glName) {
+          if (!proto || !proto.texImage2D) return;
+          const origTexImage2D = proto.texImage2D;
+          proto.texImage2D = function(...args) {
+            let w = 0, h = 0;
+            if (args.length >= 6) {
+              if (typeof args[3] === 'number') {
+                w = args[3];
+                h = args[4];
+              } else if (args[5] && args[5].width) {
+                w = args[5].width;
+                h = args[5].height;
+              }
+            }
+            if (w >= 100 && h >= 100) {
+              const kb = Math.round((w * h * 4) / 1024);
+              console.log(`%c[WebGL GPU] ⬆️ texImage2D upload: ${w}x${h} (~${kb} KB)`, 'color: #f59e0b;');
+            }
+            return origTexImage2D.apply(this, args);
+          };
+        }
+
+        if (window.WebGLRenderingContext) hookGL(WebGLRenderingContext.prototype, 'WebGL1');
+        if (window.WebGL2RenderingContext) hookGL(WebGL2RenderingContext.prototype, 'WebGL2');
+      } catch (e) {
+        console.warn('[GPU Diagnostics] Error querying GPU:', e);
+      }
+    })();
+
     function getChromeVersion() {
       var raw = navigator.userAgent.match(/Chrom(e|ium)\/([0-9]+)\./);
       return raw ? parseInt(raw[2], 10) : 0;
