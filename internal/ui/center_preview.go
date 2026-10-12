@@ -68,7 +68,6 @@ type CenterPreviewPanel struct {
 	currentBg          PreviewBackground
 	bgSelect           *widget.Select
 	frameLabel         *widget.Label
-	fpsWarningText     string
 	playPauseBtn       *widget.Button
 	loopCheck          *widget.Check
 	pingPongCheck      *widget.Check
@@ -114,9 +113,9 @@ type CenterPreviewPanel struct {
 	onPingPongChange func()
 
 	// Async preview build state (guarded by mu)
-	rebuildGen int            // bumped per requested build; stale results are dropped
-	rebuilding bool           // a build for rebuildGen is in flight
-	loadStart  time.Time      // set by BeginLoading; used for the profile-only first-paint timer
+	rebuildGen       int          // bumped per requested build; stale results are dropped
+	rebuilding       bool         // a build for rebuildGen is in flight
+	loadStart        time.Time    // set by BeginLoading; used for the profile-only first-paint timer
 	rebuildsInFlight atomic.Int32 // builds whose result has not been dispatched yet (lets tests wait)
 
 	// Loading / progress overlay shown over the preview while building
@@ -125,14 +124,15 @@ type CenterPreviewPanel struct {
 	progressBar     *widget.ProgressBar
 	progressBarInf  *widget.ProgressBarInfinite
 
-	mu                 sync.Mutex
-	timer              *time.Timer
-	animGen            int
-	fpsLastTickTime    time.Time
-	fpsPendingExpected time.Duration
-	fpsAccumFrames     int
-	fpsAccumExpected   time.Duration
-	fpsAccumActual     time.Duration
+	mu              sync.Mutex
+	timer           *time.Timer
+	animGen         int
+	playStartTime             time.Time
+	playStartOffset           time.Duration
+	playLastCycle             int
+	droppedFramesCurrentCycle int
+	droppedFramesLastCycle    int
+	fpsWarningText            string
 }
 
 func createCheckerboardImage(w, h int) image.Image {
@@ -278,10 +278,10 @@ func (p *CenterPreviewPanel) CurrentBackground() PreviewBackground {
 // NewCenterPreviewPanel constructs the animation preview and Twitch inspector dock.
 func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 	p := &CenterPreviewPanel{
-		session:        sess,
-		loop:           true,
-		showCropGuides: true,
-		wysiwygColors:  true,
+		session:          sess,
+		loop:             true,
+		showCropGuides:   true,
+		wysiwygColors:    true,
 		speedFactor:      1.0,
 		currentBg:        BgCheckerboard,
 		buttonText:       "Play",
@@ -388,6 +388,11 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 	speedSelect := widget.NewSelect([]string{"0.25x", "0.5x", "1x", "1.5x", "2x"}, func(s string) {
 		p.mu.Lock()
 		defer p.mu.Unlock()
+		if p.isPlaying && !p.playStartTime.IsZero() {
+			realElapsed := time.Since(p.playStartTime)
+			p.playStartOffset += time.Duration(float64(realElapsed) * p.speedFactor)
+			p.playStartTime = time.Now()
+		}
 		switch s {
 		case "0.25x":
 			p.speedFactor = 0.25
@@ -662,6 +667,8 @@ func (p *CenterPreviewPanel) StepFrame(delta int) {
 		p.currentIdx = 0
 	}
 	p.currentIdx = (p.currentIdx + delta%len(frames) + len(frames)) % len(frames)
+	p.playStartOffset = p.timelineOffsetOfFrameLocked(p.currentIdx, p.pingPongDir)
+	p.playStartTime = time.Now()
 	p.renderCurrentFrameLocked()
 }
 
@@ -712,47 +719,174 @@ func (p *CenterPreviewPanel) FPSWarning() (string, bool) {
 	return p.fpsWarningText, p.fpsWarningText != ""
 }
 
+func (p *CenterPreviewPanel) timelineDurationsLocked() (forwardTotal, cycleTotal time.Duration) {
+	frames := p.session.RenderedFrames
+	if len(frames) == 0 {
+		return 0, 0
+	}
+	for _, f := range frames {
+		dur := time.Duration(max(f.DurationMs, 10)) * time.Millisecond
+		forwardTotal += dur
+	}
+	if p.pingPong && len(frames) >= 3 {
+		reverseTotal := time.Duration(0)
+		for i := len(frames) - 2; i >= 1; i-- {
+			dur := time.Duration(max(frames[i].DurationMs, 10)) * time.Millisecond
+			reverseTotal += dur
+		}
+		cycleTotal = forwardTotal + reverseTotal
+	} else {
+		cycleTotal = forwardTotal
+	}
+	return forwardTotal, cycleTotal
+}
+
+func (p *CenterPreviewPanel) timelineOffsetOfFrameLocked(frameIdx, pingPongDir int) time.Duration {
+	frames := p.session.RenderedFrames
+	if len(frames) == 0 || frameIdx < 0 || frameIdx >= len(frames) {
+		return 0
+	}
+	offset := time.Duration(0)
+	if p.pingPong && len(frames) >= 3 && pingPongDir < 0 {
+		for _, f := range frames {
+			offset += time.Duration(max(f.DurationMs, 10)) * time.Millisecond
+		}
+		for i := len(frames) - 2; i > frameIdx; i-- {
+			offset += time.Duration(max(frames[i].DurationMs, 10)) * time.Millisecond
+		}
+		return offset
+	}
+	for i := range frameIdx {
+		offset += time.Duration(max(frames[i].DurationMs, 10)) * time.Millisecond
+	}
+	return offset
+}
+
+func (p *CenterPreviewPanel) frameAtTimelineOffsetLocked(offset, forwardTotal, cycleTotal time.Duration) (int, int, time.Duration) {
+	frames := p.session.RenderedFrames
+	totalFrames := len(frames)
+	if totalFrames == 0 {
+		return 0, 1, 10 * time.Millisecond
+	}
+	if totalFrames == 1 {
+		return 0, 1, 10 * time.Millisecond
+	}
+
+	if p.pingPong && totalFrames >= 3 {
+		if offset >= forwardTotal {
+			revOffset := offset - forwardTotal
+			accum := time.Duration(0)
+			for i := totalFrames - 2; i >= 1; i-- {
+				dur := time.Duration(max(frames[i].DurationMs, 10)) * time.Millisecond
+				if revOffset < accum+dur {
+					return i, -1, (accum + dur) - revOffset
+				}
+				accum += dur
+			}
+			return 1, -1, 10 * time.Millisecond
+		}
+	}
+
+	accum := time.Duration(0)
+	for i := range totalFrames {
+		dur := time.Duration(max(frames[i].DurationMs, 10)) * time.Millisecond
+		if offset < accum+dur {
+			return i, 1, (accum + dur) - offset
+		}
+		accum += dur
+	}
+	return totalFrames - 1, 1, 10 * time.Millisecond
+}
+
+func timelineStepIndex(frameIdx, dir, totalFrames int, pingPong bool) int {
+	if pingPong && totalFrames >= 3 {
+		if dir < 0 {
+			return (totalFrames - 1) + (totalFrames - 1 - frameIdx)
+		}
+		return frameIdx
+	}
+	return frameIdx
+}
+
+func timelineStepsPerCycle(totalFrames int, pingPong bool) int {
+	if pingPong && totalFrames >= 3 {
+		return (totalFrames - 1) * 2
+	}
+	return totalFrames
+}
+
+func (p *CenterPreviewPanel) recordTimelineStepLocked(prevIdx, prevDir, nextIdx, nextDir, cycleDiff, totalFrames int) {
+	stepsPerCycle := timelineStepsPerCycle(totalFrames, p.pingPong)
+	if stepsPerCycle <= 0 {
+		return
+	}
+	prevStep := timelineStepIndex(prevIdx, prevDir, totalFrames, p.pingPong)
+	currStep := timelineStepIndex(nextIdx, nextDir, totalFrames, p.pingPong)
+
+	if cycleDiff == 0 {
+		stepsAdvanced := currStep - prevStep
+		if stepsAdvanced > 1 {
+			p.droppedFramesCurrentCycle += (stepsAdvanced - 1)
+		}
+		return
+	}
+
+	// cycleDiff > 0: One or more cycles completed!
+	oldStepsRemaining := (stepsPerCycle - 1) - prevStep
+	if oldStepsRemaining > 0 {
+		p.droppedFramesCurrentCycle += oldStepsRemaining
+	}
+
+	if cycleDiff > 1 {
+		p.droppedFramesLastCycle = stepsPerCycle
+	} else {
+		p.droppedFramesLastCycle = p.droppedFramesCurrentCycle
+	}
+	p.fpsWarningText = formatDroppedFramesWarning(p.droppedFramesLastCycle)
+	p.droppedFramesCurrentCycle = currStep
+}
+
+func formatDroppedFramesWarning(dropped int) string {
+	switch {
+	case dropped == 1:
+		return "  ⚠️ 1 frame dropped"
+	case dropped > 1:
+		return fmt.Sprintf("  ⚠️ %d frames dropped", dropped)
+	default:
+		return ""
+	}
+}
+
+func (p *CenterPreviewPanel) finalizeRunLocked(prevIdx, prevDir, finalIdx, finalDir, totalFrames int) {
+	stepsPerCycle := timelineStepsPerCycle(totalFrames, p.pingPong)
+	if stepsPerCycle <= 0 {
+		return
+	}
+	prevStep := timelineStepIndex(prevIdx, prevDir, totalFrames, p.pingPong)
+	finalStep := timelineStepIndex(finalIdx, finalDir, totalFrames, p.pingPong)
+	if p.pingPong && totalFrames >= 3 && finalIdx == 0 && finalDir < 0 {
+		finalStep = stepsPerCycle
+	}
+	if finalStep > prevStep+1 {
+		p.droppedFramesCurrentCycle += (finalStep - prevStep - 1)
+	}
+	p.droppedFramesLastCycle = p.droppedFramesCurrentCycle
+	p.fpsWarningText = formatDroppedFramesWarning(p.droppedFramesLastCycle)
+	p.droppedFramesCurrentCycle = 0
+}
+
 func (p *CenterPreviewPanel) resetFPSMonitorLocked() {
-	p.fpsAccumFrames = 0
-	p.fpsAccumActual = 0
-	p.fpsAccumExpected = 0
-	p.fpsLastTickTime = time.Time{}
+	p.droppedFramesCurrentCycle = 0
+	p.droppedFramesLastCycle = 0
 	if p.fpsWarningText != "" {
 		p.fpsWarningText = ""
 		p.renderCurrentFrameLocked()
 	}
 }
 
-func (p *CenterPreviewPanel) evaluateFPSSampleLocked(elapsed, expected time.Duration, isLoopWrap bool, totalFrames int) {
-	p.fpsAccumFrames++
-	p.fpsAccumActual += elapsed
-	p.fpsAccumExpected += expected
-
-	minFrames := min(totalFrames, 5)
-	if (p.fpsAccumActual >= time.Second && p.fpsAccumFrames >= minFrames) || (isLoopWrap && p.fpsAccumFrames >= minFrames) {
-		if p.fpsAccumActual > 0 && p.fpsAccumExpected > 0 {
-			actualFPS := float64(p.fpsAccumFrames) / p.fpsAccumActual.Seconds()
-			expectedFPS := float64(p.fpsAccumFrames) / p.fpsAccumExpected.Seconds()
-
-			prevWarn := p.fpsWarningText
-			if actualFPS < expectedFPS*0.75 {
-				p.fpsWarningText = fmt.Sprintf("  ⚠️ ~%.0f FPS (Target: %.0f FPS) — Throttled", actualFPS, expectedFPS)
-			} else {
-				p.fpsWarningText = ""
-			}
-			if p.fpsWarningText != prevWarn {
-				p.renderCurrentFrameLocked()
-			}
-		}
-		p.fpsAccumFrames = 0
-		p.fpsAccumActual = 0
-		p.fpsAccumExpected = 0
-	}
-}
-
 func (p *CenterPreviewPanel) pauseLocked() {
 	p.animGen++
-	p.resetFPSMonitorLocked()
+	p.playStartTime = time.Time{}
 	if !p.isPlaying {
 		return
 	}
@@ -784,17 +918,34 @@ func (p *CenterPreviewPanel) playLocked() {
 		p.pingPongDir = 1
 	}
 
-	// If loop is disabled or already on/past the last frame, restart from beginning
-	if !p.loop {
-		if p.pingPong && len(frames) >= 3 {
+	forwardTotal, cycleTotal := p.timelineDurationsLocked()
+	if cycleTotal <= 0 {
+		return
+	}
+
+	// Determine starting timeline offset
+	switch {
+	case !p.loop:
+		switch {
+		case p.pingPong && len(frames) >= 3:
 			if p.currentIdx == 0 && p.pingPongDir < 0 {
 				p.pingPongDir = 1
+				p.currentIdx = 0
+				p.playStartOffset = 0
+			} else {
+				p.playStartOffset = p.timelineOffsetOfFrameLocked(p.currentIdx, p.pingPongDir)
 			}
-		} else if p.currentIdx >= len(frames)-1 {
+		case p.currentIdx >= len(frames)-1:
 			p.currentIdx = 0
+			p.playStartOffset = 0
+		default:
+			p.playStartOffset = p.timelineOffsetOfFrameLocked(p.currentIdx, 1)
 		}
-	} else if p.currentIdx >= len(frames) {
+	case p.currentIdx >= len(frames):
 		p.currentIdx = 0
+		p.playStartOffset = 0
+	default:
+		p.playStartOffset = p.timelineOffsetOfFrameLocked(p.currentIdx, p.pingPongDir)
 	}
 
 	// Stop any existing timer first
@@ -818,25 +969,19 @@ func (p *CenterPreviewPanel) playLocked() {
 		})
 	}
 
-	durMs := p.session.RenderedFrames[p.currentIdx].DurationMs
-	if durMs <= 0 {
-		durMs = 100
+	p.playStartTime = time.Now()
+	p.playLastCycle = 0
+	if p.playStartOffset == 0 {
+		p.droppedFramesCurrentCycle = 0
 	}
+
 	speed := p.speedFactor
 	if speed <= 0 {
 		speed = 1.0
 	}
-	tickDelay := max(time.Duration(float64(durMs)/speed)*time.Millisecond, 10*time.Millisecond)
-	expectedDur := time.Duration(float64(durMs)/speed) * time.Millisecond
-	if expectedDur <= 0 {
-		expectedDur = 100 * time.Millisecond
-	}
 
-	p.fpsLastTickTime = time.Now()
-	p.fpsPendingExpected = expectedDur
-	p.fpsAccumFrames = 0
-	p.fpsAccumActual = 0
-	p.fpsAccumExpected = 0
+	_, _, remaining := p.frameAtTimelineOffsetLocked(p.playStartOffset, forwardTotal, cycleTotal)
+	tickDelay := max(time.Duration(float64(remaining)/speed), 5*time.Millisecond)
 
 	var scheduleNextFrame func()
 	scheduleNextFrame = func() {
@@ -847,72 +992,54 @@ func (p *CenterPreviewPanel) playLocked() {
 		}
 
 		totalFrames := len(p.session.RenderedFrames)
-		isLoopWrap := false
-		if p.pingPong && totalFrames >= 3 {
-			if p.pingPongDir <= 0 {
-				p.pingPongDir = -1
-			} else {
-				p.pingPongDir = 1
-			}
-
-			nextIdx := p.currentIdx + p.pingPongDir
-			if nextIdx >= totalFrames {
-				p.pingPongDir = -1
-				nextIdx = totalFrames - 2
-			} else if nextIdx < 0 {
-				if !p.loop {
-					p.currentIdx = 0
-					p.pingPongDir = 1
-					p.pauseLocked()
-					p.renderCurrentFrameLocked()
-					p.mu.Unlock()
-					return
-				}
-				p.pingPongDir = 1
-				nextIdx = 1
-				isLoopWrap = true
-			}
-			p.currentIdx = nextIdx
-		} else {
-			nextIdx := p.currentIdx + 1
-			if nextIdx >= totalFrames {
-				if !p.loop {
-					p.currentIdx = totalFrames - 1
-					p.pauseLocked()
-					p.renderCurrentFrameLocked()
-					p.mu.Unlock()
-					return
-				}
-				nextIdx = 0
-				isLoopWrap = true
-			}
-			p.currentIdx = nextIdx
+		forwardTotal, cycleTotal := p.timelineDurationsLocked()
+		if cycleTotal <= 0 {
+			p.mu.Unlock()
+			return
 		}
 
-		now := time.Now()
-		if !p.fpsLastTickTime.IsZero() {
-			elapsed := now.Sub(p.fpsLastTickTime)
-			p.evaluateFPSSampleLocked(elapsed, p.fpsPendingExpected, isLoopWrap, totalFrames)
-		}
-		p.fpsLastTickTime = now
-
-		p.renderCurrentFrameLocked()
-
-		dur := p.session.RenderedFrames[p.currentIdx].DurationMs
-		if dur <= 0 {
-			dur = 100
-		}
 		s := p.speedFactor
 		if s <= 0 {
 			s = 1.0
 		}
-		delay := max(time.Duration(float64(dur)/s)*time.Millisecond, 10*time.Millisecond)
-		nextExpected := time.Duration(float64(dur)/s) * time.Millisecond
-		if nextExpected <= 0 {
-			nextExpected = 100 * time.Millisecond
-		}
-		p.fpsPendingExpected = nextExpected
 
+		realElapsed := time.Since(p.playStartTime)
+		timelineElapsed := p.playStartOffset + time.Duration(float64(realElapsed)*s)
+
+		prevIdx := p.currentIdx
+		prevDir := p.pingPongDir
+
+		if !p.loop {
+			if timelineElapsed >= cycleTotal {
+				if p.pingPong && totalFrames >= 3 {
+					p.finalizeRunLocked(prevIdx, prevDir, 0, -1, totalFrames)
+					p.currentIdx = 0
+					p.pingPongDir = 1
+				} else {
+					p.finalizeRunLocked(prevIdx, prevDir, totalFrames-1, 1, totalFrames)
+					p.currentIdx = totalFrames - 1
+					p.pingPongDir = 1
+				}
+				p.pauseLocked()
+				p.renderCurrentFrameLocked()
+				p.mu.Unlock()
+				return
+			}
+		}
+
+		cycleNum := int(timelineElapsed / cycleTotal)
+		cycleDiff := cycleNum - p.playLastCycle
+		p.playLastCycle = cycleNum
+		cycleOffset := timelineElapsed % cycleTotal
+
+		nextIdx, dir, remaining := p.frameAtTimelineOffsetLocked(cycleOffset, forwardTotal, cycleTotal)
+		p.recordTimelineStepLocked(prevIdx, prevDir, nextIdx, dir, cycleDiff, totalFrames)
+		p.currentIdx = nextIdx
+		p.pingPongDir = dir
+
+		p.renderCurrentFrameLocked()
+
+		delay := max(time.Duration(float64(remaining)/s), 5*time.Millisecond)
 		p.timer = time.AfterFunc(delay, func() {
 			fyne.Do(scheduleNextFrame)
 		})
@@ -1105,6 +1232,9 @@ func (p *CenterPreviewPanel) BeginLoading(stage string) {
 	p.activeFrameIdx = -1
 	p.currentIdx = 0
 	p.pingPongDir = 1
+	p.playStartTime = time.Time{}
+	p.playStartOffset = 0
+	p.playLastCycle = 0
 	p.resetFPSMonitorLocked()
 	p.loadStart = time.Now()
 	p.mainCanvasImage.Image = image.NewRGBA(image.Rect(0, 0, 1, 1))
