@@ -1,4 +1,4 @@
-package main
+package ui
 
 import (
 	"os"
@@ -30,7 +30,10 @@ func TestTreeActualRendering(t *testing.T) {
 	}
 
 	a := test.NewApp()
-	w := ShowEditorWindow(a, state)
+	defer a.Quit()
+	mw := ShowEditorMainWindow(a, state)
+	defer mw.Close()
+	w := mw.window
 
 	var tree *widget.Tree
 	var findTree func(co fyne.CanvasObject)
@@ -274,6 +277,9 @@ func TestBuildDirectiveWidgetCard(t *testing.T) {
 	}
 
 	cardObj := buildDirectiveWidgetCard(dir, 20, onModified, nil, onCopy, onDelete, nil, nil)
+	if modifiedCalled {
+		t.Errorf("expected onModified NOT to be called during card build/initialization")
+	}
 	card, ok := cardObj.(*fyne.Container)
 	if !ok {
 		t.Fatalf("expected card to be *fyne.Container")
@@ -290,7 +296,7 @@ func TestBuildDirectiveWidgetCard(t *testing.T) {
 		if co == nil {
 			return
 		}
-		if e, ok := co.(*commitEntry); ok {
+		if e, ok := co.(*editorCommitEntry); ok {
 			if e.Text == "45" {
 				angleEntry = &e.Entry
 			}
@@ -788,7 +794,7 @@ func TestCommitEntry_Coalescing(t *testing.T) {
 		redoCalls++
 	}
 
-	entry := newCommitEntry("10", onLive, onCommit, onUndo, onRedo)
+	entry := newEditorCommitEntry("10", onLive, onCommit, onUndo, onRedo)
 	if entry.Text != "10" {
 		t.Errorf("expected initial text 10, got %q", entry.Text)
 	}
@@ -894,11 +900,11 @@ func TestCanDeleteElement(t *testing.T) {
 	}
 
 	// 2. Element with synthetic ID (circle without id): not deletable
-	circleNode := state.NodeMap["circle"]
+	circleNode := state.NodeMap["circle_1"]
 	if circleNode == nil || !circleNode.SyntheticID {
 		t.Fatalf("expected synthetic ID node for circle")
 	}
-	canDel, _ = state.CanDeleteElement("circle")
+	canDel, _ = state.CanDeleteElement("circle_1")
 	if canDel {
 		t.Errorf("expected circle with synthetic ID to NOT be deletable")
 	}
@@ -1023,8 +1029,10 @@ func TestEditorWindow_DeleteElementUI(t *testing.T) {
 	}
 
 	a := test.NewApp()
-	w := ShowEditorWindow(a, state)
-	defer w.Close()
+	defer a.Quit()
+	mw := ShowEditorMainWindow(a, state)
+	defer mw.Close()
+	w := mw.window
 
 	// Find the Delete button in the window
 	var findDeleteBtn func(co fyne.CanvasObject) *widget.Button
@@ -1136,7 +1144,10 @@ func TestEditorWindow_ApplyChanges_CleanVsDirty(t *testing.T) {
 	}
 
 	a := test.NewApp()
-	wClean := ShowEditorWindow(a, stateClean)
+	defer a.Quit()
+	mwClean := ShowEditorMainWindow(a, stateClean)
+	defer mwClean.Close()
+	wClean := mwClean.window
 
 	var findApplyBtn func(co fyne.CanvasObject) *widget.Button
 	findApplyBtn = func(co fyne.CanvasObject) *widget.Button {
@@ -1171,7 +1182,9 @@ func TestEditorWindow_ApplyChanges_CleanVsDirty(t *testing.T) {
 	stateDirty.NodeMap["r1"].LabelPrefix = "Dirty Prefix"
 	stateDirty.ModifiedIDs["r1"] = true
 
-	wDirty := ShowEditorWindow(a, stateDirty)
+	mwDirty := ShowEditorMainWindow(a, stateDirty)
+	defer mwDirty.Close()
+	wDirty := mwDirty.window
 	applyBtnDirty := findApplyBtn(wDirty.Content())
 	if applyBtnDirty == nil {
 		t.Fatalf("applyBtn not found in dirty window")
@@ -1375,18 +1388,30 @@ func TestCopyPasteWindowShortcuts(t *testing.T) {
 </svg>`)
 
 	a := test.NewApp()
+	defer a.Quit()
 	state, err := NewEditorState(svg, "test.svg", []string{"p1"})
 	if err != nil {
 		t.Fatalf("NewEditorState failed: %v", err)
 	}
 
-	w := ShowEditorWindow(a, state)
+	mw := ShowEditorMainWindow(a, state)
+	defer mw.Close()
+	w := mw.window
 	mainMenu := w.MainMenu()
 	if mainMenu == nil || len(mainMenu.Items) == 0 {
 		t.Fatalf("expected mainMenu")
 	}
 
-	editMenu := mainMenu.Items[0]
+	var editMenu *fyne.Menu
+	for _, m := range mainMenu.Items {
+		if m.Label == "Edit" {
+			editMenu = m
+			break
+		}
+	}
+	if editMenu == nil {
+		t.Fatalf("expected editMenu in mainMenu")
+	}
 	var copyItem, pasteItem *fyne.MenuItem
 	for _, item := range editMenu.Items {
 		if item.Label == "Copy Motions" {

@@ -208,29 +208,7 @@ func (p *RightExportPanel) PromptExport() {
 				return
 			}
 
-			data := buf.Bytes()
-			uint8Array := js.Global().Get("Uint8Array").New(len(data))
-			js.CopyBytesToJS(uint8Array, data)
-
-			blobParts := js.Global().Get("Array").New(1)
-			blobParts.SetIndex(0, uint8Array)
-
-			blobOptions := js.Global().Get("Object").New()
-			blobOptions.Set("type", "image/gif")
-
-			blob := js.Global().Get("Blob").New(blobParts, blobOptions)
-			url := js.Global().Get("URL").Call("createObjectURL", blob)
-
-			doc := js.Global().Get("document")
-			body := doc.Get("body")
-			a := doc.Call("createElement", "a")
-			a.Set("href", url)
-			a.Set("download", "emote.gif")
-			a.Get("style").Set("display", "none")
-			body.Call("appendChild", a)
-			a.Call("click")
-			body.Call("removeChild", a)
-			js.Global().Get("URL").Call("revokeObjectURL", url)
+			triggerBrowserDownload("emote.gif", "image/gif", buf.Bytes())
 
 			if p.onExportSuccess != nil {
 				p.onExportSuccess("emote.gif")
@@ -245,24 +223,96 @@ func (p *RightExportPanel) PromptExport() {
 	}()
 }
 
+func triggerBrowserDownload(filename, mimeType string, data []byte) {
+	uint8Array := js.Global().Get("Uint8Array").New(len(data))
+	js.CopyBytesToJS(uint8Array, data)
+
+	blobParts := js.Global().Get("Array").New(1)
+	blobParts.SetIndex(0, uint8Array)
+
+	blobOptions := js.Global().Get("Object").New()
+	blobOptions.Set("type", mimeType)
+
+	blob := js.Global().Get("Blob").New(blobParts, blobOptions)
+	url := js.Global().Get("URL").Call("createObjectURL", blob)
+
+	doc := js.Global().Get("document")
+	body := doc.Get("body")
+	a := doc.Call("createElement", "a")
+	a.Set("href", url)
+	a.Set("download", filename)
+	a.Get("style").Set("display", "none")
+	body.Call("appendChild", a)
+	a.Call("click")
+	body.Call("removeChild", a)
+	js.Global().Get("URL").Call("revokeObjectURL", url)
+}
+
+func (mw *MainWindow) promptSaveSVG() {
+	mw.promptSaveSVGAs()
+}
+
+func (mw *MainWindow) promptSaveSVGAs() {
+	if mw.editorState == nil {
+		return
+	}
+	filename := mw.currentFilename
+	if filename == "" {
+		filename = "animated.svg"
+	}
+	data := mw.editorState.ComputePatchedSVG()
+	triggerBrowserDownload(filename, "image/svg+xml", data)
+	mw.editorState.MarkClean()
+	mw.updateStatus()
+	mw.updateFileLabel()
+}
+
 func (mw *MainWindow) loadDataAsync(data []byte, filename string, onLoaded func()) {
 	prof.Logf("START LOADING SVG: %s (%d bytes)", filename, len(data))
 	if mw.centerPanel != nil {
 		mw.centerPanel.Pause()
 		mw.centerPanel.BeginLoading("Rasterizing frames…")
 	}
+	mw.currentFilename = filename
 	mw.statusLabel.SetText("Loading: " + filename)
 
 	go func() {
+		state, stateErr := NewEditorState(data, mw.currentPath, nil)
 		err := mw.session.LoadSVGData(data, filename)
+
 		fyne.Do(func() {
+			if stateErr != nil {
+				mw.centerPanel.EndLoading()
+				dialog.ShowError(stateErr, mw.window)
+				mw.statusLabel.SetText("Failed to parse SVG.")
+				return
+			}
+			mw.editorState = state
+
 			if err != nil {
 				mw.centerPanel.EndLoading()
 				dialog.ShowError(err, mw.window)
 				mw.statusLabel.SetText("Failed to load SVG.")
 			} else {
-				mw.fileLabel.SetText(fmt.Sprintf("%s (%0.0fx%0.0f)", filename, mw.session.Document.Width, mw.session.Document.Height))
-				mw.statusLabel.SetText(fmt.Sprintf("Loaded %d frames, %d pages. Ready to preview and export.", len(mw.session.Frames), len(mw.session.Pages)))
+				mw.updateFileLabel()
+				mw.updateStatus()
+
+				if mw.tree != nil {
+					mw.tree.OpenAllBranches()
+					mw.tree.ScrollToTop()
+					if state.ActiveNode != nil {
+						mw.tree.Select(state.ActiveNode.ID)
+					}
+				}
+				if mw.refreshTreeFn != nil {
+					mw.refreshTreeFn()
+				}
+				if mw.refreshInspectorFn != nil {
+					mw.refreshInspectorFn()
+				}
+				if mw.updateUndoRedo != nil {
+					mw.updateUndoRedo()
+				}
 
 				mw.leftPanel.Refresh()
 				mw.centerPanel.Refresh() // starts the async preview build; overlay stays up until it swaps in

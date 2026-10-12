@@ -5,6 +5,7 @@ package ui
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"fyne.io/fyne/v2"
@@ -13,6 +14,74 @@ import (
 )
 
 func (mw *MainWindow) initPlatform() {}
+
+func (mw *MainWindow) promptSaveSVG() {
+	if mw.editorState == nil {
+		return
+	}
+	if mw.currentPath != "" {
+		data := mw.editorState.ComputePatchedSVG()
+		if err := os.WriteFile(mw.currentPath, data, 0644); err != nil {
+			dialog.ShowError(err, mw.window)
+			return
+		}
+		mw.editorState.MarkClean()
+		mw.updateStatus()
+		mw.updateFileLabel()
+		return
+	}
+	mw.promptSaveSVGAs()
+}
+
+func (mw *MainWindow) promptSaveSVGAs() {
+	if mw.editorState == nil {
+		return
+	}
+	go func() {
+		defaultName := mw.currentFilename
+		if defaultName == "" {
+			defaultName = "animated.svg"
+		}
+		filename, err := zenity.SelectFileSave(
+			zenity.Title("Save Inkscape SVG"),
+			zenity.Filename(defaultName),
+			zenity.FileFilter{
+				Name:     "Inkscape SVG (*.svg)",
+				Patterns: []string{"*.svg"},
+			},
+			zenity.ConfirmOverwrite(),
+		)
+		if err != nil {
+			if errors.Is(err, zenity.ErrCanceled) {
+				return
+			}
+			fyne.Do(func() {
+				dialog.ShowError(err, mw.window)
+			})
+			return
+		}
+		if filename == "" {
+			return
+		}
+		data := mw.editorState.ComputePatchedSVG()
+		if err := os.WriteFile(filename, data, 0644); err != nil {
+			fyne.Do(func() {
+				dialog.ShowError(err, mw.window)
+			})
+			return
+		}
+		fyne.Do(func() {
+			mw.currentPath = filename
+			mw.currentFilename = filepath.Base(filename)
+			mw.editorState.InputPath = filename
+			mw.editorState.MarkClean()
+			mw.fileWatcher.watchFile(filename)
+			mw.showReloadButton(mw.reloadBtn)
+			mw.updateStatus()
+			mw.updateFileLabel()
+		})
+	}()
+}
 
 func (mw *MainWindow) promptOpenFile() {
 	go func() {

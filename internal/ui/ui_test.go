@@ -691,21 +691,28 @@ func TestSidebarTabs(t *testing.T) {
 		t.Fatal("expected sidebarTabs to be non-nil")
 	}
 
-	if len(mw.sidebarTabs.Items) != 2 {
-		t.Fatalf("expected 2 sidebar tabs, got %d", len(mw.sidebarTabs.Items))
+	if len(mw.sidebarTabs.Items) != 3 {
+		t.Fatalf("expected 3 sidebar tabs, got %d", len(mw.sidebarTabs.Items))
 	}
 
-	if mw.sidebarTabs.Items[0].Text != "Frames" {
-		t.Errorf("expected first tab to be 'Frames', got %q", mw.sidebarTabs.Items[0].Text)
+	if mw.sidebarTabs.Items[0].Text != "Layers & Motion" {
+		t.Errorf("expected first tab to be 'Layers & Motion', got %q", mw.sidebarTabs.Items[0].Text)
 	}
-	if mw.sidebarTabs.Items[1].Text != "Export" {
-		t.Errorf("expected second tab to be 'Export', got %q", mw.sidebarTabs.Items[1].Text)
+	if mw.sidebarTabs.Items[1].Text != "Frames" {
+		t.Errorf("expected second tab to be 'Frames', got %q", mw.sidebarTabs.Items[1].Text)
+	}
+	if mw.sidebarTabs.Items[2].Text != "Export" {
+		t.Errorf("expected third tab to be 'Export', got %q", mw.sidebarTabs.Items[2].Text)
 	}
 
 	// Switch tabs
 	mw.sidebarTabs.SelectIndex(1)
 	if mw.sidebarTabs.SelectedIndex() != 1 {
 		t.Errorf("expected selected tab index 1, got %d", mw.sidebarTabs.SelectedIndex())
+	}
+	mw.sidebarTabs.SelectIndex(2)
+	if mw.sidebarTabs.SelectedIndex() != 2 {
+		t.Errorf("expected selected tab index 2, got %d", mw.sidebarTabs.SelectedIndex())
 	}
 	mw.sidebarTabs.SelectIndex(0)
 	if mw.sidebarTabs.SelectedIndex() != 0 {

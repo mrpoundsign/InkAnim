@@ -161,7 +161,7 @@ func (p *LeftFramesPanel) Refresh() {
 		p.cropPageSelect.Options = []string{"(No document loaded)"}
 		p.cropPageSelect.SetSelected("(No document loaded)")
 		p.cropPageSelect.Disable()
-		p.listContainer.Add(widget.NewLabel("No SVG loaded.\nUse 'Open SVG' above."))
+		p.listContainer.Add(widget.NewLabel("No SVG loaded.\nUse 'File -> Open SVG...'."))
 		p.listContainer.Refresh()
 		return
 	}
