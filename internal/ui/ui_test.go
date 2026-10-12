@@ -994,7 +994,7 @@ func BenchmarkRenderPlaybackTick(b *testing.B) {
 	}
 }
 
-func TestFPSPlaybackWarning(t *testing.T) {
+func TestDroppedFramesWarning(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
 
@@ -1015,62 +1015,154 @@ func TestFPSPlaybackWarning(t *testing.T) {
 	// 1. Initial state while paused: warning is not visible
 	text, visible := p.FPSWarning()
 	if visible {
-		t.Errorf("expected FPS warning to be hidden initially, got visible with text %q", text)
+		t.Errorf("expected warning to be hidden initially, got visible with text %q", text)
 	}
 
 	p.mu.Lock()
 	totalFrames := len(p.cachedFrames)
 
-	// 2. Simulate throttled playback: target 10ms (100 FPS), actual 33ms (30 FPS)
-	// Feed 31 ticks (over 1 second of simulated time)
-	for range 31 {
-		p.evaluateFPSSampleLocked(33*time.Millisecond, 10*time.Millisecond, false, totalFrames)
-	}
-	p.mu.Unlock()
-
-	// Wait for fyne.Do to update the UI
-	waitForPreview(mw)
-
-	text, visible = p.FPSWarning()
-	if !visible {
-		t.Errorf("expected FPS warning to be visible when actual FPS is significantly below target")
-	}
-	if !strings.Contains(strings.ToLower(text), "throttled") || !strings.Contains(text, "Target: 100 FPS") {
-		t.Errorf("expected warning text to mention throttled and Target: 100 FPS, got %q", text)
-	}
-
-	// 3. Simulate healthy playback: target 100ms (10 FPS), actual 100ms (10 FPS)
-	// Feed 11 ticks (over 1 second of simulated time)
-	p.mu.Lock()
-	for range 11 {
-		p.evaluateFPSSampleLocked(100*time.Millisecond, 100*time.Millisecond, false, totalFrames)
-	}
+	// 2. Normal step within cycle (0 to 1): 0 dropped frames, warning still hidden
+	p.recordTimelineStepLocked(0, 1, 1, 1, 0, totalFrames)
 	p.mu.Unlock()
 
 	waitForPreview(mw)
-
 	text, visible = p.FPSWarning()
 	if visible {
-		t.Errorf("expected FPS warning to be hidden when actual matches target, got text %q", text)
+		t.Errorf("expected 0 dropped frames for single step, got visible: %q", text)
 	}
 
-	// 4. Trigger warning again, then verify Pause clears it immediately
+	// 3. Jump forward within cycle (1 to 4): skips 2 frames (2 and 3),
+	// but warning should remain hidden until the cycle completes!
 	p.mu.Lock()
-	for range 31 {
-		p.evaluateFPSSampleLocked(33*time.Millisecond, 10*time.Millisecond, false, totalFrames)
-	}
+	p.recordTimelineStepLocked(1, 1, 4, 1, 0, totalFrames)
 	p.mu.Unlock()
 
 	waitForPreview(mw)
-	_, visible = p.FPSWarning()
-	if !visible {
-		t.Errorf("expected FPS warning to be visible again")
+	text, visible = p.FPSWarning()
+	if visible {
+		t.Errorf("expected warning to remain hidden mid-cycle before cycle completion, got %q", text)
 	}
 
+	// 4. Cycle completes (loop wrap from 4 to 0, cycleDiff = 1):
+	// Skips remaining frames in cycle and updates warning!
+	p.mu.Lock()
+	p.recordTimelineStepLocked(4, 1, 0, 1, 1, totalFrames)
+	p.mu.Unlock()
+
+	waitForPreview(mw)
+	text, visible = p.FPSWarning()
+	if !visible {
+		t.Fatalf("expected dropped frames warning to be visible after cycle completed")
+	}
+	if !strings.Contains(text, "frames dropped") {
+		t.Errorf("expected text to mention 'frames dropped', got %q", text)
+	}
+
+	// 5. Verify Pause does NOT clear the warning (warning persists so user can inspect it)
 	p.Pause()
 	waitForPreview(mw)
-	_, visible = p.FPSWarning()
-	if visible {
-		t.Errorf("expected Pause to hide FPS warning")
+	textAfterPause, visibleAfterPause := p.FPSWarning()
+	if !visibleAfterPause || textAfterPause != text {
+		t.Errorf("expected warning to persist after pause, got visible=%v text=%q", visibleAfterPause, textAfterPause)
+	}
+
+	// 6. Non-looping finalizeRun: test accurate calculation and display
+	p.mu.Lock()
+	p.finalizeRunLocked(1, 1, 4, 1, totalFrames)
+	p.mu.Unlock()
+
+	waitForPreview(mw)
+	textRun, visibleRun := p.FPSWarning()
+	if !visibleRun || !strings.Contains(textRun, "2 frames dropped") {
+		t.Errorf("expected '2 frames dropped' after finalizeRun, got visible=%v text=%q", visibleRun, textRun)
+	}
+
+	// 7. Verify resetFPSMonitor clears it
+	p.mu.Lock()
+	p.resetFPSMonitorLocked()
+	p.mu.Unlock()
+	waitForPreview(mw)
+	_, visibleReset := p.FPSWarning()
+	if visibleReset {
+		t.Errorf("expected resetFPSMonitorLocked to clear warning")
 	}
 }
+
+func TestTimelinePlaybackAndFrameSkipping(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	mw := NewMainWindow(app)
+	defer waitForPreview(mw)
+
+	testSVGPath, err := filepath.Abs("../../testdata/pendulum.svg")
+	if err != nil {
+		t.Fatalf("failed to resolve test SVG path: %v", err)
+	}
+
+	loadAndWait(mw, testSVGPath)
+	mw.centerPanel.Pause()
+	waitForPreview(mw)
+
+	p := mw.centerPanel
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	totalFrames := len(p.session.RenderedFrames)
+	if totalFrames < 2 {
+		t.Fatalf("expected at least 2 frames, got %d", totalFrames)
+	}
+
+	// 1. Verify timeline durations in linear mode
+	p.pingPong = false
+	fwdTotal, cycleTotal := p.timelineDurationsLocked()
+	if fwdTotal != cycleTotal {
+		t.Errorf("expected fwdTotal == cycleTotal in linear mode, got %v vs %v", fwdTotal, cycleTotal)
+	}
+	if cycleTotal <= 0 {
+		t.Fatalf("expected positive cycleTotal, got %v", cycleTotal)
+	}
+
+	// 2. Test timeline offset lookup for frame 0
+	off0 := p.timelineOffsetOfFrameLocked(0, 1)
+	if off0 != 0 {
+		t.Errorf("expected frame 0 offset 0, got %v", off0)
+	}
+
+	// 3. Test frame skipping: if elapsed time jumps forward by 2.5 frames of duration
+	frameDur := time.Duration(max(p.session.RenderedFrames[0].DurationMs, 10)) * time.Millisecond
+	jumpOffset := frameDur*2 + frameDur/2
+	idx, dir, remaining := p.frameAtTimelineOffsetLocked(jumpOffset, fwdTotal, cycleTotal)
+	if idx != 2 {
+		t.Errorf("expected jumped frame index 2, got %d", idx)
+	}
+	if dir != 1 {
+		t.Errorf("expected direction 1, got %d", dir)
+	}
+	if remaining != frameDur/2 {
+		t.Errorf("expected remaining %v, got %v", frameDur/2, remaining)
+	}
+
+	// 4. Test Ping-Pong timeline cycle
+	if totalFrames >= 3 {
+		p.pingPong = true
+		fwdPP, cyclePP := p.timelineDurationsLocked()
+		expectedCycle := fwdPP
+		for i := totalFrames - 2; i >= 1; i-- {
+			expectedCycle += time.Duration(max(p.session.RenderedFrames[i].DurationMs, 10)) * time.Millisecond
+		}
+		if cyclePP != expectedCycle {
+			t.Errorf("expected ping pong cycle %v, got %v", expectedCycle, cyclePP)
+		}
+
+		// Reverse leg lookup: just past fwdPP
+		revIdx, revDir, _ := p.frameAtTimelineOffsetLocked(fwdPP+10*time.Millisecond, fwdPP, cyclePP)
+		if revDir != -1 {
+			t.Errorf("expected reverse direction -1, got %d", revDir)
+		}
+		if revIdx != totalFrames-2 {
+			t.Errorf("expected first reverse frame %d, got %d", totalFrames-2, revIdx)
+		}
+	}
+}
+
