@@ -137,6 +137,7 @@ func ParseTree(svgData []byte) ([]*DocNode, map[string]*DocNode, error) {
 	decoder := xml.NewDecoder(bytes.NewReader(svgData))
 	nodeMap := make(map[string]*DocNode)
 	var roots []*DocNode
+	var syntheticCount int
 
 	type stackItem struct {
 		tag  string
@@ -185,8 +186,8 @@ func ParseTree(svgData []byte) ([]*DocNode, map[string]*DocNode, error) {
 
 			hasRealID := id != ""
 			if !hasRealID {
-				// Generate a synthetic or fallback identifier for grouping
-				id = localTag
+				syntheticCount++
+				id = fmt.Sprintf("%s_%d", localTag, syntheticCount)
 			}
 
 			prefix, directives, suffix := ParseDirectives(label)
