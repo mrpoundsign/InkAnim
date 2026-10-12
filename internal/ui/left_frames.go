@@ -21,7 +21,6 @@ type LeftFramesPanel struct {
 	cropBoundaryRadio *widget.RadioGroup
 	cropPageSelect    *widget.Select
 	speedPresetSelect *widget.Select
-	globalMsInput     *NumericCommitInput
 	onFramesChange    func()
 	isUpdating        bool
 }
@@ -81,13 +80,6 @@ func NewLeftFramesPanel(sess *app.Session, onFramesChange func()) *LeftFramesPan
 
 	// Global Speed Master Bar
 	speedLabel := widget.NewLabelWithStyle("Global Speed:", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
-	p.globalMsInput = NewNumericCommitInput(sess.ExportOptions.DefaultDurationMs, 10, 10000, "ms:", func(val int) {
-		p.session.SetGlobalDuration(val)
-		if p.onFramesChange != nil {
-			p.onFramesChange()
-		}
-	})
-	p.globalMsInput.Hide()
 
 	p.speedPresetSelect = widget.NewSelect([]string{
 		"10 FPS (100ms)",
@@ -96,16 +88,11 @@ func NewLeftFramesPanel(sess *app.Session, onFramesChange func()) *LeftFramesPan
 		"20 FPS (50ms)",
 		"24 FPS (41ms)",
 		"30 FPS (33ms)",
-		"Custom",
+		"60 FPS (16ms)",
 	}, func(selected string) {
 		if p.isUpdating {
 			return
 		}
-		if selected == "Custom" {
-			p.globalMsInput.Show()
-			return
-		}
-		p.globalMsInput.Hide()
 		ms := 0
 		switch selected {
 		case "10 FPS (100ms)":
@@ -120,10 +107,11 @@ func NewLeftFramesPanel(sess *app.Session, onFramesChange func()) *LeftFramesPan
 			ms = 41
 		case "30 FPS (33ms)":
 			ms = 33
+		case "60 FPS (16ms)":
+			ms = 16
 		}
 		if ms > 0 {
 			p.isUpdating = true
-			p.globalMsInput.SetValue(ms)
 			p.session.SetGlobalDuration(ms)
 			p.isUpdating = false
 			p.Refresh()
@@ -142,7 +130,6 @@ func NewLeftFramesPanel(sess *app.Session, onFramesChange func()) *LeftFramesPan
 		widget.NewSeparator(),
 		speedLabel,
 		p.speedPresetSelect,
-		p.globalMsInput.Container,
 		widget.NewSeparator(),
 	)
 

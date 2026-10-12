@@ -653,19 +653,16 @@ func TestExportPresetsAndCustomInputs(t *testing.T) {
 	}
 }
 
-func TestSpeedPresetAndCustomInput(t *testing.T) {
+func TestSpeedPresets(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
 
 	sess := appkg.NewSession()
 	panel := NewLeftFramesPanel(sess, nil)
 
-	// Default: 10 FPS (100ms) and custom input hidden
+	// Default: 10 FPS (100ms)
 	if panel.speedPresetSelect.Selected != "10 FPS (100ms)" {
 		t.Errorf("expected default speed '10 FPS (100ms)', got %q", panel.speedPresetSelect.Selected)
-	}
-	if panel.globalMsInput.Visible() {
-		t.Errorf("expected custom ms input to be hidden by default")
 	}
 	if sess.ExportOptions.DefaultDurationMs != 100 {
 		t.Errorf("expected default duration 100ms, got %d", sess.ExportOptions.DefaultDurationMs)
@@ -673,24 +670,14 @@ func TestSpeedPresetAndCustomInput(t *testing.T) {
 
 	// Switch to 20 FPS (50ms)
 	panel.speedPresetSelect.SetSelected("20 FPS (50ms)")
-	if panel.globalMsInput.Visible() {
-		t.Errorf("expected custom ms input to remain hidden for 20 FPS")
-	}
 	if sess.ExportOptions.DefaultDurationMs != 50 {
 		t.Errorf("expected duration 50ms, got %d", sess.ExportOptions.DefaultDurationMs)
 	}
 
-	// Switch to Custom
-	panel.speedPresetSelect.SetSelected("Custom")
-	if !panel.globalMsInput.Visible() {
-		t.Errorf("expected custom ms input to be visible when 'Custom' selected")
-	}
-
-	// Apply custom duration
-	panel.globalMsInput.Entry.SetText("75")
-	test.Tap(panel.globalMsInput.Button)
-	if sess.ExportOptions.DefaultDurationMs != 75 {
-		t.Errorf("expected custom duration 75ms, got %d", sess.ExportOptions.DefaultDurationMs)
+	// Switch to 60 FPS (16ms)
+	panel.speedPresetSelect.SetSelected("60 FPS (16ms)")
+	if sess.ExportOptions.DefaultDurationMs != 16 {
+		t.Errorf("expected duration 16ms, got %d", sess.ExportOptions.DefaultDurationMs)
 	}
 }
 
@@ -1007,4 +994,83 @@ func BenchmarkRenderPlaybackTick(b *testing.B) {
 	}
 }
 
+func TestFPSPlaybackWarning(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
 
+	mw := NewMainWindow(app)
+	defer waitForPreview(mw)
+
+	testSVGPath, err := filepath.Abs("../../testdata/pendulum.svg")
+	if err != nil {
+		t.Fatalf("failed to resolve test SVG path: %v", err)
+	}
+
+	loadAndWait(mw, testSVGPath)
+	mw.centerPanel.Pause()
+	waitForPreview(mw)
+
+	p := mw.centerPanel
+
+	// 1. Initial state while paused: warning is not visible
+	text, visible := p.FPSWarning()
+	if visible {
+		t.Errorf("expected FPS warning to be hidden initially, got visible with text %q", text)
+	}
+
+	p.mu.Lock()
+	totalFrames := len(p.cachedFrames)
+
+	// 2. Simulate throttled playback: target 10ms (100 FPS), actual 33ms (30 FPS)
+	// Feed 31 ticks (over 1 second of simulated time)
+	for range 31 {
+		p.evaluateFPSSampleLocked(33*time.Millisecond, 10*time.Millisecond, false, totalFrames)
+	}
+	p.mu.Unlock()
+
+	// Wait for fyne.Do to update the UI
+	waitForPreview(mw)
+
+	text, visible = p.FPSWarning()
+	if !visible {
+		t.Errorf("expected FPS warning to be visible when actual FPS is significantly below target")
+	}
+	if !strings.Contains(strings.ToLower(text), "throttled") || !strings.Contains(text, "Target: 100 FPS") {
+		t.Errorf("expected warning text to mention throttled and Target: 100 FPS, got %q", text)
+	}
+
+	// 3. Simulate healthy playback: target 100ms (10 FPS), actual 100ms (10 FPS)
+	// Feed 11 ticks (over 1 second of simulated time)
+	p.mu.Lock()
+	for range 11 {
+		p.evaluateFPSSampleLocked(100*time.Millisecond, 100*time.Millisecond, false, totalFrames)
+	}
+	p.mu.Unlock()
+
+	waitForPreview(mw)
+
+	text, visible = p.FPSWarning()
+	if visible {
+		t.Errorf("expected FPS warning to be hidden when actual matches target, got text %q", text)
+	}
+
+	// 4. Trigger warning again, then verify Pause clears it immediately
+	p.mu.Lock()
+	for range 31 {
+		p.evaluateFPSSampleLocked(33*time.Millisecond, 10*time.Millisecond, false, totalFrames)
+	}
+	p.mu.Unlock()
+
+	waitForPreview(mw)
+	_, visible = p.FPSWarning()
+	if !visible {
+		t.Errorf("expected FPS warning to be visible again")
+	}
+
+	p.Pause()
+	waitForPreview(mw)
+	_, visible = p.FPSWarning()
+	if visible {
+		t.Errorf("expected Pause to hide FPS warning")
+	}
+}
