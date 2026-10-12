@@ -2,7 +2,7 @@ package app
 
 var (
 	// Version is the current application version.
-	Version = "0.5.0-beta2"
+	Version = "0.5.0-beta3"
 	// Commit is the git commit hash injected at build time.
 	Commit = "none"
 	// Date is the build date injected at build time.
