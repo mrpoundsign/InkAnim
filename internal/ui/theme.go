@@ -42,6 +42,8 @@ func (m *StudioTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant)
 		return color.RGBA{R: 71, G: 85, B: 105, A: 180} // Slate-600 #475569
 	case theme.ColorNameError:
 		return color.RGBA{R: 239, G: 68, B: 68, A: 255} // Red #EF4444
+	case theme.ColorNameWarning:
+		return color.RGBA{R: 251, G: 191, B: 36, A: 255} // Amber #FBBF24
 	case theme.ColorNameSuccess:
 		return color.RGBA{R: 34, G: 197, B: 94, A: 255} // Green #22C55E
 	default:

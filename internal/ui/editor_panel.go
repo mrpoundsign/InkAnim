@@ -621,19 +621,31 @@ func setupLayersAndMotionTab(mw *MainWindow) fyne.CanvasObject {
 				displayText = "<" + node.Tag + "> " + displayText
 			}
 
-			if node.HasDirectives() {
+			hasDirectives := node.HasDirectives()
+			isModified := state.ModifiedIDs[node.ID]
+
+			if hasDirectives {
 				var dirTypes []string
 				for _, d := range node.Directives {
 					dirTypes = append(dirTypes, d.Type)
 				}
-				displayText = fmt.Sprintf("* %s [%s]", displayText, strings.Join(dirTypes, ", "))
-				txt.TextStyle = fyne.TextStyle{Bold: true}
-			} else {
-				txt.TextStyle = fyne.TextStyle{}
+				displayText = fmt.Sprintf("%s [%s]", displayText, strings.Join(dirTypes, ", "))
+			}
+
+			txt.TextStyle = fyne.TextStyle{
+				Bold:   hasDirectives,
+				Italic: isModified,
 			}
 
 			txt.Text = displayText
-			txt.Color = theme.Color(theme.ColorNameForeground)
+			switch {
+			case isModified:
+				txt.Color = theme.Color(theme.ColorNameWarning)
+			case hasDirectives:
+				txt.Color = theme.Color(theme.ColorNamePrimary)
+			default:
+				txt.Color = theme.Color(theme.ColorNameForeground)
+			}
 			txt.Refresh()
 		},
 		mw.doDeleteActiveElement,
