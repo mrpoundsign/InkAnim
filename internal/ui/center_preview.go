@@ -59,6 +59,9 @@ type CenterPreviewPanel struct {
 	container *fyne.Container
 
 	mainCanvasImage    *canvas.Image
+	mainCanvasStack    *fyne.Container
+	mainCanvasFrames   []*canvas.Image
+	activeFrameIdx     int
 	bgContainer        *fyne.Container
 	stageStack         *fyne.Container
 	currentBg          PreviewBackground
@@ -74,12 +77,24 @@ type CenterPreviewPanel struct {
 	twitchEmulationBox *fyne.Container
 
 	// Twitch Scale Emulation previews
-	twitch112Dark  *canvas.Image
-	twitch56Dark   *canvas.Image
-	twitch28Dark   *canvas.Image
-	twitch112Light *canvas.Image
-	twitch56Light  *canvas.Image
-	twitch28Light  *canvas.Image
+	twitch112Dark        *canvas.Image
+	twitch56Dark         *canvas.Image
+	twitch28Dark         *canvas.Image
+	twitch112Light       *canvas.Image
+	twitch56Light        *canvas.Image
+	twitch28Light        *canvas.Image
+	twitch112DarkStack   *fyne.Container
+	twitch56DarkStack    *fyne.Container
+	twitch28DarkStack    *fyne.Container
+	twitch112LightStack  *fyne.Container
+	twitch56LightStack   *fyne.Container
+	twitch28LightStack   *fyne.Container
+	twitch112DarkFrames  []*canvas.Image
+	twitch56DarkFrames   []*canvas.Image
+	twitch28DarkFrames   []*canvas.Image
+	twitch112LightFrames []*canvas.Image
+	twitch56LightFrames  []*canvas.Image
+	twitch28LightFrames  []*canvas.Image
 
 	isPlaying      bool
 	loop           bool
@@ -268,12 +283,14 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 
 	p.bgContainer = container.NewStack(p.makeBackgroundObject(BgCheckerboard))
 
-	// Main Canvas Image
+	// Main Canvas Image & GPU-resident frame stack
 	blank := image.NewRGBA(image.Rect(0, 0, 300, 300))
 	p.mainCanvasImage = canvas.NewImageFromImage(blank)
 	p.mainCanvasImage.FillMode = canvas.ImageFillContain
 	p.mainCanvasImage.ScaleMode = canvas.ImageScaleFastest
 	p.mainCanvasImage.SetMinSize(fyne.NewSize(150, 150))
+	p.mainCanvasStack = container.NewStack(p.mainCanvasImage)
+	p.activeFrameIdx = -1
 
 	// Loading / progress overlay
 	p.progressLabel = widget.NewLabelWithStyle("", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
@@ -297,7 +314,7 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 
 	p.stageStack = container.NewStack(
 		p.bgContainer,
-		p.mainCanvasImage,
+		p.mainCanvasStack,
 		p.progressOverlay,
 	)
 
@@ -336,6 +353,16 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 	p.cropGuidesCheck = widget.NewCheck("Crop Guides", func(checked bool) {
 		p.mu.Lock()
 		p.showCropGuides = checked
+		if len(p.mainCanvasFrames) == len(p.cachedFrames) {
+			for i, cf := range p.cachedFrames {
+				if checked {
+					p.mainCanvasFrames[i].Image = cf.withGuides
+				} else {
+					p.mainCanvasFrames[i].Image = cf.withoutGuides
+				}
+				p.mainCanvasFrames[i].Refresh()
+			}
+		}
 		p.renderCurrentFrameLocked()
 		p.mu.Unlock()
 	})
@@ -426,22 +453,22 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 	)
 
 	// Twitch Scale Emulation Dock: 3 sizes (112px, 56px, 28px) on Dark & Light backgrounds
-	p.twitch112Dark = p.newScaledImage(112)
-	p.twitch56Dark = p.newScaledImage(56)
-	p.twitch28Dark = p.newScaledImage(28)
+	p.twitch112DarkStack, p.twitch112Dark = p.newScaledStack(112)
+	p.twitch56DarkStack, p.twitch56Dark = p.newScaledStack(56)
+	p.twitch28DarkStack, p.twitch28Dark = p.newScaledStack(28)
 
-	p.twitch112Light = p.newScaledImage(112)
-	p.twitch56Light = p.newScaledImage(56)
-	p.twitch28Light = p.newScaledImage(28)
+	p.twitch112LightStack, p.twitch112Light = p.newScaledStack(112)
+	p.twitch56LightStack, p.twitch56Light = p.newScaledStack(56)
+	p.twitch28LightStack, p.twitch28Light = p.newScaledStack(28)
 
 	darkLabel := widget.NewLabelWithStyle("Twitch Dark (#18181B)", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
 	darkSubSwatches := container.NewHBox(
-		p.wrapWithBackground(p.twitch56Dark, 56, color.RGBA{R: 24, G: 24, B: 27, A: 255}),
-		p.wrapWithBackground(p.twitch28Dark, 28, color.RGBA{R: 24, G: 24, B: 27, A: 255}),
+		p.wrapWithBackground(p.twitch56DarkStack, 56, color.RGBA{R: 24, G: 24, B: 27, A: 255}),
+		p.wrapWithBackground(p.twitch28DarkStack, 28, color.RGBA{R: 24, G: 24, B: 27, A: 255}),
 	)
 	darkCardContent := container.NewVBox(
 		darkLabel,
-		p.wrapWithBackground(p.twitch112Dark, 112, color.RGBA{R: 24, G: 24, B: 27, A: 255}),
+		p.wrapWithBackground(p.twitch112DarkStack, 112, color.RGBA{R: 24, G: 24, B: 27, A: 255}),
 		container.NewCenter(darkSubSwatches),
 	)
 	darkCardBg := canvas.NewRectangle(color.RGBA{R: 15, G: 17, B: 21, A: 255})
@@ -455,12 +482,12 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 
 	lightLabel := widget.NewLabelWithStyle("Twitch Light (#FFFFFF)", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
 	lightSubSwatches := container.NewHBox(
-		p.wrapWithBackground(p.twitch56Light, 56, color.RGBA{R: 255, G: 255, B: 255, A: 255}),
-		p.wrapWithBackground(p.twitch28Light, 28, color.RGBA{R: 255, G: 255, B: 255, A: 255}),
+		p.wrapWithBackground(p.twitch56LightStack, 56, color.RGBA{R: 255, G: 255, B: 255, A: 255}),
+		p.wrapWithBackground(p.twitch28LightStack, 28, color.RGBA{R: 255, G: 255, B: 255, A: 255}),
 	)
 	lightCardContent := container.NewVBox(
 		lightLabel,
-		p.wrapWithBackground(p.twitch112Light, 112, color.RGBA{R: 255, G: 255, B: 255, A: 255}),
+		p.wrapWithBackground(p.twitch112LightStack, 112, color.RGBA{R: 255, G: 255, B: 255, A: 255}),
 		container.NewCenter(lightSubSwatches),
 	)
 	lightCardBg := canvas.NewRectangle(color.RGBA{R: 15, G: 17, B: 21, A: 255})
@@ -525,6 +552,27 @@ func (p *CenterPreviewPanel) SetOnPingPongChange(fn func()) {
 	p.onPingPongChange = fn
 }
 
+type fixedSquareLayout struct {
+	size float32
+}
+
+func (l *fixedSquareLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) {
+	for _, o := range objects {
+		o.Resize(fyne.NewSize(l.size, l.size))
+		o.Move(fyne.NewPos((size.Width-l.size)/2, (size.Height-l.size)/2))
+	}
+}
+
+func (l *fixedSquareLayout) MinSize(objects []fyne.CanvasObject) fyne.Size {
+	return fyne.NewSize(l.size, l.size)
+}
+
+func (p *CenterPreviewPanel) newScaledStack(size float32) (*fyne.Container, *canvas.Image) {
+	img := p.newScaledImage(size)
+	st := container.NewStack(img)
+	return st, img
+}
+
 func (p *CenterPreviewPanel) newScaledImage(size float32) *canvas.Image {
 	blank := image.NewRGBA(image.Rect(0, 0, int(size), int(size)))
 	img := canvas.NewImageFromImage(blank)
@@ -534,14 +582,14 @@ func (p *CenterPreviewPanel) newScaledImage(size float32) *canvas.Image {
 	return img
 }
 
-func (p *CenterPreviewPanel) wrapWithBackground(img *canvas.Image, size float32, bg color.Color) fyne.CanvasObject {
+func (p *CenterPreviewPanel) wrapWithBackground(obj fyne.CanvasObject, size float32, bg color.Color) fyne.CanvasObject {
 	boxSize := size + 8
 	rect := canvas.NewRectangle(bg)
 	rect.SetMinSize(fyne.NewSize(boxSize, boxSize))
 	rect.CornerRadius = 4
 	rect.StrokeColor = color.RGBA{R: 71, G: 85, B: 105, A: 180} // Slate border (#475569)
 	rect.StrokeWidth = 1
-	sq := container.NewStack(rect, container.NewCenter(img))
+	sq := container.NewStack(rect, container.New(&fixedSquareLayout{size: size}, obj))
 	return container.NewCenter(sq)
 }
 
@@ -845,6 +893,92 @@ func (p *CenterPreviewPanel) applyRebuildResult(gen int, frames []cachedPreviewF
 	if p.currentIdx >= len(frames) {
 		p.currentIdx = 0
 	}
+
+	// Clean up any existing frame textures before installing the new frame stack
+	if len(p.mainCanvasFrames) > 0 {
+		for _, img := range p.mainCanvasFrames {
+			img.Refresh()
+		}
+	}
+
+	// Prepare GPU-resident preview frame stack
+	p.mainCanvasFrames = make([]*canvas.Image, len(frames))
+	stackObjs := make([]fyne.CanvasObject, len(frames))
+	for i, cf := range frames {
+		var imgData *image.RGBA
+		if p.showCropGuides {
+			imgData = cf.withGuides
+		} else {
+			imgData = cf.withoutGuides
+		}
+		img := canvas.NewImageFromImage(imgData)
+		img.FillMode = canvas.ImageFillContain
+		img.ScaleMode = canvas.ImageScaleFastest
+		img.SetMinSize(fyne.NewSize(150, 150))
+		if i == p.currentIdx {
+			img.Show()
+			p.mainCanvasImage = img
+		} else {
+			img.Hide()
+		}
+		p.mainCanvasFrames[i] = img
+		stackObjs[i] = img
+	}
+	p.activeFrameIdx = p.currentIdx
+	if len(stackObjs) > 0 {
+		p.mainCanvasStack.Objects = stackObjs
+	} else {
+		p.mainCanvasStack.Objects = []fyne.CanvasObject{p.mainCanvasImage}
+	}
+	p.mainCanvasStack.Refresh()
+
+	// Prepare GPU-resident Twitch thumbnail stacks
+	makeThumbFrames := func(size float32, pick func(cf *cachedPreviewFrame) *image.RGBA) ([]*canvas.Image, []fyne.CanvasObject, *canvas.Image) {
+		imgs := make([]*canvas.Image, len(frames))
+		objs := make([]fyne.CanvasObject, len(frames))
+		var active *canvas.Image
+		for i, cf := range frames {
+			img := canvas.NewImageFromImage(pick(&cf))
+			img.FillMode = canvas.ImageFillContain
+			img.ScaleMode = canvas.ImageScaleFastest
+			img.SetMinSize(fyne.NewSize(size, size))
+			if i == p.currentIdx {
+				img.Show()
+				active = img
+			} else {
+				img.Hide()
+			}
+			imgs[i] = img
+			objs[i] = img
+		}
+		return imgs, objs, active
+	}
+
+	var stack112D, stack56D, stack28D, stack112L, stack56L, stack28L []fyne.CanvasObject
+	p.twitch112DarkFrames, stack112D, p.twitch112Dark = makeThumbFrames(112, func(cf *cachedPreviewFrame) *image.RGBA { return cf.twitch112 })
+	p.twitch56DarkFrames, stack56D, p.twitch56Dark = makeThumbFrames(56, func(cf *cachedPreviewFrame) *image.RGBA { return cf.twitch56 })
+	p.twitch28DarkFrames, stack28D, p.twitch28Dark = makeThumbFrames(28, func(cf *cachedPreviewFrame) *image.RGBA { return cf.twitch28 })
+
+	p.twitch112LightFrames, stack112L, p.twitch112Light = makeThumbFrames(112, func(cf *cachedPreviewFrame) *image.RGBA { return cf.twitch112 })
+	p.twitch56LightFrames, stack56L, p.twitch56Light = makeThumbFrames(56, func(cf *cachedPreviewFrame) *image.RGBA { return cf.twitch56 })
+	p.twitch28LightFrames, stack28L, p.twitch28Light = makeThumbFrames(28, func(cf *cachedPreviewFrame) *image.RGBA { return cf.twitch28 })
+
+	if p.twitch112DarkStack != nil {
+		p.twitch112DarkStack.Objects = stack112D
+		p.twitch56DarkStack.Objects = stack56D
+		p.twitch28DarkStack.Objects = stack28D
+		p.twitch112LightStack.Objects = stack112L
+		p.twitch56LightStack.Objects = stack56L
+		p.twitch28LightStack.Objects = stack28L
+
+		p.twitch112DarkStack.Refresh()
+		p.twitch56DarkStack.Refresh()
+		p.twitch28DarkStack.Refresh()
+		p.twitch112LightStack.Refresh()
+		p.twitch56LightStack.Refresh()
+		p.twitch28LightStack.Refresh()
+	}
+
 	p.hideProgressLocked()
 	p.renderCurrentFrameLocked()
 	if !p.loadStart.IsZero() {
@@ -864,10 +998,38 @@ func (p *CenterPreviewPanel) BeginLoading(stage string) {
 	p.rebuildGen++ // drop any in-flight build for the previous document
 	p.rebuilding = false
 	p.cachedFrames = nil
+	if len(p.mainCanvasFrames) > 0 {
+		for _, img := range p.mainCanvasFrames {
+			img.Refresh() // explicitly free GPU textures on previous session frames
+		}
+		p.mainCanvasFrames = nil
+	}
+	clearThumbFrames := func(frames *[]*canvas.Image, stack *fyne.Container, placeholder *canvas.Image) {
+		if len(*frames) > 0 {
+			for _, img := range *frames {
+				img.Refresh()
+			}
+			*frames = nil
+		}
+		if stack != nil && placeholder != nil {
+			stack.Objects = []fyne.CanvasObject{placeholder}
+			placeholder.Show()
+		}
+	}
+	clearThumbFrames(&p.twitch112DarkFrames, p.twitch112DarkStack, p.twitch112Dark)
+	clearThumbFrames(&p.twitch56DarkFrames, p.twitch56DarkStack, p.twitch56Dark)
+	clearThumbFrames(&p.twitch28DarkFrames, p.twitch28DarkStack, p.twitch28Dark)
+	clearThumbFrames(&p.twitch112LightFrames, p.twitch112LightStack, p.twitch112Light)
+	clearThumbFrames(&p.twitch56LightFrames, p.twitch56LightStack, p.twitch56Light)
+	clearThumbFrames(&p.twitch28LightFrames, p.twitch28LightStack, p.twitch28Light)
+
+	p.activeFrameIdx = -1
 	p.currentIdx = 0
 	p.pingPongDir = 1
 	p.loadStart = time.Now()
 	p.mainCanvasImage.Image = image.NewRGBA(image.Rect(0, 0, 1, 1))
+	p.mainCanvasImage.Show()
+	p.mainCanvasStack.Objects = []fyne.CanvasObject{p.mainCanvasImage}
 	p.mainCanvasImage.Refresh()
 	p.showProgressLocked(stage, 0, 0)
 }
@@ -941,30 +1103,49 @@ func (p *CenterPreviewPanel) renderCurrentFrameLocked() {
 
 	cached := p.cachedFrames[p.currentIdx]
 
-	if p.showCropGuides {
-		p.mainCanvasImage.Image = cached.withGuides
-	} else {
-		p.mainCanvasImage.Image = cached.withoutGuides
-	}
-	p.mainCanvasImage.Refresh()
+	oldIdx := p.activeFrameIdx
+	newIdx := p.currentIdx
 
-	// Update Twitch scale emulation images (matching exact widget sizes, zero GL painter scaling).
+	if len(p.mainCanvasFrames) == len(frames) && newIdx < len(p.mainCanvasFrames) {
+		if oldIdx >= 0 && oldIdx < len(p.mainCanvasFrames) && oldIdx != newIdx {
+			p.mainCanvasFrames[oldIdx].Hide()
+		}
+		p.mainCanvasFrames[newIdx].Show()
+		p.mainCanvasImage = p.mainCanvasFrames[newIdx]
+	} else {
+		if p.showCropGuides {
+			p.mainCanvasImage.Image = cached.withGuides
+		} else {
+			p.mainCanvasImage.Image = cached.withoutGuides
+		}
+		p.mainCanvasImage.Refresh()
+	}
+
+	// Update Twitch scale emulation images (GPU-resident frame stacks; zero re-upload).
 	// Skipped while the inspector is hidden; its toggle re-renders when shown.
 	if p.inspectorCheck != nil && p.inspectorCheck.Checked {
-		p.twitch112Dark.Image = cached.twitch112
-		p.twitch112Dark.Refresh()
-		p.twitch56Dark.Image = cached.twitch56
-		p.twitch56Dark.Refresh()
-		p.twitch28Dark.Image = cached.twitch28
-		p.twitch28Dark.Refresh()
+		updateThumbSlot := func(slotFrames []*canvas.Image, active **canvas.Image, fallback *image.RGBA) {
+			if len(slotFrames) == len(frames) && newIdx < len(slotFrames) {
+				if oldIdx >= 0 && oldIdx < len(slotFrames) && oldIdx != newIdx {
+					slotFrames[oldIdx].Hide()
+				}
+				slotFrames[newIdx].Show()
+				*active = slotFrames[newIdx]
+			} else if *active != nil && fallback != nil {
+				(*active).Image = fallback
+				(*active).Refresh()
+			}
+		}
 
-		p.twitch112Light.Image = cached.twitch112
-		p.twitch112Light.Refresh()
-		p.twitch56Light.Image = cached.twitch56
-		p.twitch56Light.Refresh()
-		p.twitch28Light.Image = cached.twitch28
-		p.twitch28Light.Refresh()
+		updateThumbSlot(p.twitch112DarkFrames, &p.twitch112Dark, cached.twitch112)
+		updateThumbSlot(p.twitch56DarkFrames, &p.twitch56Dark, cached.twitch56)
+		updateThumbSlot(p.twitch28DarkFrames, &p.twitch28Dark, cached.twitch28)
+		updateThumbSlot(p.twitch112LightFrames, &p.twitch112Light, cached.twitch112)
+		updateThumbSlot(p.twitch56LightFrames, &p.twitch56Light, cached.twitch56)
+		updateThumbSlot(p.twitch28LightFrames, &p.twitch28Light, cached.twitch28)
 	}
+
+	p.activeFrameIdx = newIdx
 }
 
 func scaleRGBA(src *image.RGBA, w, h int) *image.RGBA {

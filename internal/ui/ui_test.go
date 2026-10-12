@@ -885,3 +885,126 @@ func TestPreviewBackgroundSwitcher(t *testing.T) {
 	}
 }
 
+func TestGPUResidentPreviewFrameStack(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	mw := NewMainWindow(app)
+	defer waitForPreview(mw)
+
+	testSVGPath, err := filepath.Abs("../../testdata/pendulum.svg")
+	if err != nil {
+		t.Fatalf("failed to resolve test SVG path: %v", err)
+	}
+
+	loadAndWait(mw, testSVGPath)
+	mw.centerPanel.Pause()
+	waitForPreview(mw)
+
+	p := mw.centerPanel
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	totalFrames := len(p.cachedFrames)
+	if totalFrames < 2 {
+		t.Fatalf("expected at least 2 frames for pendulum.svg, got %d", totalFrames)
+	}
+
+	if len(p.mainCanvasFrames) != totalFrames {
+		t.Fatalf("expected %d GPU-resident frame images, got %d", totalFrames, len(p.mainCanvasFrames))
+	}
+
+	// 1. Initial state: frame 0 visible, all others hidden
+	if !p.mainCanvasFrames[0].Visible() {
+		t.Errorf("expected frame 0 to be visible initially")
+	}
+	for i := 1; i < totalFrames; i++ {
+		if p.mainCanvasFrames[i].Visible() {
+			t.Errorf("frame %d: expected to be hidden initially", i)
+		}
+	}
+	if p.mainCanvasImage != p.mainCanvasFrames[0] {
+		t.Errorf("expected mainCanvasImage to point to frame 0")
+	}
+
+	// 2. Step forward to frame 1: frame 0 must hide, frame 1 must show
+	p.currentIdx = 1
+	p.renderCurrentFrameLocked()
+
+	if p.mainCanvasFrames[0].Visible() {
+		t.Errorf("expected frame 0 to be hidden after stepping to frame 1")
+	}
+	if !p.mainCanvasFrames[1].Visible() {
+		t.Errorf("expected frame 1 to be visible after stepping to frame 1")
+	}
+	if p.mainCanvasImage != p.mainCanvasFrames[1] {
+		t.Errorf("expected mainCanvasImage to point to frame 1")
+	}
+
+	// 3. Step across all frames in a complete loop
+	for step := 2; step < totalFrames; step++ {
+		p.currentIdx = step
+		p.renderCurrentFrameLocked()
+		if !p.mainCanvasFrames[step].Visible() {
+			t.Errorf("step %d: expected frame %d to be visible", step, step)
+		}
+		if p.mainCanvasFrames[step-1].Visible() {
+			t.Errorf("step %d: expected previous frame %d to be hidden", step, step-1)
+		}
+	}
+
+	// 4. Wrap around from last frame to frame 0
+	p.currentIdx = 0
+	p.renderCurrentFrameLocked()
+	if !p.mainCanvasFrames[0].Visible() {
+		t.Errorf("expected frame 0 visible after wrap-around")
+	}
+	if p.mainCanvasFrames[totalFrames-1].Visible() {
+		t.Errorf("expected last frame hidden after wrap-around")
+	}
+
+	// 5. Toggle crop guides updates underlying image pointers
+	p.showCropGuides = false
+	if len(p.mainCanvasFrames) == len(p.cachedFrames) {
+		for i, cf := range p.cachedFrames {
+			p.mainCanvasFrames[i].Image = cf.withoutGuides
+			p.mainCanvasFrames[i].Refresh()
+		}
+	}
+	p.renderCurrentFrameLocked()
+	if p.mainCanvasFrames[0].Image != p.cachedFrames[0].withoutGuides {
+		t.Errorf("expected frame 0 image without guides after toggling")
+	}
+}
+
+func BenchmarkRenderPlaybackTick(b *testing.B) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	mw := NewMainWindow(app)
+	defer waitForPreview(mw)
+
+	testSVGPath, err := filepath.Abs("../../testdata/pendulum.svg")
+	if err != nil {
+		b.Fatalf("failed to resolve test SVG path: %v", err)
+	}
+
+	loadAndWait(mw, testSVGPath)
+	mw.centerPanel.Pause()
+	waitForPreview(mw)
+
+	p := mw.centerPanel
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	totalFrames := len(p.cachedFrames)
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for b.Loop() {
+		p.currentIdx = (p.currentIdx + 1) % totalFrames
+		p.renderCurrentFrameLocked()
+	}
+}
+
+
