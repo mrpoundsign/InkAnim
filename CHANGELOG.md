@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.5.0-beta3] - 2026-10-12
+## [0.5.0-beta3] - 2026-10-13
 
 ### Added
 - **Unified Studio & Extension Motion Editor**:
@@ -23,10 +23,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Dedicated Web Worker pool offloading GIF color quantization and ordered Bayer 8x8 dithering in WebAssembly, preventing UI freezes during GIF export in the browser.
 
 ### Changed
+- **Motion Tree Visual Styling**:
+  - Highlights elements with active motion directives in bold Sky Blue and unsaved edits in italic Amber within the Layers & Motion tree.
 - **Modernized Speed & Playback Presets**:
   - Standardized speed multiplier presets to 0.25x, 0.5x, 1x, 2x, and 4x ([#118](https://github.com/mrpoundsign/InkAnim/issues/118)).
 - **Ordered Bayer 8×8 Dithering Documentation**:
   - Updated documentation, user interface references, and codebase comments to accurately describe the deterministic Bayer 8×8 ordered dithering pipeline ([#117](https://github.com/mrpoundsign/InkAnim/issues/117)).
+- **CI & Linter Upgrade**:
+  - Upgraded `golangci-lint-v2` to `v2.14.0` for Go 1.27 compatibility and enforced in pre-commit hook.
 
 ### Fixed
 - **Read-Only Directive Card Initialization**:
