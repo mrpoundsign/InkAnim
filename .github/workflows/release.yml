@@ -155,42 +155,9 @@ jobs:
           name: gui-dist-macos
           path: gui-dist/
 
-  build-wasm:
-    name: Build WebAssembly Studio
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.27'
-          cache: true
-
-      - name: Package WebAssembly Studio
-        run: |
-          mkdir -p gui-dist
-          TAG="${{ github.ref_name }}"
-          if [ -z "$TAG" ] || [[ ! "$TAG" =~ ^v ]]; then
-            TAG="snapshot"
-          fi
-
-          chmod +x ./build.sh
-          ./build.sh wasm
-
-          cd build/gh-pages/demo
-          zip -r "../../../gui-dist/InkAnim_${TAG}_web.zip" .
-
-      - name: Upload WASM Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: gui-dist-wasm
-          path: gui-dist/
-
   release:
     name: Release Binaries (GoReleaser + Client)
-    needs: [test, build-gui-linux-windows, build-gui-macos, build-wasm]
+    needs: [test, build-gui-linux-windows, build-gui-macos]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
