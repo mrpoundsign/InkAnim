@@ -468,5 +468,65 @@ func TestMultiPageCropResolutionAndPrerender(t *testing.T) {
 	}
 }
 
+func TestResolveExportDimensions(t *testing.T) {
+	hydratePath, err := filepath.Abs("../../testdata/hydrate.svg")
+	if err != nil {
+		t.Fatalf("failed to resolve hydrate.svg path: %v", err)
+	}
 
+	sess := NewSession()
+	if err := sess.LoadSVG(hydratePath); err != nil {
+		t.Fatalf("LoadSVG failed: %v", err)
+	}
 
+	// 1. Default: ExportSquare = true, SquareSize = 0 (auto-upscale small SVGs to 512)
+	sess.ExportOptions.ExportSquare = true
+	sess.ExportOptions.SquareSize = 0
+	dims := sess.ResolveExportDimensions()
+	if !dims.IsSquare {
+		t.Errorf("expected IsSquare=true")
+	}
+	if dims.OutWidth != 512 || dims.OutHeight != 512 {
+		t.Errorf("expected Out 512x512, got %dx%d", dims.OutWidth, dims.OutHeight)
+	}
+	if dims.FitWidth <= 0 || dims.FitHeight <= 0 {
+		t.Errorf("expected positive Fit dimensions, got %dx%d", dims.FitWidth, dims.FitHeight)
+	}
+
+	// 2. Explicit SquareSize: 112 (Twitch emote)
+	sess.ExportOptions.SquareSize = 112
+	dims = sess.ResolveExportDimensions()
+	if dims.OutWidth != 112 || dims.OutHeight != 112 {
+		t.Errorf("expected Out 112x112, got %dx%d", dims.OutWidth, dims.OutHeight)
+	}
+	if dims.FitWidth > 112 || dims.FitHeight > 112 {
+		t.Errorf("fit dimensions cannot exceed 112, got %dx%d", dims.FitWidth, dims.FitHeight)
+	}
+
+	// 3. Non-square with explicit TargetWidth & TargetHeight
+	sess.ExportOptions.ExportSquare = false
+	sess.ExportOptions.TargetWidth = 320
+	sess.ExportOptions.TargetHeight = 240
+	dims = sess.ResolveExportDimensions()
+	if dims.IsSquare {
+		t.Errorf("expected IsSquare=false")
+	}
+	if dims.OutWidth != 320 || dims.OutHeight != 240 {
+		t.Errorf("expected Out 320x240, got %dx%d", dims.OutWidth, dims.OutHeight)
+	}
+	if dims.FitWidth != 320 || dims.FitHeight != 240 {
+		t.Errorf("expected Fit 320x240, got %dx%d", dims.FitWidth, dims.FitHeight)
+	}
+
+	// 4. Non-square auto-scale without explicit target sizes (<512 maxSide upscales)
+	sess.ExportOptions.TargetWidth = 0
+	sess.ExportOptions.TargetHeight = 0
+	dims = sess.ResolveExportDimensions()
+	if dims.IsSquare {
+		t.Errorf("expected IsSquare=false")
+	}
+	maxSide := max(dims.OutHeight, dims.OutWidth)
+	if maxSide != 512 {
+		t.Errorf("expected max side auto-upscaled to 512, got %d", maxSide)
+	}
+}

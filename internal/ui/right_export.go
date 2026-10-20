@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"math"
 	"strconv"
 	"strings"
 
@@ -261,46 +260,8 @@ func (p *RightExportPanel) validateTwitch() {
 	}
 
 	frames := len(p.session.RenderedFrames)
-	boundW, boundH := p.session.GetActiveBoundaryDimensions()
-	w := int(boundW)
-	h := int(boundH)
-	
-	if p.session.ExportOptions.ExportSquare {
-		targetSquare := p.session.ExportOptions.SquareSize
-		if targetSquare <= 0 {
-			maxSide := boundW
-			if boundH > maxSide { maxSide = boundH }
-			switch {
-			case maxSide < 512: targetSquare = 512
-			case maxSide > 4096: targetSquare = 4096
-			default: targetSquare = int(math.Round(maxSide))
-			}
-		}
-		if targetSquare > 4096 {
-			targetSquare = 4096
-		}
-		w, h = targetSquare, targetSquare
-	} else {
-		if p.session.ExportOptions.TargetWidth > 0 && p.session.ExportOptions.TargetHeight > 0 {
-			w = p.session.ExportOptions.TargetWidth
-			h = p.session.ExportOptions.TargetHeight
-			if w > 4096 { w = 4096 }
-			if h > 4096 { h = 4096 }
-		} else {
-			maxSide := boundW
-			if boundH > maxSide { maxSide = boundH }
-			switch {
-			case maxSide < 512:
-				scale := 512.0 / maxSide
-				w = int(math.Round(boundW * scale))
-				h = int(math.Round(boundH * scale))
-			case maxSide > 4096:
-				scale := 4096.0 / maxSide
-				w = int(math.Round(boundW * scale))
-				h = int(math.Round(boundH * scale))
-			}
-		}
-	}
+	dims := p.session.ResolveExportDimensions()
+	w, h := dims.OutWidth, dims.OutHeight
 
 	totalDurMs := 0
 	if p.session.ExportOptions.PingPong && frames >= 3 {

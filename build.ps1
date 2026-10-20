@@ -75,7 +75,7 @@ function Build-GUI {
     }
 
     $outPath = Join-Path $BuildDir "inkanim.exe"
-    & $GoExe build -trimpath -ldflags="-s -w" -o $outPath ./cmd/inkanim
+    & $GoExe build -trimpath -ldflags="-s -w -H=windowsgui -extldflags=-Wl,--subsystem,windows" -o $outPath ./cmd/inkanim
     if ($LASTEXITCODE -eq 0) {
         Write-Host "[OK] Successfully built $outPath" -ForegroundColor Green
     } else {
@@ -101,7 +101,7 @@ function Build-ExtWin {
     $outExe = Join-Path $binDir "inkanim-ext.exe"
     $env:GOOS = "windows"
     $env:GOARCH = "amd64"
-    & $GoExe build -trimpath -ldflags="-H windowsgui -s -w -extldflags=-mwindows" -o $outExe ./cmd/inkanim-ext
+    & $GoExe build -trimpath -ldflags="-s -w -H=windowsgui -extldflags=-Wl,--subsystem,windows" -o $outExe ./cmd/inkanim-ext
     if ($LASTEXITCODE -ne 0) {
         Write-Error "Failed to build inkanim-ext.exe."
     }
@@ -244,6 +244,7 @@ function Verify-WASM {
     Write-Host "`n==> Verifying WebAssembly compilation..." -ForegroundColor Cyan
     $env:GOOS = "js"
     $env:GOARCH = "wasm"
+    $env:CGO_ENABLED = "0"
     try {
         & $GoExe build -tags migrated_fynedo -o (Join-Path $env:TEMP "inkanim.wasm") ./cmd/inkanim
         if ($LASTEXITCODE -eq 0) {
@@ -254,6 +255,7 @@ function Verify-WASM {
     } finally {
         $env:GOOS = ""
         $env:GOARCH = ""
+        $env:CGO_ENABLED = ""
     }
 }
 

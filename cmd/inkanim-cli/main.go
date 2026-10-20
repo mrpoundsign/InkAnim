@@ -115,17 +115,8 @@ func run() error {
 			effectiveFrames = frameCount*2 - 2
 		}
 		totalDurationMs := effectiveFrames * frameDelayMs
-		exportW := int(sess.Document.Width)
-		exportH := int(sess.Document.Height)
-		if *square {
-			maxSide := max(exportH, exportW)
-			if *squareSize > 0 {
-				maxSide = *squareSize
-			}
-			exportW, exportH = maxSide, maxSide
-		} else if *width > 0 && *height > 0 {
-			exportW, exportH = *width, *height
-		}
+		dims := sess.ResolveExportDimensions()
+		exportW, exportH := dims.OutWidth, dims.OutHeight
 
 		res := gif.ValidateTwitchEmote(effectiveFrames, totalDurationMs, exportW, exportH)
 		fmt.Println("\n--- Twitch Emote Compatibility Check ---")
