@@ -35,7 +35,7 @@ func scanPlatformFontRegistry(fm *FontManager) {
 		if err != nil {
 			return nil
 		}
-		defer k.Close()
+		defer func() { _ = k.Close() }()
 
 		names, err := k.ReadValueNames(-1)
 		if err != nil {

@@ -62,7 +62,7 @@ func writeOutput(data []byte) error {
 	if cHandle != ^uintptr(0) && cHandle != 0 {
 		kernel32 := syscall.NewLazyDLL("kernel32.dll")
 		procSetStdHandle := kernel32.NewProc("SetStdHandle")
-		procSetStdHandle.Call(uintptr(stdOutputHandle), cHandle)
+		_, _, _ = procSetStdHandle.Call(uintptr(stdOutputHandle), cHandle)
 
 		var written uint32
 		err := syscall.WriteFile(syscall.Handle(cHandle), data, &written, nil)

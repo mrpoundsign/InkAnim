@@ -24,7 +24,7 @@ var motionTypeDefaults = map[string]string{
 	"Hide":  "f: 1-10",
 	"Depth": "f: 1-20; order: 1",
 	"Dist":  "factor: 0.5",
-	"Color": "f: 1-20; from: #ffffff; to: #38bdf8",
+	"Color": "f: 1-20; target: fill",
 }
 
 var motionTypes = []string{
