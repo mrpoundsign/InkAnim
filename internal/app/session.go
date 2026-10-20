@@ -494,19 +494,19 @@ func (s *Session) PrerenderPages() {
 	go s.PrerenderPagesSync()
 }
 
-// RenderExportFrames rasterizes the active animation frames directly from vector SVG data
-// at the target export resolution (up to 4096px), eliminating bitmap scaling blur.
-func (s *Session) RenderExportFrames() ([]gif.FrameInput, error) {
-	if s.Document == nil {
-		return nil, errors.New("no SVG document loaded")
-	}
+// ExportDimensions holds the rasterization dimensions (FitWidth, FitHeight)
+// and the canvas/output dimensions (OutWidth, OutHeight).
+type ExportDimensions struct {
+	FitWidth  int
+	FitHeight int
+	OutWidth  int
+	OutHeight int
+	IsSquare  bool
+}
 
-	prevGuides := s.Document.ShowMotionLines
-	s.Document.ShowMotionLines = false
-	defer func() {
-		s.Document.ShowMotionLines = prevGuides
-	}()
-
+// ResolveExportDimensions computes the SVG rasterization dimensions and the final
+// export canvas dimensions based on the active boundary mode and ExportOptions.
+func (s *Session) ResolveExportDimensions() ExportDimensions {
 	boundW, boundH := s.GetActiveBoundaryDimensions()
 	if boundW <= 0 {
 		boundW = 512
@@ -514,16 +514,14 @@ func (s *Session) RenderExportFrames() ([]gif.FrameInput, error) {
 	if boundH <= 0 {
 		boundH = 512
 	}
-	boundaryRect := s.GetActiveBoundaryRect(0)
 
-	// Calculate export dimensions
-	var exportSquare bool
-	var targetSquare int
+	var isSquare bool
+	var outW, outH int
 	var fitW, fitH int
 
 	if s.ExportOptions.ExportSquare {
-		exportSquare = true
-		targetSquare = s.ExportOptions.SquareSize
+		isSquare = true
+		targetSquare := s.ExportOptions.SquareSize
 		if targetSquare <= 0 {
 			maxSide := boundW
 			if boundH > maxSide {
@@ -549,6 +547,7 @@ func (s *Session) RenderExportFrames() ([]gif.FrameInput, error) {
 		scale := float64(targetSquare) / maxSide
 		fitW = int(math.Round(boundW * scale))
 		fitH = int(math.Round(boundH * scale))
+		outW, outH = targetSquare, targetSquare
 	} else {
 		if s.ExportOptions.TargetWidth > 0 && s.ExportOptions.TargetHeight > 0 {
 			fitW = s.ExportOptions.TargetWidth
@@ -578,6 +577,7 @@ func (s *Session) RenderExportFrames() ([]gif.FrameInput, error) {
 				fitH = int(math.Round(boundH))
 			}
 		}
+		outW, outH = fitW, fitH
 	}
 
 	if fitW < 1 {
@@ -586,6 +586,40 @@ func (s *Session) RenderExportFrames() ([]gif.FrameInput, error) {
 	if fitH < 1 {
 		fitH = 1
 	}
+	if outW < 1 {
+		outW = 1
+	}
+	if outH < 1 {
+		outH = 1
+	}
+
+	return ExportDimensions{
+		FitWidth:  fitW,
+		FitHeight: fitH,
+		OutWidth:  outW,
+		OutHeight: outH,
+		IsSquare:  isSquare,
+	}
+}
+
+// RenderExportFrames rasterizes the active animation frames directly from vector SVG data
+// at the target export resolution (up to 4096px), eliminating bitmap scaling blur.
+func (s *Session) RenderExportFrames() ([]gif.FrameInput, error) {
+	if s.Document == nil {
+		return nil, errors.New("no SVG document loaded")
+	}
+
+	prevGuides := s.Document.ShowMotionLines
+	s.Document.ShowMotionLines = false
+	defer func() {
+		s.Document.ShowMotionLines = prevGuides
+	}()
+
+	boundaryRect := s.GetActiveBoundaryRect(0)
+	dims := s.ResolveExportDimensions()
+	fitW, fitH := dims.FitWidth, dims.FitHeight
+	exportSquare := dims.IsSquare
+	targetSquare := dims.OutWidth
 
 	type frameExportJob struct {
 		frameIdx    int
