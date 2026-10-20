@@ -13,6 +13,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"inkanim/internal/ext/doctree"
+	"inkanim/internal/ext/params"
 	"inkanim/internal/ext/presets"
 	"inkanim/pkg/inksvg"
 )
@@ -1448,7 +1449,25 @@ func TestCopyPasteWindowShortcuts(t *testing.T) {
 	}
 }
 
-
-
-
+func TestMotionTypeDefaultsValidity(t *testing.T) {
+	for _, mType := range motionTypes {
+		def, ok := motionTypeDefaults[mType]
+		if !ok {
+			t.Errorf("missing default for motion type %q", mType)
+			continue
+		}
+		m := params.Parse(mType, def, 20)
+		if m.Type != mType {
+			t.Errorf("expected parsed type %q, got %q", mType, m.Type)
+		}
+	}
+	colorDef := motionTypeDefaults["Color"]
+	m := params.Parse("Color", colorDef, 20)
+	if m.ColorTarget != "fill" {
+		t.Errorf("expected ColorTarget to be 'fill', got %q", m.ColorTarget)
+	}
+	if m.EndFrame != 20 {
+		t.Errorf("expected EndFrame to be 20, got %d", m.EndFrame)
+	}
+}
 
