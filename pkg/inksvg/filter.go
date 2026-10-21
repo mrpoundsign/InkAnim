@@ -242,20 +242,19 @@ func renderAndCompositeDropShadow(dst *image.RGBA, path oksvg.SvgPath, tm raster
 
 	path.DrawTransformed(shadowRaster, 1.0, tm)
 
-	b := shadowBuf.Bounds()
-	for y := b.Min.Y; y < b.Max.Y; y++ {
-		for x := b.Min.X; x < b.Max.X; x++ {
-			_, _, _, a := shadowBuf.At(x, y).RGBA()
-			if a > 0 {
-				alphaFrac := float64(a>>8) / 255.0
-				finalA := uint8(math.Round(alphaFrac * float64(f.FloodColor.A)))
-				shadowBuf.SetRGBA(x, y, color.RGBA{
-					R: f.FloodColor.R,
-					G: f.FloodColor.G,
-					B: f.FloodColor.B,
-					A: finalA,
-				})
-			}
+	floodR := f.FloodColor.R
+	floodG := f.FloodColor.G
+	floodB := f.FloodColor.B
+	floodA := uint32(f.FloodColor.A)
+
+	pix := shadowBuf.Pix
+	for i := 0; i < len(pix); i += 4 {
+		a := uint32(pix[i+3])
+		if a > 0 {
+			pix[i] = floodR
+			pix[i+1] = floodG
+			pix[i+2] = floodB
+			pix[i+3] = uint8((a*floodA + 127) / 255)
 		}
 	}
 
@@ -272,52 +271,72 @@ func renderAndCompositeDropShadow(dst *image.RGBA, path oksvg.SvgPath, tm raster
 }
 
 func compositeOver(dst *image.RGBA, src *image.RGBA, offsetX, offsetY int) {
-	b := src.Bounds()
-	w, h := dst.Bounds().Dx(), dst.Bounds().Dy()
+	sb := src.Bounds()
+	dstB := dst.Bounds()
+	w, h := dstB.Dx(), dstB.Dy()
 
-	for y := b.Min.Y; y < b.Max.Y; y++ {
+	minY := max(sb.Min.Y, -offsetY)
+	maxY := min(sb.Max.Y, h-offsetY)
+	minX := max(sb.Min.X, -offsetX)
+	maxX := min(sb.Max.X, w-offsetX)
+
+	if minY >= maxY || minX >= maxX {
+		return
+	}
+
+	for y := minY; y < maxY; y++ {
 		dy := y + offsetY
-		if dy < 0 || dy >= h {
-			continue
-		}
-		for x := b.Min.X; x < b.Max.X; x++ {
-			dx := x + offsetX
-			if dx < 0 || dx >= w {
-				continue
-			}
+		srcRowStart := (y-sb.Min.Y)*src.Stride + (minX-sb.Min.X)*4
+		dstRowStart := (dy-dstB.Min.Y)*dst.Stride + (minX+offsetX-dstB.Min.X)*4
 
-			sr, sg, sb, sa := src.At(x, y).RGBA()
+		si := srcRowStart
+		di := dstRowStart
+		for x := minX; x < maxX; x++ {
+			sa := uint32(src.Pix[si+3])
 			if sa == 0 {
+				si += 4
+				di += 4
 				continue
 			}
 
-			dr, dg, db, da := dst.At(dx, dy).RGBA()
+			da := uint32(dst.Pix[di+3])
+			sr := uint32(src.Pix[si])
+			sg := uint32(src.Pix[si+1])
+			sbVal := uint32(src.Pix[si+2])
+
 			if da == 0 {
-				dst.SetRGBA(dx, dy, color.RGBA{
-					R: uint8(sr >> 8),
-					G: uint8(sg >> 8),
-					B: uint8(sb >> 8),
-					A: uint8(sa >> 8),
-				})
-				continue
+				dst.Pix[di] = uint8(sr)
+				dst.Pix[di+1] = uint8(sg)
+				dst.Pix[di+2] = uint8(sbVal)
+				dst.Pix[di+3] = uint8(sa)
+			} else {
+				srcAlpha := float64(sa) / 255.0
+				dstAlpha := float64(da) / 255.0
+				invSrc := 1.0 - srcAlpha
+				outAlpha := srcAlpha + dstAlpha*invSrc
+
+				if outAlpha > 0 {
+					dr := float64(dst.Pix[di]) / 255.0
+					dg := float64(dst.Pix[di+1]) / 255.0
+					db := float64(dst.Pix[di+2]) / 255.0
+
+					sR := float64(sr) / 255.0
+					sG := float64(sg) / 255.0
+					sB := float64(sbVal) / 255.0
+
+					outR := (sR*srcAlpha + dr*dstAlpha*invSrc) / outAlpha
+					outG := (sG*srcAlpha + dg*dstAlpha*invSrc) / outAlpha
+					outB := (sB*srcAlpha + db*dstAlpha*invSrc) / outAlpha
+
+					dst.Pix[di] = uint8(math.Round(outR * 255.0))
+					dst.Pix[di+1] = uint8(math.Round(outG * 255.0))
+					dst.Pix[di+2] = uint8(math.Round(outB * 255.0))
+					dst.Pix[di+3] = uint8(math.Round(outAlpha * 255.0))
+				}
 			}
 
-			srcAlpha := float64(sa) / 65535.0
-			dstAlpha := float64(da) / 65535.0
-			outAlpha := srcAlpha + dstAlpha*(1.0-srcAlpha)
-
-			if outAlpha > 0 {
-				outR := (float64(sr)/65535.0 + (float64(dr)/65535.0)*dstAlpha*(1.0-srcAlpha)) / outAlpha
-				outG := (float64(sg)/65535.0 + (float64(dg)/65535.0)*dstAlpha*(1.0-srcAlpha)) / outAlpha
-				outB := (float64(sb)/65535.0 + (float64(db)/65535.0)*dstAlpha*(1.0-srcAlpha)) / outAlpha
-
-				dst.SetRGBA(dx, dy, color.RGBA{
-					R: uint8(math.Round(outR * 255.0)),
-					G: uint8(math.Round(outG * 255.0)),
-					B: uint8(math.Round(outB * 255.0)),
-					A: uint8(math.Round(outAlpha * 255.0)),
-				})
-			}
+			si += 4
+			di += 4
 		}
 	}
 }
