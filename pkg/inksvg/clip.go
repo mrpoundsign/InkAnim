@@ -15,6 +15,9 @@ import (
 // extractClipPaths parses <clipPath id="..."> definitions from the SVG document
 // and returns their inner XML content keyed by clip ID.
 func extractClipPaths(svgData []byte) map[string][]byte {
+	if !bytes.Contains(svgData, []byte("<clipPath")) {
+		return nil
+	}
 	dec := xml.NewDecoder(bytes.NewReader(svgData))
 	clips := make(map[string][]byte)
 
@@ -92,6 +95,9 @@ func extractClipPaths(svgData []byte) map[string][]byte {
 
 // extractPathClipIDs maps each path index in the document to its active clip-path ID.
 func extractPathClipIDs(svgData []byte) []string {
+	if !bytes.Contains(svgData, []byte("clip-path")) {
+		return nil
+	}
 	dec := xml.NewDecoder(bytes.NewReader(svgData))
 	clipStack := []string{""}
 	var pathClipIDs []string
@@ -153,17 +159,7 @@ func parseClipURL(v string) string {
 }
 
 // renderClipMask renders the inner geometry of a <clipPath> into an RGBA mask image.
-func renderClipMask(clipInner []byte, rootSVG []byte, w, h int, transform rasterx.Matrix2D) (*image.RGBA, error) {
-	// Extract root SVG attributes (viewBox)
-	doc, err := ParseSVG(rootSVG)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse root SVG for clip mask: %w", err)
-	}
-	vbStr := fmt.Sprintf("%f %f %f %f", doc.ViewBoxX, doc.ViewBoxY, doc.ViewBoxW, doc.ViewBoxH)
-	if doc.ViewBoxW <= 0 || doc.ViewBoxH <= 0 {
-		vbStr = fmt.Sprintf("0 0 %f %f", doc.Width, doc.Height)
-	}
-
+func renderClipMask(clipInner []byte, vbStr string, w, h int, transform rasterx.Matrix2D) (*image.RGBA, error) {
 	maskSVG := fmt.Sprintf(`<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d" viewBox="%s">
 %s
 </svg>`, w, h, vbStr, string(clipInner))

@@ -170,3 +170,27 @@ func TestRenderPreserveAspectRatioModes(t *testing.T) {
 	}
 }
 
+func TestFastByteGuards(t *testing.T) {
+	plainSVG := []byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#000"/></svg>`)
+
+	if val := extractRootPreserveAspectRatio(plainSVG); val != "" {
+		t.Errorf("expected empty string from extractRootPreserveAspectRatio on plain SVG, got %q", val)
+	}
+	if imgs := extractEmbeddedImages(plainSVG); len(imgs) != 0 {
+		t.Errorf("expected nil/empty slice from extractEmbeddedImages, got %v", imgs)
+	}
+	if clips := extractClipPaths(plainSVG); len(clips) != 0 {
+		t.Errorf("expected nil/empty map from extractClipPaths, got %v", clips)
+	}
+	if ids := extractPathClipIDs(plainSVG); len(ids) != 0 {
+		t.Errorf("expected nil/empty slice from extractPathClipIDs, got %v", ids)
+	}
+	if filters := extractFilterDefs(plainSVG); len(filters) != 0 {
+		t.Errorf("expected nil/empty map from extractFilterDefs, got %v", filters)
+	}
+	if ids := extractPathFilterIDs(plainSVG); len(ids) != 0 {
+		t.Errorf("expected nil/empty slice from extractPathFilterIDs, got %v", ids)
+	}
+}
+
+

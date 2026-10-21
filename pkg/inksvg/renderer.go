@@ -151,11 +151,28 @@ func RenderSVGToRGBA(svgData []byte, targetW, targetH int) (*image.RGBA, error) 
 	scanner := rasterx.NewScannerGV(widthInt, heightInt, img, img.Bounds())
 	raster := rasterx.NewDasher(widthInt, heightInt, scanner)
 
-	embeddedImages := extractEmbeddedImages(svgData)
-	clipPaths := extractClipPaths(svgData)
-	pathClipIDs := extractPathClipIDs(svgData)
-	dropShadows := extractFilterDefs(svgData)
-	pathFilterIDs := extractPathFilterIDs(svgData)
+	var embeddedImages []EmbeddedImage
+	if bytes.Contains(svgData, []byte("<image")) {
+		embeddedImages = extractEmbeddedImages(svgData)
+	}
+
+	var clipPaths map[string][]byte
+	var pathClipIDs []string
+	if bytes.Contains(svgData, []byte("<clipPath")) {
+		clipPaths = extractClipPaths(svgData)
+		if len(clipPaths) > 0 {
+			pathClipIDs = extractPathClipIDs(svgData)
+		}
+	}
+
+	var dropShadows map[string]DropShadowFilter
+	var pathFilterIDs []string
+	if bytes.Contains(svgData, []byte("<filter")) {
+		dropShadows = extractFilterDefs(svgData)
+		if len(dropShadows) > 0 {
+			pathFilterIDs = extractPathFilterIDs(svgData)
+		}
+	}
 
 	if len(embeddedImages) == 0 && len(clipPaths) == 0 && len(dropShadows) == 0 {
 		for _, p := range icon.SVGPaths {
@@ -163,8 +180,12 @@ func RenderSVGToRGBA(svgData []byte, targetW, targetH int) (*image.RGBA, error) 
 		}
 	} else {
 		clipMasks := make(map[string]*image.RGBA)
+		vbStr := fmt.Sprintf("%f %f %f %f", icon.ViewBox.X, icon.ViewBox.Y, icon.ViewBox.W, icon.ViewBox.H)
+		if icon.ViewBox.W <= 0 || icon.ViewBox.H <= 0 {
+			vbStr = fmt.Sprintf("0 0 %d %d", widthInt, heightInt)
+		}
 		for id, content := range clipPaths {
-			mask, err := renderClipMask(content, svgData, widthInt, heightInt, icon.Transform)
+			mask, err := renderClipMask(content, vbStr, widthInt, heightInt, icon.Transform)
 			if err == nil {
 				clipMasks[id] = mask
 			}
@@ -277,6 +298,9 @@ func parsePreserveAspectRatio(attr string) PreserveAspectRatio {
 
 // extractRootPreserveAspectRatio extracts the preserveAspectRatio attribute from the root <svg> tag.
 func extractRootPreserveAspectRatio(svgData []byte) string {
+	if !bytes.Contains(svgData, []byte("preserveAspectRatio")) {
+		return ""
+	}
 	decoder := xml.NewDecoder(bytes.NewReader(svgData))
 	for {
 		tok, err := decoder.Token()
