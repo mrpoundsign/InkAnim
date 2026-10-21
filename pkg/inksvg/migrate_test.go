@@ -189,3 +189,37 @@ func TestMigration_MovementLegacyFixture(t *testing.T) {
 		t.Errorf("legacy fixture file was modified on disk! Hash mismatch.")
 	}
 }
+
+func TestMigrateLabel_FastGuardNoBrace(t *testing.T) {
+	plainLabels := []string{
+		"Layer 1",
+		"Background Rect",
+		"path1042",
+		"Circle_Eye_Left",
+		"Move without braces",
+	}
+	for _, l := range plainLabels {
+		if got := migrateLabel(l); got != l {
+			t.Errorf("expected unmodified label %q, got %q", l, got)
+		}
+		if hits := DetectMigrations(l); len(hits) > 0 {
+			t.Errorf("expected 0 hits for %q, got %d", l, len(hits))
+		}
+	}
+}
+
+func BenchmarkMigrateLabel_NoDirective(b *testing.B) {
+	label := "Layer 1 - Main Background Object Path"
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = migrateLabel(label)
+	}
+}
+
+func BenchmarkMigrateLabel_WithDirective(b *testing.B) {
+	label := "Rot {f: 1-20; from: 0; to: 180}"
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = migrateLabel(label)
+	}
+}

@@ -627,7 +627,7 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 			if elem.Name.Local == "path" || elem.Name.Local == "circle" || elem.Name.Local == "rect" || elem.Name.Local == "ellipse" || elem.Name.Local == "line" || elem.Name.Local == "polygon" || elem.Name.Local == "polyline" {
 				var isMotionPath bool
 				for _, attr := range elem.Attr {
-					if attr.Name.Local == "label" {
+					if attr.Name.Local == "label" && strings.Contains(attr.Value, "{") {
 						if _, ok := parseMotionConfig(attr.Value); ok {
 							isMotionPath = true
 							break

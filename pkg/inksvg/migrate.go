@@ -25,18 +25,24 @@ type MigrationHit struct {
 	After     string
 }
 
+var (
+	rotBlockRe       = regexp.MustCompile(`(?i)\b(rot)\s*\{([^}]*)\}`)
+	fromValRe        = regexp.MustCompile(`(?i)\bfrom\s*:\s*([+-]?\d+(?:\.\d+)?(?:deg)?)`)
+	toValRe          = regexp.MustCompile(`(?i)\bto\s*:\s*([+-]?\d+(?:\.\d+)?(?:deg)?)`)
+	removeToRe       = regexp.MustCompile(`(?i)\s*[;,]?\s*\bto\s*:\s*[+-]?\d+(?:\.\d+)?(?:deg)?`)
+	removeFromRe     = regexp.MustCompile(`(?i)\s*[;,]?\s*\bfrom\s*:\s*[+-]?\d+(?:\.\d+)?(?:deg)?`)
+	directiveBlockRe = regexp.MustCompile(`(?i)\b(rot|color)\s*\{([^}]*)\}`)
+	angleRe          = regexp.MustCompile(`(?i)\bangle(\s*:)`)
+)
+
 // migrateRotRange converts "from: A; to: B" in Rot directives to relative "deg: (B - A)".
 func migrateRotRange(label string) string {
-	rotBlockRe := regexp.MustCompile(`(?i)\b(rot)\s*\{([^}]*)\}`)
 	return rotBlockRe.ReplaceAllStringFunc(label, func(match string) string {
 		sub := rotBlockRe.FindStringSubmatch(match)
 		if len(sub) < 3 {
 			return match
 		}
 		params := sub[2]
-
-		fromValRe := regexp.MustCompile(`(?i)\bfrom\s*:\s*([+-]?\d+(?:\.\d+)?(?:deg)?)`)
-		toValRe := regexp.MustCompile(`(?i)\bto\s*:\s*([+-]?\d+(?:\.\d+)?(?:deg)?)`)
 
 		fromMatch := fromValRe.FindStringSubmatch(params)
 		toMatch := toValRe.FindStringSubmatch(params)
@@ -62,12 +68,10 @@ func migrateRotRange(label string) string {
 			if fromLoc[0] < toLoc[0] {
 				// from is first: replace from with degStr, then remove to
 				params = params[:fromLoc[0]] + degStr + params[fromLoc[1]:]
-				removeToRe := regexp.MustCompile(`(?i)\s*[;,]?\s*\bto\s*:\s*[+-]?\d+(?:\.\d+)?(?:deg)?`)
 				params = removeToRe.ReplaceAllString(params, "")
 			} else {
 				// to is first: replace to with degStr, then remove from
 				params = params[:toLoc[0]] + degStr + params[toLoc[1]:]
-				removeFromRe := regexp.MustCompile(`(?i)\s*[;,]?\s*\bfrom\s*:\s*[+-]?\d+(?:\.\d+)?(?:deg)?`)
 				params = removeFromRe.ReplaceAllString(params, "")
 			}
 		case len(fromLoc) > 0:
@@ -83,13 +87,11 @@ func migrateRotRange(label string) string {
 
 // migrateAngleToDeg converts "angle: <val>" in Rot and Color directives to "deg: <val>".
 func migrateAngleToDeg(label string) string {
-	directiveBlockRe := regexp.MustCompile(`(?i)\b(rot|color)\s*\{([^}]*)\}`)
 	return directiveBlockRe.ReplaceAllStringFunc(label, func(match string) string {
 		sub := directiveBlockRe.FindStringSubmatch(match)
 		if len(sub) < 3 {
 			return match
 		}
-		angleRe := regexp.MustCompile(`(?i)\bangle(\s*:)`)
 		replacedParams := angleRe.ReplaceAllString(sub[2], "deg$1")
 		braceIdx := strings.Index(match, "{")
 		return match[:braceIdx+1] + replacedParams + "}"
@@ -129,6 +131,9 @@ var migrationRules = []MigrationRule{
 
 // migrateLabel applies every rule in registry order; returns the rewritten label.
 func migrateLabel(label string) string {
+	if !strings.Contains(label, "{") {
+		return label
+	}
 	res := label
 	for _, rule := range migrationRules {
 		if rule.Rewrite != nil {
@@ -147,6 +152,9 @@ func MigrateLabel(label string) string {
 
 // DetectMigrations returns one hit per matching rule with Before/After (no ElementID).
 func DetectMigrations(label string) []MigrationHit {
+	if !strings.Contains(label, "{") {
+		return nil
+	}
 	var hits []MigrationHit
 	for _, rule := range migrationRules {
 		if rule.Detect.MatchString(label) {
