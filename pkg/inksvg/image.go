@@ -60,6 +60,9 @@ func decodeDataURI(uri string) (image.Image, error) {
 // extractEmbeddedImages parses an SVG document and extracts embedded <image> elements with their
 // user-space bounds, transforms, opacity, and path z-index.
 func extractEmbeddedImages(data []byte) []EmbeddedImage {
+	if !bytes.Contains(data, []byte("<image")) {
+		return nil
+	}
 	decoder := xml.NewDecoder(bytes.NewReader(data))
 	transformStack := []Matrix2D{IdentityMatrix()}
 	var images []EmbeddedImage

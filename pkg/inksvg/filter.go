@@ -25,6 +25,9 @@ type DropShadowFilter struct {
 
 // extractFilterDefs extracts drop shadow filter definitions from the SVG XML.
 func extractFilterDefs(svgData []byte) map[string]DropShadowFilter {
+	if !bytes.Contains(svgData, []byte("<filter")) {
+		return nil
+	}
 	filters := make(map[string]DropShadowFilter)
 	dec := xml.NewDecoder(bytes.NewReader(svgData))
 
@@ -117,6 +120,9 @@ func extractFilterDefs(svgData []byte) map[string]DropShadowFilter {
 
 // extractPathFilterIDs maps each shape element in the document to its active filter ID.
 func extractPathFilterIDs(svgData []byte) []string {
+	if !bytes.Contains(svgData, []byte("filter")) {
+		return nil
+	}
 	dec := xml.NewDecoder(bytes.NewReader(svgData))
 	filterStack := []string{""}
 	var pathFilterIDs []string
