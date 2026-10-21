@@ -16,6 +16,10 @@ func (fw *fileWatcher) watchFile(path string) {
 	// No-op for WASM
 }
 
+func (fw *fileWatcher) close() {
+	// No-op for WASM
+}
+
 func (mw *MainWindow) showReloadButton(btn *widget.Button) {
 	// Reload button is not supported in WASM due to sandbox restrictions
 	btn.Hide()

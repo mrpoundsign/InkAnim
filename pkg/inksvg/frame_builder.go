@@ -390,9 +390,7 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 
 	var tpl *timelineTemplate
 	doc.mu.RLock()
-	if doc.timelineTpl != nil {
-		tpl = doc.timelineTpl.(*timelineTemplate)
-	}
+	tpl = doc.timelineTpl
 	doc.mu.RUnlock()
 
 	if tpl == nil {
@@ -402,7 +400,7 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 		}
 		doc.mu.Lock()
 		if doc.timelineTpl != nil {
-			tpl = doc.timelineTpl.(*timelineTemplate)
+			tpl = doc.timelineTpl
 		} else {
 			doc.timelineTpl = parsedTpl
 			tpl = parsedTpl

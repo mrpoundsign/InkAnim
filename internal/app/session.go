@@ -609,11 +609,7 @@ func (s *Session) RenderExportFrames() ([]gif.FrameInput, error) {
 		return nil, errors.New("no SVG document loaded")
 	}
 
-	prevGuides := s.Document.ShowMotionLines
-	s.Document.ShowMotionLines = false
-	defer func() {
-		s.Document.ShowMotionLines = prevGuides
-	}()
+	exportDoc := s.Document.CloneWithoutMotionLines()
 
 	boundaryRect := s.GetActiveBoundaryRect(0)
 	dims := s.ResolveExportDimensions()
@@ -643,7 +639,7 @@ func (s *Session) RenderExportFrames() ([]gif.FrameInput, error) {
 	err := parallel.Run(len(jobs), func(idx int) error {
 		j := jobs[idx]
 		
-		frameSVG, err := inksvg.BuildTimelineFrameSVG(s.Document, j.docFrameIdx, boundaryRect)
+		frameSVG, err := inksvg.BuildTimelineFrameSVG(exportDoc, j.docFrameIdx, boundaryRect)
 		if err != nil {
 			return fmt.Errorf("failed to build frame %d: %w", j.frameIdx+1, err)
 		}

@@ -259,6 +259,9 @@ func NewMainWindow(appInstance fyne.App) *MainWindow {
 		if mw.centerPanel != nil {
 			mw.centerPanel.Pause()
 		}
+		if mw.fileWatcher != nil {
+			mw.fileWatcher.close()
+		}
 	})
 
 	mw.initPlatform()

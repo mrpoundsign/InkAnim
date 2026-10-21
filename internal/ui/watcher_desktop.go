@@ -64,6 +64,12 @@ func (fw *fileWatcher) watchFile(path string) {
 	}
 }
 
+func (fw *fileWatcher) close() {
+	if fw != nil && fw.watcher != nil {
+		_ = fw.watcher.Close()
+	}
+}
+
 func (mw *MainWindow) showReloadButton(btn *widget.Button) {
 	btn.Show()
 }
