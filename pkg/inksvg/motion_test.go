@@ -3171,4 +3171,102 @@ func TestMotionPath_TransformScaling_ScaledSpiral(t *testing.T) {
 	}
 }
 
+func TestParsePathSegments_SmoothCubicReflection(t *testing.T) {
+	// 1. When preceded by C, S reflects the previous second control point (cx2, cy2)
+	pathWithC := "M 0,0 C 20,40 40,60 100,100 S 180,160 200,200"
+	segs, _, _, err := parsePathSegments(pathWithC)
+	if err != nil {
+		t.Fatalf("parsePathSegments failed: %v", err)
+	}
+	if len(segs) != 2 {
+		t.Fatalf("expected 2 segments, got %d", len(segs))
+	}
+	cubic1, ok := segs[0].(*CubicBezierSegment)
+	if !ok {
+		t.Fatalf("expected segment 0 to be CubicBezierSegment")
+	}
+	if cubic1.cx2 != 40 || cubic1.cy2 != 60 {
+		t.Errorf("expected cubic1 cx2=40, cy2=60, got (%g,%g)", cubic1.cx2, cubic1.cy2)
+	}
+	cubic2, ok := segs[1].(*CubicBezierSegment)
+	if !ok {
+		t.Fatalf("expected segment 1 to be CubicBezierSegment")
+	}
+	// Reflected control point: 2*100 - 40 = 160, 2*100 - 60 = 140
+	if math.Abs(cubic2.cx1-160) > 0.001 || math.Abs(cubic2.cy1-140) > 0.001 {
+		t.Errorf("expected cubic2 cx1/cy1 to reflect to (160,140), got (%g,%g)", cubic2.cx1, cubic2.cy1)
+	}
+
+	// 2. When preceded by L (non-cubic command), S must NOT reflect previous control point;
+	// it must assume first control point is coincident with current point.
+	pathWithL := "M 0,0 L 100,50 S 180,160 200,200"
+	segsL, _, _, err := parsePathSegments(pathWithL)
+	if err != nil {
+		t.Fatalf("parsePathSegments with L failed: %v", err)
+	}
+	if len(segsL) != 2 {
+		t.Fatalf("expected 2 segments, got %d", len(segsL))
+	}
+	cubicL, ok := segsL[1].(*CubicBezierSegment)
+	if !ok {
+		t.Fatalf("expected segment 1 to be CubicBezierSegment")
+	}
+	if math.Abs(cubicL.cx1-100) > 0.001 || math.Abs(cubicL.cy1-50) > 0.001 {
+		t.Errorf("expected cubicL cx1/cy1 to be coincident with current point (100,50), got (%g,%g)", cubicL.cx1, cubicL.cy1)
+	}
+}
+
+func TestParsePathSegments_SmoothQuadratic(t *testing.T) {
+	// Q followed by T reflects control point
+	pathWithQ := "M 0,0 Q 50,100 100,100 T 200,100"
+	segs, _, _, err := parsePathSegments(pathWithQ)
+	if err != nil {
+		t.Fatalf("parsePathSegments failed: %v", err)
+	}
+	if len(segs) != 2 {
+		t.Fatalf("expected 2 segments, got %d", len(segs))
+	}
+	quadT, ok := segs[1].(*QuadraticBezierSegment)
+	if !ok {
+		t.Fatalf("expected segment 1 to be QuadraticBezierSegment")
+	}
+	// Reflected control point: 2*100 - 50 = 150, 2*100 - 100 = 100
+	if math.Abs(quadT.cx-150) > 0.001 || math.Abs(quadT.cy-100) > 0.001 {
+		t.Errorf("expected quadT cx/cy to reflect to (150,100), got (%g,%g)", quadT.cx, quadT.cy)
+	}
+
+	// L followed by T must be coincident with current point
+	pathWithL := "M 0,0 L 100,100 T 200,200"
+	segsL, _, _, err := parsePathSegments(pathWithL)
+	if err != nil {
+		t.Fatalf("parsePathSegments with L failed: %v", err)
+	}
+	quadL, ok := segsL[1].(*QuadraticBezierSegment)
+	if !ok {
+		t.Fatalf("expected segment 1 to be QuadraticBezierSegment")
+	}
+	if math.Abs(quadL.cx-100) > 0.001 || math.Abs(quadL.cy-100) > 0.001 {
+		t.Errorf("expected quadL cx/cy coincident with (100,100), got (%g,%g)", quadL.cx, quadL.cy)
+	}
+}
+
+func TestParsePathSegments_ConcatenatedDecimals(t *testing.T) {
+	pathDecimals := "M 0 0 L 10.5.3"
+	segs, _, _, err := parsePathSegments(pathDecimals)
+	if err != nil {
+		t.Fatalf("parsePathSegments failed on concatenated decimals: %v", err)
+	}
+	if len(segs) != 1 {
+		t.Fatalf("expected 1 segment, got %d", len(segs))
+	}
+	line, ok := segs[0].(*LineSegment)
+	if !ok {
+		t.Fatalf("expected LineSegment")
+	}
+	if math.Abs(line.endX-10.5) > 0.001 || math.Abs(line.endY-0.3) > 0.001 {
+		t.Errorf("expected line end (10.5, 0.3), got (%g, %g)", line.endX, line.endY)
+	}
+}
+
+
 

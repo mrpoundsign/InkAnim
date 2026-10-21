@@ -297,6 +297,9 @@ func tokenizePathD(d string) []string {
 			cur.WriteByte(ch)
 			continue
 		}
+		if ch == '.' && strings.ContainsRune(cur.String(), '.') {
+			flush()
+		}
 		cur.WriteByte(ch)
 	}
 	flush()
