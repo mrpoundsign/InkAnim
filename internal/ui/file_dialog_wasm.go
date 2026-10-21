@@ -54,7 +54,6 @@ func (mw *MainWindow) initPlatform() {
 
 			var onLoad js.Func
 			onLoad = js.FuncOf(func(this js.Value, args []js.Value) any {
-				defer onLoad.Release()
 				result := reader.Get("result")
 				uint8Array := js.Global().Get("Uint8Array").New(result)
 				length := uint8Array.Length()
@@ -66,7 +65,6 @@ func (mw *MainWindow) initPlatform() {
 
 			var onError js.Func
 			onError = js.FuncOf(func(this js.Value, args []js.Value) any {
-				defer onError.Release()
 				done <- nil
 				return nil
 			})
@@ -76,6 +74,8 @@ func (mw *MainWindow) initPlatform() {
 			reader.Call("readAsArrayBuffer", file)
 
 			data := <-done
+			onLoad.Release()
+			onError.Release()
 			if data != nil {
 				mw.loadDataAsync(data, name, func() {
 					if fn := js.Global().Get("inkanimOnLoaded"); fn.Type() == js.TypeFunction {
@@ -135,7 +135,6 @@ func (mw *MainWindow) promptOpenFile() {
 
 			var onLoad js.Func
 			onLoad = js.FuncOf(func(this js.Value, args []js.Value) any {
-				defer onLoad.Release()
 				result := reader.Get("result")
 				uint8Array := js.Global().Get("Uint8Array").New(result)
 				length := uint8Array.Length()
@@ -147,7 +146,6 @@ func (mw *MainWindow) promptOpenFile() {
 
 			var onError js.Func
 			onError = js.FuncOf(func(this js.Value, args []js.Value) any {
-				defer onError.Release()
 				done <- nil
 				return nil
 			})
@@ -157,6 +155,8 @@ func (mw *MainWindow) promptOpenFile() {
 			reader.Call("readAsArrayBuffer", file)
 
 			data := <-done
+			onLoad.Release()
+			onError.Release()
 			body.Call("removeChild", input)
 
 			if data != nil {

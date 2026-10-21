@@ -219,7 +219,7 @@ type SVGDocument struct {
 	ElementRects    map[string]Rect
 	Migrations      []MigrationHit
 	ShowMotionLines bool
-	timelineTpl     any
+	timelineTpl     *timelineTemplate
 	mu              sync.RWMutex
 }
 
@@ -229,6 +229,36 @@ func (d *SVGDocument) FrameCount() int {
 		return 0
 	}
 	return len(d.Frames)
+}
+
+// CloneWithoutMotionLines returns a shallow copy of the SVGDocument with ShowMotionLines set to false
+// and a fresh mutex, avoiding lock copying.
+func (d *SVGDocument) CloneWithoutMotionLines() *SVGDocument {
+	if d == nil {
+		return nil
+	}
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	return &SVGDocument{
+		RawContent:      d.RawContent,
+		Width:           d.Width,
+		Height:          d.Height,
+		ViewBoxX:        d.ViewBoxX,
+		ViewBoxY:        d.ViewBoxY,
+		ViewBoxW:        d.ViewBoxW,
+		ViewBoxH:        d.ViewBoxH,
+		DrawingRect:     d.DrawingRect,
+		Frames:          d.Frames,
+		Pages:           d.Pages,
+		MotionPaths:     d.MotionPaths,
+		CameraPath:      d.CameraPath,
+		Gradients:       d.Gradients,
+		DefaultMode:     d.DefaultMode,
+		ElementRects:    d.ElementRects,
+		Migrations:      d.Migrations,
+		ShowMotionLines: false,
+		timelineTpl:     d.timelineTpl,
+	}
 }
 
 // GetElementRect returns the bounding rectangle of the specified element by ID,
