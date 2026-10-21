@@ -38,7 +38,7 @@ func PreprocessSVG(data []byte) ([]byte, error) {
 	meta := extractDocumentMetadata(data)
 
 	// Expand SVG <use> elements early so inlined clones benefit from all downstream stages
-	if len(meta.ElementsByID) > 0 {
+	if bytes.Contains(data, []byte("<use")) && len(meta.ElementsByID) > 0 {
 		expanded, err := expandUseElements(data, meta.ElementsByID)
 		if err == nil {
 			data = expanded
@@ -722,6 +722,7 @@ func extractDocumentMetadata(data []byte) DocumentMetadata {
 		ElementsByID: make(map[string][]xml.Token),
 		Gradients:    make(map[string]*GradientDef),
 	}
+	hasUse := bytes.Contains(data, []byte("<use"))
 	decoder := xml.NewDecoder(bytes.NewReader(data))
 	var activeRecordings []*idRecording
 	var curGrad *GradientDef
@@ -736,19 +737,21 @@ func extractDocumentMetadata(data []byte) DocumentMetadata {
 		switch tok := token.(type) {
 		case xml.StartElement:
 			name := tok.Name.Local
-			var elemID string
-			for _, a := range tok.Attr {
-				if a.Name.Local == "id" && a.Value != "" {
-					elemID = a.Value
-					break
+			if hasUse {
+				var elemID string
+				for _, a := range tok.Attr {
+					if a.Name.Local == "id" && a.Value != "" {
+						elemID = a.Value
+						break
+					}
 				}
-			}
-			if elemID != "" {
-				activeRecordings = append(activeRecordings, &idRecording{id: elemID})
-			}
-			for _, rec := range activeRecordings {
-				rec.tokens = append(rec.tokens, tok.Copy())
-				rec.depth++
+				if elemID != "" {
+					activeRecordings = append(activeRecordings, &idRecording{id: elemID})
+				}
+				for _, rec := range activeRecordings {
+					rec.tokens = append(rec.tokens, tok.Copy())
+					rec.depth++
+				}
 			}
 
 			if name == "linearGradient" || name == "radialGradient" {
@@ -859,24 +862,28 @@ func extractDocumentMetadata(data []byte) DocumentMetadata {
 				}
 			}
 
-			var remaining []*idRecording
-			for _, rec := range activeRecordings {
-				rec.tokens = append(rec.tokens, tok)
-				rec.depth--
-				if rec.depth == 0 {
-					meta.ElementsByID[rec.id] = rec.tokens
-				} else {
-					remaining = append(remaining, rec)
+			if hasUse && len(activeRecordings) > 0 {
+				var remaining []*idRecording
+				for _, rec := range activeRecordings {
+					rec.tokens = append(rec.tokens, tok)
+					rec.depth--
+					if rec.depth == 0 {
+						meta.ElementsByID[rec.id] = rec.tokens
+					} else {
+						remaining = append(remaining, rec)
+					}
 				}
+				activeRecordings = remaining
 			}
-			activeRecordings = remaining
 
 		default:
 			if curGrad != nil && curStopDepth > 0 {
 				curGrad.Stops = append(curGrad.Stops, xml.CopyToken(tok))
 			}
-			for _, rec := range activeRecordings {
-				rec.tokens = append(rec.tokens, xml.CopyToken(tok))
+			if hasUse && len(activeRecordings) > 0 {
+				for _, rec := range activeRecordings {
+					rec.tokens = append(rec.tokens, xml.CopyToken(tok))
+				}
 			}
 		}
 	}
@@ -901,7 +908,16 @@ func extractDocumentMetadata(data []byte) DocumentMetadata {
 	}
 
 	// Resolve specialized gradients for userSpaceOnUse in transformed groups (Issue #56)
-	meta.resolveSpecializedGradients(data)
+	var hasUserSpaceGrad bool
+	for _, g := range meta.Gradients {
+		if g.IsUserSpaceOnUse(meta.Gradients) {
+			hasUserSpaceGrad = true
+			break
+		}
+	}
+	if hasUserSpaceGrad {
+		meta.resolveSpecializedGradients(data)
+	}
 
 	return meta
 }

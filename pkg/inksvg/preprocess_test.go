@@ -230,3 +230,29 @@ func TestPreprocess_GroupPaintOrderInheritance(t *testing.T) {
 		t.Errorf("expected inherited stroke-width 16 on stroke element")
 	}
 }
+
+func TestExtractDocumentMetadata_Guards(t *testing.T) {
+	// SVG without <use> and without userSpaceOnUse gradients
+	plainSVG := []byte(`<svg width="100" height="100">
+		<g id="g1"><rect id="r1" x="10" y="10" width="80" height="80" fill="red" /></g>
+	</svg>`)
+
+	meta := extractDocumentMetadata(plainSVG)
+	if len(meta.ElementsByID) != 0 {
+		t.Errorf("expected 0 ElementsByID recorded when SVG contains no <use>, got %d", len(meta.ElementsByID))
+	}
+	if len(meta.SpecializedLookup) != 0 {
+		t.Errorf("expected 0 SpecializedLookup entries when SVG contains no userSpaceOnUse gradients, got %d", len(meta.SpecializedLookup))
+	}
+
+	// SVG with <use>
+	useSVG := []byte(`<svg width="100" height="100">
+		<defs><rect id="r1" width="10" height="10" /></defs>
+		<use href="#r1" />
+	</svg>`)
+	metaUse := extractDocumentMetadata(useSVG)
+	if len(metaUse.ElementsByID) == 0 {
+		t.Errorf("expected ElementsByID to record elements when <use> is present")
+	}
+}
+
