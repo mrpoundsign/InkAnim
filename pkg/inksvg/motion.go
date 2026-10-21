@@ -136,38 +136,6 @@ func (s *QuadraticBezierSegment) TangentAt(u float64) (float64, float64) {
 	return dx, dy
 }
 
-func tokenizePath(pathData string) []string {
-	var tokens []string
-	var currentToken strings.Builder
-	for _, r := range pathData {
-		switch {
-		case unicode.IsSpace(r) || r == ',':
-			if currentToken.Len() > 0 {
-				tokens = append(tokens, currentToken.String())
-				currentToken.Reset()
-			}
-		case unicode.IsLetter(r) && r != 'e' && r != 'E': // not exp notation
-			if currentToken.Len() > 0 {
-				tokens = append(tokens, currentToken.String())
-				currentToken.Reset()
-			}
-			tokens = append(tokens, string(r))
-		case r == '-':
-			if currentToken.Len() > 0 && currentToken.String() != "e" && currentToken.String() != "E" {
-				tokens = append(tokens, currentToken.String())
-				currentToken.Reset()
-			}
-			currentToken.WriteRune(r)
-		default:
-			currentToken.WriteRune(r)
-		}
-	}
-	if currentToken.Len() > 0 {
-		tokens = append(tokens, currentToken.String())
-	}
-	return tokens
-}
-
 func parseFloatCmd(tokens []string, i *int) float64 {
 	if *i >= len(tokens) {
 		return 0
@@ -178,7 +146,7 @@ func parseFloatCmd(tokens []string, i *int) float64 {
 }
 
 func parsePathSegments(pathData string) ([]PathSegment, float64, float64, error) {
-	tokens := tokenizePath(pathData)
+	tokens := tokenizePathD(pathData)
 	if len(tokens) == 0 {
 		return nil, 0, 0, errors.New("empty path data")
 	}
@@ -187,25 +155,26 @@ func parsePathSegments(pathData string) ([]PathSegment, float64, float64, error)
 	var startX, startY float64
 	var currX, currY float64
 	var lastCtrlX, lastCtrlY float64
-	var lastCmd string
+	var currCmd string
+	var prevCmd string
 
 	i := 0
 	for i < len(tokens) {
 		cmd := tokens[i]
 		if unicode.IsLetter(rune(cmd[0])) {
-			lastCmd = cmd
+			currCmd = cmd
 			i++
 		} else {
-			// Implicit command, reuse lastCmd but if lastCmd was M/m, it becomes L/l
-			switch lastCmd {
+			// Implicit command, reuse currCmd but if currCmd was M/m, it becomes L/l
+			switch currCmd {
 			case "M":
-				lastCmd = "L"
+				currCmd = "L"
 			case "m":
-				lastCmd = "l"
+				currCmd = "l"
 			}
 		}
 
-		switch lastCmd {
+		switch currCmd {
 		case "M":
 			currX = parseFloatCmd(tokens, &i)
 			currY = parseFloatCmd(tokens, &i)
@@ -274,7 +243,7 @@ func parsePathSegments(pathData string) ([]PathSegment, float64, float64, error)
 			lastCtrlX, lastCtrlY = cx2, cy2
 		case "S":
 			cx1, cy1 := currX, currY
-			if strings.ToLower(lastCmd) == "c" || strings.ToLower(lastCmd) == "s" {
+			if strings.ToLower(prevCmd) == "c" || strings.ToLower(prevCmd) == "s" {
 				cx1 = 2*currX - lastCtrlX
 				cy1 = 2*currY - lastCtrlY
 			}
@@ -287,7 +256,7 @@ func parsePathSegments(pathData string) ([]PathSegment, float64, float64, error)
 			lastCtrlX, lastCtrlY = cx2, cy2
 		case "s":
 			cx1, cy1 := currX, currY
-			if strings.ToLower(lastCmd) == "c" || strings.ToLower(lastCmd) == "s" {
+			if strings.ToLower(prevCmd) == "c" || strings.ToLower(prevCmd) == "s" {
 				cx1 = 2*currX - lastCtrlX
 				cy1 = 2*currY - lastCtrlY
 			}
@@ -314,6 +283,28 @@ func parsePathSegments(pathData string) ([]PathSegment, float64, float64, error)
 			segments = append(segments, NewQuadraticBezierSegment(currX, currY, cx, cy, nx, ny))
 			currX, currY = nx, ny
 			lastCtrlX, lastCtrlY = cx, cy
+		case "T":
+			cx, cy := currX, currY
+			if strings.ToLower(prevCmd) == "q" || strings.ToLower(prevCmd) == "t" {
+				cx = 2*currX - lastCtrlX
+				cy = 2*currY - lastCtrlY
+			}
+			nx := parseFloatCmd(tokens, &i)
+			ny := parseFloatCmd(tokens, &i)
+			segments = append(segments, NewQuadraticBezierSegment(currX, currY, cx, cy, nx, ny))
+			currX, currY = nx, ny
+			lastCtrlX, lastCtrlY = cx, cy
+		case "t":
+			cx, cy := currX, currY
+			if strings.ToLower(prevCmd) == "q" || strings.ToLower(prevCmd) == "t" {
+				cx = 2*currX - lastCtrlX
+				cy = 2*currY - lastCtrlY
+			}
+			nx := currX + parseFloatCmd(tokens, &i)
+			ny := currY + parseFloatCmd(tokens, &i)
+			segments = append(segments, NewQuadraticBezierSegment(currX, currY, cx, cy, nx, ny))
+			currX, currY = nx, ny
+			lastCtrlX, lastCtrlY = cx, cy
 		case "Z", "z":
 			if currX != startX || currY != startY {
 				segments = append(segments, NewLineSegment(currX, currY, startX, startY))
@@ -322,8 +313,9 @@ func parsePathSegments(pathData string) ([]PathSegment, float64, float64, error)
 			lastCtrlX, lastCtrlY = currX, currY
 		default:
 			// Unhandled command, skip its arguments
-			return nil, 0, 0, errors.New("unsupported command: " + lastCmd)
+			return nil, 0, 0, errors.New("unsupported command: " + currCmd)
 		}
+		prevCmd = currCmd
 	}
 
 	return segments, startX, startY, nil
