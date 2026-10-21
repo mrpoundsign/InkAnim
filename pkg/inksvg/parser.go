@@ -783,6 +783,9 @@ func parseDimension(s string) float64 {
 var directiveRe = regexp.MustCompile(`(?i)\b(move|rot|scale|scal|fade|show|hide|depth|camera|distance|dist|color)\s*\{`)
 
 func parseMotionConfigs(label string) []MotionConfig {
+	if !strings.Contains(label, "{") {
+		return nil
+	}
 	label = migrateLabel(label)
 	locs := directiveRe.FindAllStringSubmatchIndex(label, -1)
 	if len(locs) == 0 {
