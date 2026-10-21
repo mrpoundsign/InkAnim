@@ -5,46 +5,82 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Smooth Quadratic Bézier Motion Path Trajectories**:
+  - Added full support for SVG `T` and `t` (smooth quadratic Bézier curve) commands along animated guide motion paths ([#129](https://github.com/mrpoundsign/InkAnim/issues/129)).
+- **Windows GUI Subsystem Integration**:
+  - Configured native Windows desktop builds with the GUI subsystem (`-H=windowsgui -extldflags=-Wl,--subsystem,windows`), eliminating the console/PowerShell window popup when launching `inkanim.exe` directly from File Explorer or desktop shortcuts ([#130](https://github.com/mrpoundsign/InkAnim/issues/130)).
+
+### Changed
+- **Non-Blocking Live Motion Parameter Editing**:
+  - Offloaded SVG document parsing, frame generation, and timeline rasterization to a debounced background worker during live motion parameter edits, eliminating UI thread freezes and hitching when dragging sliders or typing in the inspector panel ([#126](https://github.com/mrpoundsign/InkAnim/issues/126)).
+  - Instantaneous element selection in the *Layers & Motion* object tree by reusing pre-parsed document frame counts rather than synchronously reparsing the SVG on the UI thread ([#126](https://github.com/mrpoundsign/InkAnim/issues/126)).
+- **Unified Export Dimension Resolution**:
+  - Centralized export dimension and boundary calculation between the desktop Studio, WebAssembly demo, and headless CLI (`inkanim-cli`) ([#130](https://github.com/mrpoundsign/InkAnim/issues/130)).
+
+### Fixed
+- **Motion Directive Parameter Defaults**:
+  - Corrected invalid default parameter strings for newly added `Color` directives in the motion editor, defaulting to target `fill` with valid color definitions ([#132](https://github.com/mrpoundsign/InkAnim/issues/132)).
+- **Smooth Cubic Bézier Reflection Trajectories**:
+  - Fixed a motion path parsing bug where consecutive `S` and `s` (smooth cubic Bézier) commands treated preceding smooth curves as non-Bézier, preventing trajectory distortion along complex motion paths ([#129](https://github.com/mrpoundsign/InkAnim/issues/129)).
+- **CLI Twitch Compatibility Auto-Upscale**:
+  - Fixed headless CLI (`inkanim-cli`) `--check-twitch` validation to evaluate against final resolved export dimensions (including automatic square padding and Twitch upscaling), ensuring consistent validation between CLI and GUI ([#130](https://github.com/mrpoundsign/InkAnim/issues/130)).
+- **High-Performance SVG Rasterization & Fast-Path Passes**:
+  - Eliminated redundant XML decoding passes across every frame during rendering for documents without `<image>`, `<clipPath>`, or `<filter>` definitions ([#124](https://github.com/mrpoundsign/InkAnim/issues/124)).
+  - Removed full SVG document re-parsing when generating clip-path masks, reusing existing viewBox dimensions directly ([#124](https://github.com/mrpoundsign/InkAnim/issues/124)).
+  - Optimized drop shadow rasterization using direct pixel slice operations and integer alpha arithmetic, eliminating per-pixel interface boxing allocations ([#127](https://github.com/mrpoundsign/InkAnim/issues/127)).
+  - Accelerated IAMS directive parsing and legacy migration with precompiled static regular expressions and fast string guards ([#128](https://github.com/mrpoundsign/InkAnim/issues/128)).
+  - Guarded `<use>` element resolution and `userSpaceOnUse` gradient scaling with fast byte checks ([#125](https://github.com/mrpoundsign/InkAnim/issues/125)).
+- **Resource Cleanup & Concurrency**:
+  - Fixed filesystem watcher lifecycle management on window exit and released WebAssembly `FileReader` callback closures on file uploads ([#131](https://github.com/mrpoundsign/InkAnim/issues/131)).
+  - Eliminated shared state data races during parallel frame rendering via isolated document cloning ([#131](https://github.com/mrpoundsign/InkAnim/issues/131)).
+
+---
+
 ## [0.5.0-beta3] - 2026-10-13
 
 ### Added
 - **Unified Studio & Extension Motion Editor**:
-  - Unifies the standalone desktop Studio, WebAssembly interactive web demo, and the native Inkscape Extension with an identical 3-tab sidebar: *Layers & Motion*, *Frames*, and *Export* ([#120](https://github.com/mrpoundsign/InkAnim/issues/120)).
-  - Interactive layer tree navigation, per-element directive inspector, motion presets, live parameter editing, and direct deletion across all platforms ([#120](https://github.com/mrpoundsign/InkAnim/issues/120)).
-- **File & Edit Menus with Keyboard Shortcuts**:
-  - Full desktop `File` menu: *Open SVG...* (`Ctrl+O`), *Reload SVG* (`Ctrl+R`), *Save SVG* (`Ctrl+S`), *Save SVG As...* (`Ctrl+Shift+S`), and *Export GIF...* (`Ctrl+E`) ([#120](https://github.com/mrpoundsign/InkAnim/issues/120)).
-  - Full desktop `Edit` menu: *Undo* (`Ctrl+Z`), *Redo* (`Ctrl+Y`), *Copy Directive* (`Ctrl+C`), *Paste Directive* (`Ctrl+V`), and *Delete Directive* (`Del`) ([#120](https://github.com/mrpoundsign/InkAnim/issues/120)).
-  - Clean toolbar redesign replacing redundant "Open SVG" button with clear file label and version info ([#120](https://github.com/mrpoundsign/InkAnim/issues/120)).
-- **Wall-Clock Synchronized Playback Engine**:
-  - High-precision playback engine driven by `time.Now()` wall-clock timestamps rather than naive per-frame sleep intervals, ensuring true-to-life animation speeds regardless of UI rendering latency ([#119](https://github.com/mrpoundsign/InkAnim/issues/119)).
-  - Real-time frame skipping to maintain synchronization during heavy canvas loads ([#119](https://github.com/mrpoundsign/InkAnim/issues/119)).
-  - Low FPS warning indicator alerting users when hardware canvas rendering falls below target playback speed ([#118](https://github.com/mrpoundsign/InkAnim/issues/118)).
-- **WebAssembly Multithreaded Quantization & Bayer Dithering**:
-  - Dedicated Web Worker pool offloading GIF color quantization and ordered Bayer 8x8 dithering in WebAssembly, preventing UI freezes during GIF export in the browser.
+  - Full feature parity across the standalone desktop Studio, in-browser WebAssembly demo, and the native Inkscape Extension with a shared 3-tab sidebar: *Layers & Motion*, *Frames*, and *Export* ([#120](https://github.com/mrpoundsign/InkAnim/issues/120)).
+  - Authors can now inspect layer hierarchies, add and edit motion directives, apply one-click motion presets, and delete elements directly within the standalone Studio without opening the Inkscape extension modal ([#120](https://github.com/mrpoundsign/InkAnim/issues/120)).
+  - Direct SVG saving (`Ctrl+S`) and *Save SVG As...* (`Ctrl+Shift+S`) in the desktop Studio, saving motion edits directly to disk; WebAssembly builds trigger instant browser file downloads via Blob bridges ([#120](https://github.com/mrpoundsign/InkAnim/issues/120)).
+- **Desktop Application Menus & Keyboard Shortcuts**:
+  - Dedicated desktop `File` menu: *Open SVG...* (`Ctrl+O`), *Reload SVG* (`Ctrl+R`), *Save SVG* (`Ctrl+S`), *Save SVG As...* (`Ctrl+Shift+S`), and *Export GIF...* (`Ctrl+E`) ([#120](https://github.com/mrpoundsign/InkAnim/issues/120)).
+  - Dedicated desktop `Edit` menu: *Undo* (`Ctrl+Z`), *Redo* (`Ctrl+Y`), *Copy Directive* (`Ctrl+C`), *Paste Directive* (`Ctrl+V`), and *Delete Directive* (`Del`) ([#120](https://github.com/mrpoundsign/InkAnim/issues/120)).
+  - Streamlined top toolbar replacing the redundant "Open SVG" button with an active file label and application version badge ([#120](https://github.com/mrpoundsign/InkAnim/issues/120)).
+- **True-Speed Playback & Wall-Clock Synchronization**:
+  - Re-engineered animation playback engine driven by real-world wall-clock timestamps rather than fixed frame sleep intervals, ensuring animations play at their true intended tempo even during complex scenes ([#119](https://github.com/mrpoundsign/InkAnim/issues/119)).
+  - Intelligent real-time frame skipping maintains animation synchronization under heavy system load, guaranteeing preview timing matches final exported GIFs ([#119](https://github.com/mrpoundsign/InkAnim/issues/119)).
+  - Non-looping animations now stop at the exact SVG timeline duration on the final frame ([#119](https://github.com/mrpoundsign/InkAnim/issues/119)).
+  - Non-intrusive Low FPS warning indicator alerts users whenever display hardware cannot keep up with target playback speeds ([#118](https://github.com/mrpoundsign/InkAnim/issues/118)).
+- **Responsive In-Browser GIF Export**:
+  - Dedicated Web Worker pool offloads GIF color quantization and Bayer dithering to background threads in WebAssembly, preventing UI freezes and browser tab hitching during export.
 
 ### Changed
-- **Motion Tree Visual Styling**:
-  - Highlights elements with active motion directives in bold Sky Blue and unsaved edits in italic Amber within the Layers & Motion tree.
-- **Modernized Speed & Playback Presets**:
-  - Standardized speed multiplier presets to 0.25x, 0.5x, 1x, 2x, and 4x ([#118](https://github.com/mrpoundsign/InkAnim/issues/118)).
-- **Ordered Bayer 8×8 Dithering Documentation**:
-  - Updated documentation, user interface references, and codebase comments to accurately describe the deterministic Bayer 8×8 ordered dithering pipeline ([#117](https://github.com/mrpoundsign/InkAnim/issues/117)).
-- **CI & Linter Upgrade**:
-  - Upgraded `golangci-lint-v2` to `v2.14.0` for Go 1.27 compatibility and enforced in pre-commit hook.
+- **Layers & Motion Tree Visual Highlights**:
+  - Highlights elements with active motion directives in bold **Electric Sky Blue** for rapid scanning in complex document trees.
+  - Displays elements with unsaved edits in italic **Amber** so modified nodes are immediately identifiable before saving.
+- **Streamlined Playback Speed Controls**:
+  - Standardized speed multiplier presets to 0.25x, 0.5x, 1x (normal speed), 2x, and 4x for rapid slow-motion inspection and quick previewing ([#118](https://github.com/mrpoundsign/InkAnim/issues/118)).
+- **Ordered Bayer 8×8 Dithering Clarity**:
+  - Updated user interface references and documentation to accurately describe the deterministic Bayer 8×8 ordered dithering pipeline used during GIF export ([#117](https://github.com/mrpoundsign/InkAnim/issues/117)).
 
 ### Fixed
-- **Read-Only Directive Card Initialization**:
-  - Prevented false document dirtying and unwanted canvas re-rendering when selecting or inspecting elements with motion directives in the document tree ([#121](https://github.com/mrpoundsign/InkAnim/issues/121)).
-- **Synthetic Object Tree ID Normalization**:
-  - Fixed an issue where unnamed SVG elements without IDs caused duplicate or colliding tree node entries, generating unique synthetic IDs (`text_1`, `rect_2`) ([#120](https://github.com/mrpoundsign/InkAnim/issues/120)).
-- **Palette Generation Optimization**:
-  - Optimized `GeneratePalette` histogram construction using a direct-mapped 15-bit color table for fast GIF compilation ([#116](https://github.com/mrpoundsign/InkAnim/issues/116)).
-- **Async Preview Cache & GPU-Resident Frame Textures**:
-  - Asynchronously generates preview frames with visual loading progress overlay, and keeps textures GPU-resident to eliminate per-tick texture re-upload overhead ([#113](https://github.com/mrpoundsign/InkAnim/issues/113), [#114](https://github.com/mrpoundsign/InkAnim/issues/114)).
-- **Play/Pause Button Thread-Safety**:
-  - Resolved pre-existing data race on play/pause widget state in headless UI testing ([#115](https://github.com/mrpoundsign/InkAnim/issues/115)).
-- **Timeline Frame SVG Serialization**:
-  - Fixed malformed XML serialization in `BuildTimelineFrameSVG` that previously triggered browser rasterizer fallbacks in WebAssembly ([#112](https://github.com/mrpoundsign/InkAnim/issues/112)).
+- **Accurate Document Change Tracking**:
+  - Fixed an issue where selecting or inspecting an element with motion directives in the document tree falsely marked the file as modified and triggered unnecessary canvas re-renders ([#121](https://github.com/mrpoundsign/InkAnim/issues/121)).
+- **Clean Object Tree Identification for Unnamed Shapes**:
+  - Resolved colliding and duplicate tree entries for SVGs containing shapes or elements without explicit `id` attributes by assigning unique, readable identifiers ([#120](https://github.com/mrpoundsign/InkAnim/issues/120)).
+- **Faster GIF Compilation & Color Quantization**:
+  - Substantially reduced GIF export wait times by optimizing color table generation and histogram construction, speeding up compilation across large animations with many frames ([#116](https://github.com/mrpoundsign/InkAnim/issues/116)).
+- **Smooth GPU-Accelerated Animation Preview**:
+  - Asynchronously generates preview frames with a smooth visual progress overlay, eliminating startup UI freezes when loading complex animations ([#113](https://github.com/mrpoundsign/InkAnim/issues/113)).
+  - Decoded animation frames remain resident on the GPU to eliminate per-tick texture upload overhead, delivering smooth, stutter-free playback ([#114](https://github.com/mrpoundsign/InkAnim/issues/114)).
+- **Chat Scale Preview Layout**:
+  - Fixed an issue where long Twitch status labels caused the right export panel to expand horizontally and crowd the animation canvas.
+- **WebAssembly Frame Loading & Native Browser Acceleration**:
+  - Resolved an XML serialization issue in generated timeline frames that previously caused web browser rasterization failures and triggered slow fallback rendering in WebAssembly ([#112](https://github.com/mrpoundsign/InkAnim/issues/112)).
 
 ---
 
