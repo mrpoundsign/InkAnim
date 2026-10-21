@@ -1471,3 +1471,38 @@ func TestMotionTypeDefaultsValidity(t *testing.T) {
 	}
 }
 
+func TestSchedulePreviewUpdateDebounce(t *testing.T) {
+	splinePath := filepath.Join("..", "..", "testdata", "spline_test.svg")
+	data, err := os.ReadFile(splinePath)
+	if err != nil {
+		t.Fatalf("failed to read spline_test.svg: %v", err)
+	}
+
+	state, err := NewEditorState(data, splinePath, []string{"path_motion"})
+	if err != nil {
+		t.Fatalf("NewEditorState failed: %v", err)
+	}
+
+	a := test.NewApp()
+	defer a.Quit()
+	mw := ShowEditorMainWindow(a, state)
+	defer mw.Close()
+
+	if mw.session.Document == nil || mw.session.Document.FrameCount() == 0 {
+		t.Fatalf("expected session document to be loaded with frames")
+	}
+
+	initialGen := mw.previewGen
+	mw.schedulePreviewUpdate()
+	if mw.previewGen != initialGen+1 {
+		t.Errorf("expected previewGen to increment, got %d want %d", mw.previewGen, initialGen+1)
+	}
+
+	// Triggering another schedule immediately should increment previewGen again and cancel previous timer
+	mw.schedulePreviewUpdate()
+	if mw.previewGen != initialGen+2 {
+		t.Errorf("expected previewGen to increment to %d, got %d", initialGen+2, mw.previewGen)
+	}
+}
+
+
