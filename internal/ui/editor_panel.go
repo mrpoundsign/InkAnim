@@ -17,7 +17,6 @@ import (
 
 	"inkanim/internal/ext/doctree"
 	"inkanim/internal/ext/presets"
-	"inkanim/pkg/inksvg"
 )
 
 // setupLayersAndMotionTab builds the split view containing the Objects hierarchy tree on the left
@@ -339,10 +338,13 @@ func setupLayersAndMotionTab(mw *MainWindow) fyne.CanvasObject {
 			if len(node.Directives) == 0 {
 				directivesList.Add(widget.NewLabel("No motion directives configured on this element."))
 			} else {
-				doc, err := inksvg.ParseSVG(state.ComputePatchedSVG())
 				totalDocFrames := 20
-				if err == nil && doc.FrameCount() > 0 {
-					totalDocFrames = doc.FrameCount()
+				if mw.session != nil {
+					if mw.session.Document != nil && mw.session.Document.FrameCount() > 0 {
+						totalDocFrames = mw.session.Document.FrameCount()
+					} else if len(mw.session.Frames) > 0 {
+						totalDocFrames = len(mw.session.Frames)
+					}
 				}
 
 				for i := range node.Directives {
@@ -735,9 +737,11 @@ func (mw *MainWindow) schedulePreviewUpdate() {
 	if mw.previewTimer != nil {
 		mw.previewTimer.Stop()
 	}
+	mw.previewGen++
+	gen := mw.previewGen
 	mw.previewTimer = time.AfterFunc(200*time.Millisecond, func() {
 		mw.previewMu.Lock()
-		if mw.closed || mw.editorState == nil || mw.session == nil {
+		if mw.closed || mw.editorState == nil || mw.session == nil || mw.previewGen != gen {
 			mw.previewMu.Unlock()
 			return
 		}
@@ -747,27 +751,29 @@ func (mw *MainWindow) schedulePreviewUpdate() {
 		mw.previewMu.Unlock()
 
 		patched := state.ComputePatchedSVG()
+		if err := sess.LoadSVGData(patched, filename); err != nil {
+			return
+		}
+
 		fyne.Do(func() {
 			mw.previewMu.Lock()
-			if mw.closed {
+			if mw.closed || mw.previewGen != gen {
 				mw.previewMu.Unlock()
 				return
 			}
 			mw.previewMu.Unlock()
 
-			if err := sess.LoadSVGData(patched, filename); err == nil {
-				if mw.centerPanel != nil {
-					mw.centerPanel.Refresh()
-					if len(sess.RenderedFrames) > 1 && !mw.centerPanel.IsPlaying() {
-						mw.centerPanel.Play()
-					}
+			if mw.centerPanel != nil {
+				mw.centerPanel.Refresh()
+				if len(sess.RenderedFrames) > 1 && !mw.centerPanel.IsPlaying() {
+					mw.centerPanel.Play()
 				}
-				if mw.leftPanel != nil {
-					mw.leftPanel.Refresh()
-				}
-				if mw.rightPanel != nil {
-					mw.rightPanel.syncOptions()
-				}
+			}
+			if mw.leftPanel != nil {
+				mw.leftPanel.Refresh()
+			}
+			if mw.rightPanel != nil {
+				mw.rightPanel.syncOptions()
 			}
 		})
 	})

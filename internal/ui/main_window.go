@@ -49,6 +49,7 @@ type MainWindow struct {
 	deleteItem         *fyne.MenuItem
 	mainMenu           *fyne.MainMenu
 	previewTimer       *time.Timer
+	previewGen         int
 	previewMu          sync.Mutex
 	lastHistoryMsg     string
 	refreshTreeFn      func()
