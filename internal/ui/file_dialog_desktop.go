@@ -16,6 +16,10 @@ import (
 func (mw *MainWindow) initPlatform() {}
 
 func (mw *MainWindow) promptSaveSVG() {
+	mw.promptSaveSVGWithCallback(nil)
+}
+
+func (mw *MainWindow) promptSaveSVGWithCallback(onSaved func()) {
 	if mw.editorState == nil {
 		return
 	}
@@ -28,12 +32,19 @@ func (mw *MainWindow) promptSaveSVG() {
 		mw.editorState.MarkClean()
 		mw.updateStatus()
 		mw.updateFileLabel()
+		if onSaved != nil {
+			onSaved()
+		}
 		return
 	}
-	mw.promptSaveSVGAs()
+	mw.promptSaveSVGAsWithCallback(onSaved)
 }
 
 func (mw *MainWindow) promptSaveSVGAs() {
+	mw.promptSaveSVGAsWithCallback(nil)
+}
+
+func (mw *MainWindow) promptSaveSVGAsWithCallback(onSaved func()) {
 	if mw.editorState == nil {
 		return
 	}
@@ -79,6 +90,9 @@ func (mw *MainWindow) promptSaveSVGAs() {
 			mw.showReloadButton(mw.reloadBtn)
 			mw.updateStatus()
 			mw.updateFileLabel()
+			if onSaved != nil {
+				onSaved()
+			}
 		})
 	}()
 }

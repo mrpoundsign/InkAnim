@@ -280,6 +280,11 @@ func (mw *MainWindow) Save() {
 	mw.promptSaveSVG()
 }
 
+// SaveWithCallback saves the modified SVG and invokes onSaved once the save completes.
+func (mw *MainWindow) SaveWithCallback(onSaved func()) {
+	mw.promptSaveSVGWithCallback(onSaved)
+}
+
 // Close unconditionally cleans up timers, playback, and closes the window.
 func (mw *MainWindow) Close() {
 	mw.previewMu.Lock()
@@ -293,6 +298,9 @@ func (mw *MainWindow) Close() {
 	}
 	mw.previewMu.Unlock()
 
+	if mw.fileWatcher != nil {
+		mw.fileWatcher.close()
+	}
 	if mw.centerPanel != nil {
 		mw.centerPanel.Pause()
 	}

@@ -35,12 +35,16 @@ func getAttrRegex(attrLocal string) *regexp.Regexp {
 	return actual.(*regexp.Regexp)
 }
 
-// escapeAttrValue escapes special XML characters for an attribute value.
-func escapeAttrValue(s string) string {
+// EscapeAttrValue escapes special XML characters for an attribute value.
+func EscapeAttrValue(s string) string {
 	var buf bytes.Buffer
 	_ = xml.EscapeText(&buf, []byte(s))
 	// xml.EscapeText handles &, <, >, \r, \t, etc. We must also escape double-quotes for attributes.
 	return strings.ReplaceAll(buf.String(), `"`, "&quot;")
+}
+
+func escapeAttrValue(s string) string {
+	return EscapeAttrValue(s)
 }
 
 // detectNamespacePrefix scans the document for an xmlns:prefix="namespaceURI" definition.

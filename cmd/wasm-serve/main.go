@@ -6,6 +6,7 @@ import (
 	"log"
 	"mime"
 	"net/http"
+	"time"
 )
 
 func main() {
@@ -25,7 +26,11 @@ func main() {
 	fmt.Printf("    Interactive Demo: http://localhost:%s/demo/\n\n", *port)
 	fmt.Println("Press Ctrl+C to stop.")
 
-	if err := http.ListenAndServe(":"+*port, nil); err != nil {
+	srv := &http.Server{
+		Addr:              "127.0.0.1:" + *port,
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+	if err := srv.ListenAndServe(); err != nil {
 		log.Fatalf("Server error: %v", err)
 	}
 }

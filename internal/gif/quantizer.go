@@ -289,11 +289,14 @@ func PalettedToRGBA(p *image.Paletted) *image.RGBA {
 		srcRow := p.Pix[(minY+y)*p.Stride+minX : (minY+y)*p.Stride+minX+w]
 		dstRow := rgba.Pix[(dstMinY+y)*rgba.Stride+dstMinX*4 : (dstMinY+y)*rgba.Stride+(dstMinX+w)*4]
 		for x := range w {
-			c := pal[srcRow[x]]
-			dstRow[x*4] = c.R
-			dstRow[x*4+1] = c.G
-			dstRow[x*4+2] = c.B
-			dstRow[x*4+3] = c.A
+			idx := int(srcRow[x])
+			if idx < len(pal) {
+				c := pal[idx]
+				dstRow[x*4] = c.R
+				dstRow[x*4+1] = c.G
+				dstRow[x*4+2] = c.B
+				dstRow[x*4+3] = c.A
+			}
 		}
 	}
 

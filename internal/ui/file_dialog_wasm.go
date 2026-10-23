@@ -5,6 +5,7 @@ package ui
 import (
 	"bytes"
 	"fmt"
+	"sync"
 	"syscall/js"
 
 	"fyne.io/fyne/v2"
@@ -117,13 +118,29 @@ func (mw *MainWindow) promptOpenFile() {
 	input.Get("style").Set("display", "none")
 	body.Call("appendChild", input)
 
-	var onChange js.Func
+	var (
+		cleanupOnce sync.Once
+		onChange    js.Func
+		onCancel    js.Func
+	)
+	cleanup := func() {
+		cleanupOnce.Do(func() {
+			onChange.Release()
+			onCancel.Release()
+			body.Call("removeChild", input)
+		})
+	}
+
+	onCancel = js.FuncOf(func(this js.Value, args []js.Value) any {
+		cleanup()
+		return nil
+	})
+
 	onChange = js.FuncOf(func(this js.Value, args []js.Value) any {
 		go func() {
-			defer onChange.Release()
+			defer cleanup()
 			files := input.Get("files")
 			if files.Length() == 0 {
-				body.Call("removeChild", input)
 				return
 			}
 
@@ -157,7 +174,6 @@ func (mw *MainWindow) promptOpenFile() {
 			data := <-done
 			onLoad.Release()
 			onError.Release()
-			body.Call("removeChild", input)
 
 			if data != nil {
 				mw.loadDataAsync(data, name, func() {
@@ -171,6 +187,7 @@ func (mw *MainWindow) promptOpenFile() {
 	})
 
 	input.Call("addEventListener", "change", onChange)
+	input.Call("addEventListener", "cancel", onCancel)
 	input.Call("click")
 }
 
@@ -249,10 +266,18 @@ func triggerBrowserDownload(filename, mimeType string, data []byte) {
 }
 
 func (mw *MainWindow) promptSaveSVG() {
-	mw.promptSaveSVGAs()
+	mw.promptSaveSVGWithCallback(nil)
+}
+
+func (mw *MainWindow) promptSaveSVGWithCallback(onSaved func()) {
+	mw.promptSaveSVGAsWithCallback(onSaved)
 }
 
 func (mw *MainWindow) promptSaveSVGAs() {
+	mw.promptSaveSVGAsWithCallback(nil)
+}
+
+func (mw *MainWindow) promptSaveSVGAsWithCallback(onSaved func()) {
 	if mw.editorState == nil {
 		return
 	}
@@ -265,6 +290,9 @@ func (mw *MainWindow) promptSaveSVGAs() {
 	mw.editorState.MarkClean()
 	mw.updateStatus()
 	mw.updateFileLabel()
+	if onSaved != nil {
+		onSaved()
+	}
 }
 
 func (mw *MainWindow) loadDataAsync(data []byte, filename string, onLoaded func()) {

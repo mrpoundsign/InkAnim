@@ -13,6 +13,7 @@ import (
 	"runtime/pprof"
 	"sync"
 	"syscall"
+	"time"
 )
 
 // SetupProfiler configures CPU profiling, memory profiling, and/or a live HTTP pprof server.
@@ -39,7 +40,10 @@ func SetupProfiler(cpuProfile, memProfile, pprofAddr string) (func(), error) {
 
 	var server *http.Server
 	if pprofAddr != "" {
-		server = &http.Server{Addr: pprofAddr}
+		server = &http.Server{
+			Addr:              pprofAddr,
+			ReadHeaderTimeout: 10 * time.Second,
+		}
 		go func() {
 			log.Printf("[pprof] Live HTTP profiler listening at http://%s/debug/pprof/\n", pprofAddr)
 			if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -50,11 +54,13 @@ func SetupProfiler(cpuProfile, memProfile, pprofAddr string) (func(), error) {
 
 	var once sync.Once
 	sigChan := make(chan os.Signal, 1)
+	done := make(chan struct{})
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
 	cleanup := func() {
 		once.Do(func() {
 			signal.Stop(sigChan)
+			close(done)
 
 			if cpuFile != nil {
 				pprof.StopCPUProfile()
@@ -83,10 +89,14 @@ func SetupProfiler(cpuProfile, memProfile, pprofAddr string) (func(), error) {
 	}
 
 	go func() {
-		if _, ok := <-sigChan; ok {
-			log.Println("[pprof] Caught termination signal, finalizing profiles...")
-			cleanup()
-			os.Exit(0)
+		select {
+		case _, ok := <-sigChan:
+			if ok {
+				log.Println("[pprof] Caught termination signal, finalizing profiles...")
+				cleanup()
+				os.Exit(0)
+			}
+		case <-done:
 		}
 	}()
 

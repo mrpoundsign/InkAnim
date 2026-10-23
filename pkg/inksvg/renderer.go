@@ -11,6 +11,7 @@ import (
 	"math"
 	"reflect"
 	"strings"
+	"sync"
 	"unsafe"
 
 	"github.com/srwiley/oksvg"
@@ -408,24 +409,22 @@ func (ts *transformScanner) SetBounds(w, h int) {
 var (
 	mAdderOffset     uintptr
 	linerColorOffset uintptr
-	offsetsInit      bool
+	offsetsOnce      sync.Once
 )
 
 func initPathOffsets() {
-	if offsetsInit {
-		return
-	}
-	var dummy oksvg.SvgPath
-	val := reflect.ValueOf(dummy)
-	styleVal := val.FieldByName("PathStyle")
-	styleTyp := styleVal.Type()
-	if f, ok := styleTyp.FieldByName("mAdder"); ok {
-		mAdderOffset = f.Offset
-	}
-	if f, ok := styleTyp.FieldByName("linerColor"); ok {
-		linerColorOffset = f.Offset
-	}
-	offsetsInit = true
+	offsetsOnce.Do(func() {
+		var dummy oksvg.SvgPath
+		val := reflect.ValueOf(dummy)
+		styleVal := val.FieldByName("PathStyle")
+		styleTyp := styleVal.Type()
+		if f, ok := styleTyp.FieldByName("mAdder"); ok {
+			mAdderOffset = f.Offset
+		}
+		if f, ok := styleTyp.FieldByName("linerColor"); ok {
+			linerColorOffset = f.Offset
+		}
+	})
 }
 
 func getPathMatrix(p *oksvg.SvgPath) rasterx.Matrix2D {

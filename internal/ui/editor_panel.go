@@ -841,7 +841,7 @@ func (mw *MainWindow) handleCloseRequest() {
 			mw.editorState.Result = mw.editorState.OriginalSVG
 			mw.editorState.Applied = false
 		}
-		mw.window.Close()
+		mw.Close()
 		return
 	}
 
@@ -864,7 +864,7 @@ func (mw *MainWindow) handleCloseRequest() {
 			d.Hide()
 			state.Result = state.ComputePatchedSVG()
 			state.Applied = true
-			mw.window.Close()
+			mw.Close()
 		})
 		applyAndClose.Importance = widget.HighImportance
 
@@ -872,7 +872,7 @@ func (mw *MainWindow) handleCloseRequest() {
 			d.Hide()
 			state.Result = state.OriginalSVG
 			state.Applied = false
-			mw.window.Close()
+			mw.Close()
 		})
 		discardChanges.Importance = widget.DangerImportance
 
@@ -906,14 +906,15 @@ func (mw *MainWindow) handleCloseRequest() {
 	var d *dialog.CustomDialog
 	saveAndClose := widget.NewButtonWithIcon("Save & Close", theme.DocumentSaveIcon(), func() {
 		d.Hide()
-		mw.Save()
-		mw.window.Close()
+		mw.SaveWithCallback(func() {
+			mw.Close()
+		})
 	})
 	saveAndClose.Importance = widget.HighImportance
 
 	discardAndClose := widget.NewButtonWithIcon("Discard & Close", theme.DeleteIcon(), func() {
 		d.Hide()
-		mw.window.Close()
+		mw.Close()
 	})
 	discardAndClose.Importance = widget.DangerImportance
 
