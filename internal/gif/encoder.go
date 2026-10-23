@@ -38,12 +38,15 @@ func EncodeAnimatedGIF(frames []FrameInput, opts ExportOptions) (*gif.GIF, error
 
 		// 1. If ExportSquare is enabled, center source inside square canvas
 		if opts.ExportSquare {
-			frameImg = MakeSquare(frameImg, opts.SquareSize)
+			sq := min(opts.SquareSize, 4096)
+			frameImg = MakeSquare(frameImg, sq)
 		} else if opts.TargetWidth > 0 && opts.TargetHeight > 0 {
 			// Custom resize if explicitly specified and different from source bounds
+			tw := min(opts.TargetWidth, 4096)
+			th := min(opts.TargetHeight, 4096)
 			b := frameImg.Bounds()
-			if b.Dx() != opts.TargetWidth || b.Dy() != opts.TargetHeight {
-				scaled := image.NewRGBA(image.Rect(0, 0, opts.TargetWidth, opts.TargetHeight))
+			if b.Dx() != tw || b.Dy() != th {
+				scaled := image.NewRGBA(image.Rect(0, 0, tw, th))
 				draw.BiLinear.Scale(scaled, scaled.Bounds(), frameImg, b, draw.Src, nil)
 				frameImg = scaled
 			}

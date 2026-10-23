@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"runtime"
 	"strconv"
@@ -89,7 +90,7 @@ func CheckForUpdateWithURL(currentVersion, apiURL string, client *http.Client) (
 	}
 
 	var releases []githubRelease
-	if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 5*1024*1024)).Decode(&releases); err != nil {
 		return nil, fmt.Errorf("failed to parse release information: %w", err)
 	}
 

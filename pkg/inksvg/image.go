@@ -50,6 +50,14 @@ func decodeDataURI(uri string) (image.Image, error) {
 		return nil, fmt.Errorf("base64 decode error: %w", err)
 	}
 
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("image config decode error: %w", err)
+	}
+	if cfg.Width <= 0 || cfg.Height <= 0 || cfg.Width > 4096 || cfg.Height > 4096 {
+		return nil, fmt.Errorf("embedded image dimensions (%dx%d) out of allowed bounds (max 4096x4096)", cfg.Width, cfg.Height)
+	}
+
 	img, _, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
 		return nil, fmt.Errorf("image decode error: %w", err)
@@ -205,7 +213,7 @@ func drawEmbeddedImage(dest *image.RGBA, emb EmbeddedImage, viewTransform raster
 	maxY := int(math.Round(math.Max(cy0, cy1)))
 
 	dstRect := image.Rect(minX, minY, maxX, maxY)
-	if dstRect.Empty() {
+	if dstRect.Empty() || !dstRect.Overlaps(dest.Bounds()) || dstRect.Dx() > 4096 || dstRect.Dy() > 4096 {
 		return
 	}
 
@@ -214,11 +222,15 @@ func drawEmbeddedImage(dest *image.RGBA, emb EmbeddedImage, viewTransform raster
 		return
 	}
 
-	// For partial opacity, scale into a buffer and apply alpha factor
+	// For partial opacity, scale into a buffer and apply premultiplied alpha factor
 	scaled := image.NewRGBA(image.Rect(0, 0, dstRect.Dx(), dstRect.Dy()))
 	draw.BiLinear.Scale(scaled, scaled.Bounds(), emb.Data, emb.Data.Bounds(), draw.Src, nil)
-	for i := 3; i < len(scaled.Pix); i += 4 {
-		scaled.Pix[i] = uint8(float64(scaled.Pix[i]) * emb.Opacity)
+	op := uint32(math.Round(emb.Opacity * 255.0))
+	for i := 0; i < len(scaled.Pix); i += 4 {
+		scaled.Pix[i] = uint8((uint32(scaled.Pix[i])*op + 127) / 255)
+		scaled.Pix[i+1] = uint8((uint32(scaled.Pix[i+1])*op + 127) / 255)
+		scaled.Pix[i+2] = uint8((uint32(scaled.Pix[i+2])*op + 127) / 255)
+		scaled.Pix[i+3] = uint8((uint32(scaled.Pix[i+3])*op + 127) / 255)
 	}
 	draw.Draw(dest, dstRect, scaled, image.Point{}, draw.Over)
 }

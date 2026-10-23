@@ -29,13 +29,12 @@ var debugLogF *os.File
 
 func initDebugLog() {
 	logPath := filepath.Join(os.TempDir(), "inkanim-ext-debug.log")
-	debugLogF, _ = os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	debugLogF, _ = os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 }
 
 func logDebug(format string, args ...any) {
 	if debugLogF != nil {
 		_, _ = fmt.Fprintf(debugLogF, format+"\n", args...)
-		_ = debugLogF.Sync()
 	}
 }
 

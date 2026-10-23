@@ -1,6 +1,10 @@
 package presets
 
-import "fmt"
+import (
+	"fmt"
+
+	"inkanim/internal/ext/svgpatch"
+)
 
 // Preset defines a motion preset.
 type Preset struct {
@@ -131,12 +135,13 @@ func (p Preset) FormatLabel() string {
 
 // GenerateAnchorElement creates an XML anchor element string for the preset centered at (cx, cy).
 func (p Preset) GenerateAnchorElement(anchorID string, cx, cy float64, totalFrames int) string {
-	label := p.FormatLabelForFrames(totalFrames)
+	escapedID := svgpatch.EscapeAttrValue(anchorID)
+	escapedLabel := svgpatch.EscapeAttrValue(p.FormatLabelForFrames(totalFrames))
 	if p.PathType == "path" {
 		d := fmt.Sprintf("M %.2f %.2f L %.2f %.2f", cx, cy, cx, cy-15)
 		return fmt.Sprintf(`<path id="%s" d="%s" style="fill:none;stroke:#38bdf8;stroke-width:1;stroke-dasharray:2,2" inkscape:label="%s" />`,
-			anchorID, d, label)
+			escapedID, d, escapedLabel)
 	}
 	return fmt.Sprintf(`<circle id="%s" cx="%.2f" cy="%.2f" r="1.5" style="fill:#38bdf8;stroke:none" inkscape:label="%s" />`,
-		anchorID, cx, cy, label)
+		escapedID, cx, cy, escapedLabel)
 }

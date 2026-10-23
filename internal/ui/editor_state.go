@@ -398,8 +398,9 @@ func (s *EditorState) PasteMotions(rawDirectives string) (string, error) {
 					counter++
 				}
 
+				escapedPivotID := svgpatch.EscapeAttrValue(newPivotID)
 				pivotXML := fmt.Sprintf(`<circle id="%s" cx="%.2f" cy="%.2f" r="1.5" style="fill:#38bdf8;stroke:none" inkscape:label="Pivot: %s" />`,
-					newPivotID, cx, cy, newPivotID)
+					escapedPivotID, cx, cy, escapedPivotID)
 
 				patched, err := svgpatch.InsertChild(patchedSVG, insertGroupID, pivotXML)
 				if err == nil {
@@ -454,7 +455,7 @@ func (s *EditorState) PasteMotions(rawDirectives string) (string, error) {
 		}
 		label := fmt.Sprintf("%s: %s", anchorID, strings.Join(dirStrings, " "))
 		childXML := fmt.Sprintf(`<circle id="%s" cx="%.2f" cy="%.2f" r="1.5" style="fill:#38bdf8;stroke:none" inkscape:label="%s" />`,
-			anchorID, cx, cy, label)
+			svgpatch.EscapeAttrValue(anchorID), cx, cy, svgpatch.EscapeAttrValue(label))
 
 		patched, err := svgpatch.InsertChild(patchedSVG, targetNode.ID, childXML)
 		if err != nil {
