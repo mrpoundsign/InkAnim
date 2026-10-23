@@ -2,12 +2,17 @@ package inksvg
 
 import (
 	"bytes"
+	"encoding/base64"
+	"image"
+	"image/color"
+	"image/png"
 	"math"
 	"os"
 	"strings"
 	"testing"
 
 	"github.com/srwiley/oksvg"
+	"github.com/srwiley/rasterx"
 )
 
 const sampleInkscapeSVG = `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
@@ -446,6 +451,143 @@ func TestParseDimensionUnits(t *testing.T) {
 		if math.Abs(got-tt.expected) > 0.001 {
 			t.Errorf("parseDimension(%q) = %f; expected %f", tt.input, got, tt.expected)
 		}
+	}
+}
+
+func TestFrameEffectiveDurationAndDocumentHelpers(t *testing.T) {
+	f := Frame{ID: "f1", DurationMs: 150}
+	if got := f.EffectiveDuration(200); got != 200 {
+		t.Errorf("expected global default 200, got %d", got)
+	}
+	if got := f.EffectiveDuration(0); got != 150 {
+		t.Errorf("expected frame duration 150, got %d", got)
+	}
+	fEmpty := Frame{ID: "f2"}
+	if got := fEmpty.EffectiveDuration(0); got != 100 {
+		t.Errorf("expected fallback 100, got %d", got)
+	}
+	fOverride := Frame{ID: "f3", HasOverride: true, OverrideMs: 300, DurationMs: 150}
+	if got := fOverride.EffectiveDuration(200); got != 300 {
+		t.Errorf("expected override 300, got %d", got)
+	}
+
+	var nilDoc *SVGDocument
+	if nilDoc.FrameCount() != 0 {
+		t.Errorf("expected nilDoc.FrameCount() == 0")
+	}
+	if nilDoc.CloneWithoutMotionLines() != nil {
+		t.Errorf("expected nilDoc.CloneWithoutMotionLines() == nil")
+	}
+	if r := nilDoc.GetElementRect("any"); r.Width != 512 || r.Height != 512 {
+		t.Errorf("unexpected nilDoc.GetElementRect: %+v", r)
+	}
+	if r := nilDoc.GetDrawingRect(); r.Width != 512 || r.Height != 512 {
+		t.Errorf("unexpected nilDoc.GetDrawingRect: %+v", r)
+	}
+	if r := nilDoc.GetDocumentRect(); r.Width != 512 || r.Height != 512 {
+		t.Errorf("unexpected nilDoc.GetDocumentRect: %+v", r)
+	}
+	if _, ok := nilDoc.GetPageRect(0); ok {
+		t.Errorf("expected nilDoc.GetPageRect(0) to return false")
+	}
+
+	doc := &SVGDocument{
+		Width:           0,
+		Height:          0,
+		ShowMotionLines: true,
+		Frames:          []Frame{{ID: "f1"}, {ID: "f2"}},
+		Pages:           []Page{{ID: "p1", Width: 0, Height: 0}},
+	}
+	if doc.FrameCount() != 2 {
+		t.Errorf("expected FrameCount() == 2, got %d", doc.FrameCount())
+	}
+	cloned := doc.CloneWithoutMotionLines()
+	if cloned.ShowMotionLines || !doc.ShowMotionLines {
+		t.Errorf("expected CloneWithoutMotionLines to clear ShowMotionLines only on clone")
+	}
+	if r := doc.GetDocumentRect(); r.Width != 512 || r.Height != 512 {
+		t.Errorf("expected 512x512 fallback from GetDocumentRect, got %+v", r)
+	}
+	if pr, ok := doc.GetPageRect(0); !ok || pr.Width != 512 || pr.Height != 512 {
+		t.Errorf("expected 512x512 fallback from GetPageRect(0), got %+v (ok=%v)", pr, ok)
+	}
+
+	// Test bboxScanner & transformScanner no-op methods
+	bs := &bboxScanner{}
+	if ext := bs.GetPathExtent(); ext.Max.X != 0 {
+		t.Errorf("expected zero extent for empty bboxScanner")
+	}
+	bs.Draw()
+	bs.SetBounds(100, 100)
+	bs.SetColor(color.Black)
+	bs.SetWinding(true)
+	bs.Clear()
+	bs.SetClip(image.Rect(0, 0, 10, 10))
+
+	ts := &transformScanner{Scanner: bs}
+	ts.SetBounds(100, 100)
+}
+
+func TestCustomRasterizerAndEmbeddedImageBounds(t *testing.T) {
+	rawSVG := []byte(`<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" fill="#ff0000"/></svg>`)
+	customCalled := false
+	CustomRasterizer = func(svgData []byte, targetW, targetH int) (*image.RGBA, error) {
+		customCalled = true
+		img := image.NewRGBA(image.Rect(0, 0, targetW, targetH))
+		return img, nil
+	}
+	defer func() { CustomRasterizer = nil }()
+
+	img, err := RenderSVGToRGBA(rawSVG, 32, 32)
+	if err != nil {
+		t.Fatalf("RenderSVGToRGBA with CustomRasterizer failed: %v", err)
+	}
+	if !customCalled || img.Bounds().Dx() != 32 {
+		t.Errorf("expected CustomRasterizer to be used for 32x32")
+	}
+
+	// Test decodeDataURI error cases and partial opacity premultiplication
+	if _, err := decodeDataURI("http://example.com/a.png"); err == nil {
+		t.Errorf("expected error for non-data URI")
+	}
+	if _, err := decodeDataURI("data:image/png;base64"); err == nil {
+		t.Errorf("expected error for missing comma")
+	}
+	if _, err := decodeDataURI("data:image/png,raw"); err == nil {
+		t.Errorf("expected error for non-base64 data URI")
+	}
+
+	// Encode a small 4x4 white PNG and test partial opacity premultiplication in drawEmbeddedImage
+	srcPNG := image.NewNRGBA(image.Rect(0, 0, 4, 4))
+	for y := range 4 {
+		for x := range 4 {
+			srcPNG.SetNRGBA(x, y, color.NRGBA{R: 200, G: 100, B: 50, A: 255})
+		}
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, srcPNG); err != nil {
+		t.Fatalf("png.Encode failed: %v", err)
+	}
+	uri := "data:image/png;base64," + base64.StdEncoding.EncodeToString(buf.Bytes())
+	decoded, err := decodeDataURI(uri)
+	if err != nil {
+		t.Fatalf("decodeDataURI failed: %v", err)
+	}
+
+	dest := image.NewRGBA(image.Rect(0, 0, 16, 16))
+	drawEmbeddedImage(dest, EmbeddedImage{
+		Data:      decoded,
+		X:         0,
+		Y:         0,
+		Width:     16,
+		Height:    16,
+		Transform: IdentityMatrix(),
+		Opacity:   0.5,
+	}, rasterx.Identity)
+
+	px := dest.RGBAAt(8, 8)
+	if px.A == 0 || px.R > px.A {
+		t.Errorf("expected valid premultiplied pixel at (8,8), got %+v", px)
 	}
 }
 

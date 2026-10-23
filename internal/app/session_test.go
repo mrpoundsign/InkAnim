@@ -2,6 +2,7 @@ package app
 
 import (
 	"bytes"
+	"image"
 	"os"
 	"path/filepath"
 	"testing"
@@ -528,5 +529,76 @@ func TestResolveExportDimensions(t *testing.T) {
 	maxSide := max(dims.OutHeight, dims.OutWidth)
 	if maxSide != 512 {
 		t.Errorf("expected max side auto-upscaled to 512, got %d", maxSide)
+	}
+}
+
+func TestSessionMotionLinesMoveFrameAndBatchRasterizer(t *testing.T) {
+	sess := NewSession()
+	// Nil document fallbacks
+	if r := sess.GetPreviewBoundaryRect(); r.Width != 512 || r.Height != 512 {
+		t.Errorf("expected 512x512 preview rect when Document is nil, got %+v", r)
+	}
+	if w, h := sess.GetActiveBoundaryDimensions(); w != 512 || h != 512 {
+		t.Errorf("expected 512x512 dimensions when Document is nil, got %fx%f", w, h)
+	}
+
+	testSVGPath, err := filepath.Abs("../../testdata/pendulum.svg")
+	if err != nil {
+		t.Fatalf("failed to resolve test SVG path: %v", err)
+	}
+	if err := sess.LoadSVG(testSVGPath); err != nil {
+		t.Fatalf("LoadSVG failed: %v", err)
+	}
+
+	if r := sess.GetPreviewBoundaryRect(); r.Width <= 0 || r.Height <= 0 {
+		t.Errorf("expected positive preview boundary rect, got %+v", r)
+	}
+
+	// Test SetShowMotionLines
+	if err := sess.SetShowMotionLines(false); err != nil {
+		t.Fatalf("SetShowMotionLines(false) failed: %v", err)
+	}
+	if sess.ShowMotionLines || sess.Document.ShowMotionLines {
+		t.Errorf("expected ShowMotionLines to be false")
+	}
+
+	// Test MoveFrame valid and invalid
+	firstID := sess.Frames[0].ID
+	secondID := sess.Frames[1].ID
+	if err := sess.MoveFrame(0, 1); err != nil {
+		t.Fatalf("MoveFrame(0, 1) failed: %v", err)
+	}
+	if sess.Frames[0].ID != secondID || sess.Frames[1].ID != firstID {
+		t.Errorf("expected frames 0 and 1 to swap")
+	}
+	if err := sess.MoveFrame(-1, 0); err == nil {
+		t.Errorf("expected error for invalid MoveFrame index")
+	}
+
+	// Test CustomBatchRasterizer hook
+	batchCalled := false
+	inksvg.CustomBatchRasterizer = func(svgList [][]byte, targetW, targetH int) ([]*image.RGBA, error) {
+		batchCalled = true
+		out := make([]*image.RGBA, len(svgList))
+		for i := range svgList {
+			out[i] = image.NewRGBA(image.Rect(0, 0, targetW, targetH))
+		}
+		return out, nil
+	}
+	defer func() { inksvg.CustomBatchRasterizer = nil }()
+
+	sess.InvalidateCache()
+	if err := sess.RerenderAllFrames(); err != nil {
+		t.Fatalf("RerenderAllFrames with CustomBatchRasterizer failed: %v", err)
+	}
+	if !batchCalled {
+		t.Errorf("expected CustomBatchRasterizer to be called")
+	}
+
+	// Test ExportGIF to temporary file
+	outGIF := filepath.Join(t.TempDir(), "out.gif")
+	size, err := sess.ExportGIF(outGIF)
+	if err != nil || size <= 0 {
+		t.Fatalf("ExportGIF failed: size=%d, err=%v", size, err)
 	}
 }

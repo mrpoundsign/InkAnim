@@ -178,6 +178,21 @@ func TestVisualZOrder(t *testing.T) {
 	if roots[1].ID != "layer1" {
 		t.Errorf("expected bottom-most layer 'layer1' at root[1], got %q", roots[1].ID)
 	}
+
+	if roots[0].HasDirectives() {
+		t.Errorf("expected plain layer without directives to report HasDirectives() == false")
+	}
+	nodeWithDir := &DocNode{
+		ID:         "n1",
+		Tag:        "path",
+		Directives: []Directive{{Type: "Rot", Params: "f: 1-10"}},
+	}
+	if !nodeWithDir.HasDirectives() {
+		t.Errorf("expected node with directive to report HasDirectives() == true")
+	}
+	if got := nodeWithDir.DisplayTitle(); got == "" {
+		t.Errorf("expected non-empty DisplayTitle")
+	}
 }
 
 
