@@ -91,24 +91,23 @@ func Parse(dType string, paramsStr string, defaultEndFrame int) DirectiveModel {
 	}
 
 	// Normalize colons and split tokens
-	configStr := paramsStr
-	var cleaned strings.Builder
-	runes := []rune(configStr)
+	runes := []rune(paramsStr)
+	cleaned := make([]rune, 0, len(runes))
 	for i := 0; i < len(runes); i++ {
 		r := runes[i]
 		if r == ':' {
-			str := strings.TrimRight(cleaned.String(), " \t")
-			cleaned.Reset()
-			cleaned.WriteString(str)
-			cleaned.WriteRune(':')
+			for len(cleaned) > 0 && (cleaned[len(cleaned)-1] == ' ' || cleaned[len(cleaned)-1] == '\t') {
+				cleaned = cleaned[:len(cleaned)-1]
+			}
+			cleaned = append(cleaned, ':')
 			for i+1 < len(runes) && (runes[i+1] == ' ' || runes[i+1] == '\t') {
 				i++
 			}
 		} else {
-			cleaned.WriteRune(r)
+			cleaned = append(cleaned, r)
 		}
 	}
-	configStr = cleaned.String()
+	configStr := string(cleaned)
 
 	parts := strings.FieldsFunc(configStr, func(r rune) bool {
 		return r == ';' || r == ',' || unicode.IsSpace(r)
