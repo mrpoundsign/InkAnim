@@ -9,6 +9,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/test"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	appkg "inkanim/internal/app"
@@ -1171,5 +1172,119 @@ func TestTimelinePlaybackAndFrameSkipping(t *testing.T) {
 			t.Errorf("expected first reverse frame %d, got %d", totalFrames-2, revIdx)
 		}
 	}
+}
+
+func TestStudioThemeAndUIHelpers(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	st := &StudioTheme{}
+	colorNames := []fyne.ThemeColorName{
+		theme.ColorNameBackground,
+		theme.ColorNameInputBackground,
+		theme.ColorNameButton,
+		theme.ColorNamePrimary,
+		theme.ColorNameHeaderBackground,
+		theme.ColorNameSelection,
+		theme.ColorNameHover,
+		theme.ColorNameForeground,
+		theme.ColorNameDisabled,
+		theme.ColorNameHyperlink,
+		theme.ColorNameOverlayBackground,
+		theme.ColorNamePlaceHolder,
+		theme.ColorNameScrollBar,
+		theme.ColorNameError,
+		theme.ColorNameWarning,
+		theme.ColorNameSuccess,
+		"custom_fallback_color",
+	}
+	for _, cn := range colorNames {
+		if c := st.Color(cn, theme.VariantDark); c == nil {
+			t.Errorf("expected non-nil color for %s", cn)
+		}
+	}
+	if f := st.Font(fyne.TextStyle{}); f == nil {
+		t.Errorf("expected non-nil font")
+	}
+	if ic := st.Icon(theme.IconNameConfirm); ic == nil {
+		t.Errorf("expected non-nil icon")
+	}
+	if sz := st.Size(theme.SizeNameSeparatorThickness); sz != 3.0 {
+		t.Errorf("expected separator thickness 3.0, got %v", sz)
+	}
+	if sz := st.Size(theme.SizeNameText); sz <= 0 {
+		t.Errorf("expected positive text size, got %v", sz)
+	}
+
+	// Test background image generators
+	if cb := createCheckerboardImage(32, 32); cb == nil || cb.Bounds().Dx() != 32 {
+		t.Errorf("expected 32x32 checkerboard image")
+	}
+	if vg := createVibrantGradientImage(32, 32); vg == nil || vg.Bounds().Dx() != 32 {
+		t.Errorf("expected 32x32 vibrant gradient image")
+	}
+
+	// Test commitEntry FocusLost
+	committed := false
+	ce := newCommitEntry(func() {
+		committed = true
+	})
+	ce.SetText("120")
+	ce.FocusLost()
+	if !committed {
+		t.Errorf("expected commitEntry.FocusLost() to trigger onCommit")
+	}
+}
+
+func TestMainWindowSaveReloadAndCloseLifecycle(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	mw := NewMainWindow(app)
+	defer waitForPreview(mw)
+
+	// Test RightExportPanel helpers and empty-frame PromptExport dialog
+	mw.rightPanel.SetOnExportSuccess(func(path string) {})
+	mw.rightPanel.Refresh()
+	mw.rightPanel.PromptExport()
+
+	// Test CenterPreviewPanel SetPingPong and BeginLoading/EndLoading
+	mw.centerPanel.SetPingPong(true)
+	mw.centerPanel.BeginLoading("Testing...")
+	mw.centerPanel.EndLoading()
+
+	// Copy pendulum.svg to a temp file so we can test Save(), Reload(), MarkClean(), and handleCloseRequest()
+	srcPath, err := filepath.Abs("../../testdata/pendulum.svg")
+	if err != nil {
+		t.Fatalf("failed to resolve pendulum.svg: %v", err)
+	}
+	rawBytes, err := os.ReadFile(srcPath)
+	if err != nil {
+		t.Fatalf("failed to read pendulum.svg: %v", err)
+	}
+	tmpSVG := filepath.Join(t.TempDir(), "pendulum_copy.svg")
+	if err := os.WriteFile(tmpSVG, rawBytes, 0600); err != nil {
+		t.Fatalf("failed to write temp SVG: %v", err)
+	}
+
+	loadAndWait(mw, tmpSVG)
+	mw.StopPreviewTimer()
+
+	// Mutate state and test Save() & MarkClean()
+	if mw.editorState == nil {
+		t.Fatalf("expected non-nil editorState")
+	}
+	mw.editorState.RecordChange("Test mutation")
+	mw.Save()
+	if mw.editorState.IsDirty() {
+		t.Errorf("expected editorState to be clean after Save()")
+	}
+
+	// Test Reload()
+	mw.Reload()
+	waitForPreview(mw)
+
+	// Test handleCloseRequest when clean
+	mw.handleCloseRequest()
 }
 

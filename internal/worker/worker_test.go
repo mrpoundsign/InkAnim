@@ -1,0 +1,7 @@
+package worker
+
+import "testing"
+
+func TestRun(t *testing.T) {
+	Run()
+}

@@ -176,9 +176,9 @@ function Run-Tests {
     param([switch]$UpdateGolden)
     Write-Host "`n==> Running unit tests..." -ForegroundColor Cyan
     if ($UpdateGolden) {
-        & $GoExe test -v ./internal/... ./pkg/... -update-golden
+        & $GoExe test -v ./internal/... ./pkg/... ./cmd/inkanim-cli -update-golden
     } else {
-        & $GoExe test -v ./internal/... ./pkg/...
+        & $GoExe test -v ./internal/... ./pkg/... ./cmd/inkanim-cli
     }
     if ($LASTEXITCODE -eq 0) {
         Write-Host "[OK] All tests passed!" -ForegroundColor Green

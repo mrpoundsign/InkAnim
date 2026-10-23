@@ -176,6 +176,21 @@ func TestCheckForUpdateWithURL(t *testing.T) {
 	})
 }
 
+type rewriteTransport struct {
+	targetURL string
+	base      http.RoundTripper
+}
+
+func (rt *rewriteTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	cloned := req.Clone(req.Context())
+	u, err := http.NewRequest(req.Method, rt.targetURL, nil)
+	if err == nil {
+		cloned.URL = u.URL
+		cloned.Host = u.Host
+	}
+	return rt.base.RoundTrip(cloned)
+}
+
 func TestCheckForUpdateAsync(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode([]githubRelease{
@@ -187,18 +202,24 @@ func TestCheckForUpdateAsync(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	// Replace DefaultReleaseURL during test would be one way, but CheckForUpdate calls CheckForUpdateWithURL.
-	// We can test async mechanics with a custom goroutine or using a local test helper.
+	client := &http.Client{
+		Transport: &rewriteTransport{
+			targetURL: ts.URL,
+			base:      ts.Client().Transport,
+		},
+	}
+
 	var wg sync.WaitGroup
 	wg.Add(1)
 
 	var receivedResult *UpdateResult
 	var receivedErr error
 
-	go func() {
+	CheckForUpdateAsync("v0.1.2", client, func(res *UpdateResult, err error) {
 		defer wg.Done()
-		receivedResult, receivedErr = CheckForUpdateWithURL("v0.1.2", ts.URL, ts.Client())
-	}()
+		receivedResult = res
+		receivedErr = err
+	})
 
 	wg.Wait()
 

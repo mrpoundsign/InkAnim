@@ -76,9 +76,9 @@ func TestMigrateLabel(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		got := migrateLabel(tt.input)
+		got := MigrateLabel(tt.input)
 		if got != tt.want {
-			t.Errorf("migrateLabel(%q) = %q, want %q", tt.input, got, tt.want)
+			t.Errorf("MigrateLabel(%q) = %q, want %q", tt.input, got, tt.want)
 		}
 	}
 }

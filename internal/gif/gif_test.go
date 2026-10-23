@@ -249,6 +249,23 @@ func TestPalettedToRGBA(t *testing.T) {
 	if PalettedToRGBA(nil) != nil {
 		t.Errorf("expected nil for nil paletted")
 	}
+
+	// Out-of-bounds palette index guard
+	smallPal := image.NewPaletted(image.Rect(0, 0, 2, 1), color.Palette{color.RGBA{R: 10, G: 20, B: 30, A: 255}})
+	smallPal.Pix[0] = 0
+	smallPal.Pix[1] = 99 // out of range of 1-entry palette
+	safeRGBA := PalettedToRGBA(smallPal)
+	if safeRGBA == nil || safeRGBA.RGBAAt(0, 0).R != 10 || safeRGBA.RGBAAt(1, 0).A != 0 {
+		t.Errorf("expected out-of-bounds palette index to be safely skipped, got %+v", safeRGBA)
+	}
+
+	// Test WriteGIFToFile
+	outPath := t.TempDir() + "/test.gif"
+	frameImg := image.NewRGBA(image.Rect(0, 0, 32, 32))
+	size, err := WriteGIFToFile(outPath, []FrameInput{{Index: 0, Label: "f1", Image: frameImg, DurationMs: 100}}, DefaultOptions())
+	if err != nil || size <= 0 {
+		t.Errorf("WriteGIFToFile failed: size=%d, err=%v", size, err)
+	}
 }
 
 func BenchmarkGeneratePalette(b *testing.B) {

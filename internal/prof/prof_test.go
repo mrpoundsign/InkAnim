@@ -60,6 +60,9 @@ func TestSetupProfiler_NoArgs(t *testing.T) {
 }
 
 func TestSetupProfiler_WithPProfServer(t *testing.T) {
+	Logf("testing logf %d", 1)
+	Since(time.Now(), "testing since %s", "op")
+
 	cleanup, err := SetupProfiler("", "", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("SetupProfiler with pprof server failed: %v", err)
