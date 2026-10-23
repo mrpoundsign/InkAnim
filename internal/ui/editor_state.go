@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"maps"
 	"regexp"
+	"slices"
 	"strings"
 
 	"inkanim/internal/ext/doctree"
@@ -43,7 +45,10 @@ const maxHistory = 100
 // ComputePatchedSVG generates the updated SVG bytes with all modified labels applied.
 func (s *EditorState) ComputePatchedSVG() []byte {
 	patchedData := s.SVGData
-	for id := range s.ModifiedIDs {
+	if len(s.ModifiedIDs) == 0 {
+		return patchedData
+	}
+	for _, id := range slices.Sorted(maps.Keys(s.ModifiedIDs)) {
 		node := s.NodeMap[id]
 		if node == nil {
 			continue
@@ -167,7 +172,7 @@ func (s *EditorState) CanDeleteElement(nodeID string) (bool, string) {
 		return false, "Cannot delete element without an SVG id attribute"
 	}
 	if node.IsGroup || node.IsLayer {
-		childCount, err := svgpatch.ChildElementCount(s.ComputePatchedSVG(), node.ID)
+		childCount, err := svgpatch.ChildElementCount(s.SVGData, node.ID)
 		if err != nil {
 			return false, err.Error()
 		}
@@ -224,8 +229,9 @@ func (s *EditorState) ApplyPreset(p presets.Preset) (string, error) {
 		}
 	}
 
+	patchedSVG := s.ComputePatchedSVG()
 	if isGroup {
-		doc, err := inksvg.ParseSVG(s.ComputePatchedSVG())
+		doc, err := inksvg.ParseSVG(patchedSVG)
 		var cx, cy float64
 		totalFrames := 20
 		if err == nil {
@@ -247,7 +253,7 @@ func (s *EditorState) ApplyPreset(p presets.Preset) (string, error) {
 		}
 
 		childXML := p.GenerateAnchorElement(anchorID, cx, cy, totalFrames)
-		patched, err := svgpatch.InsertChild(s.ComputePatchedSVG(), targetNode.ID, childXML)
+		patched, err := svgpatch.InsertChild(patchedSVG, targetNode.ID, childXML)
 		if err != nil {
 			return "", fmt.Errorf("failed to insert anchor element: %w", err)
 		}
@@ -269,7 +275,7 @@ func (s *EditorState) ApplyPreset(p presets.Preset) (string, error) {
 	}
 
 	totalFrames := 20
-	if doc, err := inksvg.ParseSVG(s.ComputePatchedSVG()); err == nil && doc.FrameCount() > 0 {
+	if doc, err := inksvg.ParseSVG(patchedSVG); err == nil && doc.FrameCount() > 0 {
 		totalFrames = doc.FrameCount()
 	}
 	label := p.FormatLabelForFrames(totalFrames)
@@ -340,7 +346,8 @@ func (s *EditorState) PasteMotions(rawDirectives string) (string, error) {
 	}
 
 	createdPivots := make(map[string]string)
-	doc, docErr := inksvg.ParseSVG(s.ComputePatchedSVG())
+	patchedSVG := s.ComputePatchedSVG()
+	doc, docErr := inksvg.ParseSVG(patchedSVG)
 
 	for i := range parsedDirectives {
 		d := &parsedDirectives[i]
@@ -362,14 +369,14 @@ func (s *EditorState) PasteMotions(rawDirectives string) (string, error) {
 				var cx, cy float64
 				foundLocation := false
 				if docErr == nil && doc != nil {
-					rect, ok := inksvg.ComputeElementRect(s.ComputePatchedSVG(), oldPivotID)
+					rect, ok := inksvg.ComputeElementRect(patchedSVG, oldPivotID)
 					if ok {
 						cx = rect.X + rect.Width/2.0
 						cy = rect.Y + rect.Height/2.0
 						foundLocation = true
 					}
 					if !foundLocation {
-						tRect, tOk := inksvg.ComputeElementRect(s.ComputePatchedSVG(), s.ActiveNode.ID)
+						tRect, tOk := inksvg.ComputeElementRect(patchedSVG, s.ActiveNode.ID)
 						if tOk {
 							cx = tRect.X + tRect.Width/2.0
 							cy = tRect.Y + tRect.Height/2.0
@@ -394,9 +401,10 @@ func (s *EditorState) PasteMotions(rawDirectives string) (string, error) {
 				pivotXML := fmt.Sprintf(`<circle id="%s" cx="%.2f" cy="%.2f" r="1.5" style="fill:#38bdf8;stroke:none" inkscape:label="Pivot: %s" />`,
 					newPivotID, cx, cy, newPivotID)
 
-				patched, err := svgpatch.InsertChild(s.ComputePatchedSVG(), insertGroupID, pivotXML)
+				patched, err := svgpatch.InsertChild(patchedSVG, insertGroupID, pivotXML)
 				if err == nil {
 					s.SVGData = patched
+					patchedSVG = patched
 					s.ModifiedIDs = make(map[string]bool)
 					if roots, nodeMap, pErr := doctree.ParseTree(s.SVGData); pErr == nil {
 						s.Roots = roots
@@ -406,7 +414,6 @@ func (s *EditorState) PasteMotions(rawDirectives string) (string, error) {
 						}
 					}
 					createdPivots[oldPivotID] = newPivotID
-					doc, _ = inksvg.ParseSVG(s.SVGData)
 				}
 			}
 
@@ -422,7 +429,7 @@ func (s *EditorState) PasteMotions(rawDirectives string) (string, error) {
 		var cx, cy float64
 		if doc != nil {
 			measureID := s.ActiveNode.ID
-			rect, ok := inksvg.ComputeElementRect(s.ComputePatchedSVG(), measureID)
+			rect, ok := inksvg.ComputeElementRect(patchedSVG, measureID)
 			if ok {
 				cx = rect.X + rect.Width/2.0
 				cy = rect.Y + rect.Height/2.0
@@ -449,7 +456,7 @@ func (s *EditorState) PasteMotions(rawDirectives string) (string, error) {
 		childXML := fmt.Sprintf(`<circle id="%s" cx="%.2f" cy="%.2f" r="1.5" style="fill:#38bdf8;stroke:none" inkscape:label="%s" />`,
 			anchorID, cx, cy, label)
 
-		patched, err := svgpatch.InsertChild(s.ComputePatchedSVG(), targetNode.ID, childXML)
+		patched, err := svgpatch.InsertChild(patchedSVG, targetNode.ID, childXML)
 		if err != nil {
 			return "", fmt.Errorf("failed to insert motion anchor element: %w", err)
 		}

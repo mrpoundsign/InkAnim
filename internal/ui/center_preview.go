@@ -1402,9 +1402,9 @@ func drawCropGuides(src *image.RGBA, contentRect image.Rectangle) *image.RGBA {
 			for x := b.Min.X; x < b.Max.X; x++ {
 				if x < x0 || x > x1 || y < y0 || y > y1 {
 					offset := (y-b.Min.Y)*dst.Stride + (x-b.Min.X)*4
-					dst.Pix[offset] = uint8(float64(dst.Pix[offset]) * 0.6)
-					dst.Pix[offset+1] = uint8(float64(dst.Pix[offset+1]) * 0.6)
-					dst.Pix[offset+2] = uint8(float64(dst.Pix[offset+2]) * 0.6)
+					dst.Pix[offset] = uint8((uint32(dst.Pix[offset])*153 + 127) / 255)
+					dst.Pix[offset+1] = uint8((uint32(dst.Pix[offset+1])*153 + 127) / 255)
+					dst.Pix[offset+2] = uint8((uint32(dst.Pix[offset+2])*153 + 127) / 255)
 				}
 			}
 		}

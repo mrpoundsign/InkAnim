@@ -248,19 +248,20 @@ func renderAndCompositeDropShadow(dst *image.RGBA, path oksvg.SvgPath, tm raster
 
 	path.DrawTransformed(shadowRaster, 1.0, tm)
 
-	floodR := f.FloodColor.R
-	floodG := f.FloodColor.G
-	floodB := f.FloodColor.B
+	floodR := uint32(f.FloodColor.R)
+	floodG := uint32(f.FloodColor.G)
+	floodB := uint32(f.FloodColor.B)
 	floodA := uint32(f.FloodColor.A)
 
 	pix := shadowBuf.Pix
 	for i := 0; i < len(pix); i += 4 {
 		a := uint32(pix[i+3])
 		if a > 0 {
-			pix[i] = floodR
-			pix[i+1] = floodG
-			pix[i+2] = floodB
-			pix[i+3] = uint8((a*floodA + 127) / 255)
+			outA := (a*floodA + 127) / 255
+			pix[i] = uint8((floodR*outA + 127) / 255)
+			pix[i+1] = uint8((floodG*outA + 127) / 255)
+			pix[i+2] = uint8((floodB*outA + 127) / 255)
+			pix[i+3] = uint8(outA)
 		}
 	}
 
@@ -310,35 +311,17 @@ func compositeOver(dst *image.RGBA, src *image.RGBA, offsetX, offsetY int) {
 			sg := uint32(src.Pix[si+1])
 			sbVal := uint32(src.Pix[si+2])
 
-			if da == 0 {
+			if da == 0 || sa == 255 {
 				dst.Pix[di] = uint8(sr)
 				dst.Pix[di+1] = uint8(sg)
 				dst.Pix[di+2] = uint8(sbVal)
 				dst.Pix[di+3] = uint8(sa)
 			} else {
-				srcAlpha := float64(sa) / 255.0
-				dstAlpha := float64(da) / 255.0
-				invSrc := 1.0 - srcAlpha
-				outAlpha := srcAlpha + dstAlpha*invSrc
-
-				if outAlpha > 0 {
-					dr := float64(dst.Pix[di]) / 255.0
-					dg := float64(dst.Pix[di+1]) / 255.0
-					db := float64(dst.Pix[di+2]) / 255.0
-
-					sR := float64(sr) / 255.0
-					sG := float64(sg) / 255.0
-					sB := float64(sbVal) / 255.0
-
-					outR := (sR*srcAlpha + dr*dstAlpha*invSrc) / outAlpha
-					outG := (sG*srcAlpha + dg*dstAlpha*invSrc) / outAlpha
-					outB := (sB*srcAlpha + db*dstAlpha*invSrc) / outAlpha
-
-					dst.Pix[di] = uint8(math.Round(outR * 255.0))
-					dst.Pix[di+1] = uint8(math.Round(outG * 255.0))
-					dst.Pix[di+2] = uint8(math.Round(outB * 255.0))
-					dst.Pix[di+3] = uint8(math.Round(outAlpha * 255.0))
-				}
+				invSa := 255 - sa
+				dst.Pix[di] = uint8(min(255, sr+(uint32(dst.Pix[di])*invSa+127)/255))
+				dst.Pix[di+1] = uint8(min(255, sg+(uint32(dst.Pix[di+1])*invSa+127)/255))
+				dst.Pix[di+2] = uint8(min(255, sbVal+(uint32(dst.Pix[di+2])*invSa+127)/255))
+				dst.Pix[di+3] = uint8(min(255, sa+(da*invSa+127)/255))
 			}
 
 			si += 4

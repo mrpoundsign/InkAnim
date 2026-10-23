@@ -7,9 +7,33 @@ import (
 	"io"
 	"regexp"
 	"strings"
+	"sync"
 )
 
 const InkscapeNS = "http://www.inkscape.org/namespaces/inkscape"
+
+var (
+	nsRegexCache   sync.Map // map[string]*regexp.Regexp
+	attrRegexCache sync.Map // map[string]*regexp.Regexp
+)
+
+func getNSRegex(space string) *regexp.Regexp {
+	if cached, ok := nsRegexCache.Load(space); ok {
+		return cached.(*regexp.Regexp)
+	}
+	re := regexp.MustCompile(`xmlns:([a-zA-Z0-9_\.\-]+)\s*=\s*["']` + regexp.QuoteMeta(space) + `["']`)
+	actual, _ := nsRegexCache.LoadOrStore(space, re)
+	return actual.(*regexp.Regexp)
+}
+
+func getAttrRegex(attrLocal string) *regexp.Regexp {
+	if cached, ok := attrRegexCache.Load(attrLocal); ok {
+		return cached.(*regexp.Regexp)
+	}
+	re := regexp.MustCompile(`(?s)([\s/])((?:[a-zA-Z0-9_\.\-]+:)?` + regexp.QuoteMeta(attrLocal) + `)\s*=\s*(?:"([^"]*)"|'([^']*)')`)
+	actual, _ := attrRegexCache.LoadOrStore(attrLocal, re)
+	return actual.(*regexp.Regexp)
+}
 
 // escapeAttrValue escapes special XML characters for an attribute value.
 func escapeAttrValue(s string) string {
@@ -25,7 +49,7 @@ func detectNamespacePrefix(data []byte, space, fallback string) string {
 	if space == "" {
 		return ""
 	}
-	re := regexp.MustCompile(`xmlns:([a-zA-Z0-9_\.\-]+)\s*=\s*["']` + regexp.QuoteMeta(space) + `["']`)
+	re := getNSRegex(space)
 	match := re.FindSubmatch(data)
 	if len(match) > 1 {
 		return string(match[1])
@@ -111,7 +135,7 @@ func SetAttr(data []byte, elementID, attrSpace, attrLocal, value string) ([]byte
 				escapedVal := escapeAttrValue(value)
 
 				// Look for existing attribute matching attrLocal
-				attrRe := regexp.MustCompile(`(?s)([\s/])((?:[a-zA-Z0-9_\.\-]+:)?` + regexp.QuoteMeta(attrLocal) + `)\s*=\s*(?:"([^"]*)"|'([^']*)')`)
+				attrRe := getAttrRegex(attrLocal)
 				matchLoc := attrRe.FindSubmatchIndex(tagBytes)
 
 				if matchLoc != nil {

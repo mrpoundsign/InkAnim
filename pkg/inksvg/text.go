@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"unicode"
@@ -478,8 +479,8 @@ func (ts TextStyle) BuildStyleString() string {
 	if ts.PaintOrder != "" {
 		parts = append(parts, "paint-order:"+ts.PaintOrder)
 	}
-	for k, v := range ts.ExtraStyles {
-		parts = append(parts, k+":"+v)
+	for _, k := range slices.Sorted(maps.Keys(ts.ExtraStyles)) {
+		parts = append(parts, k+":"+ts.ExtraStyles[k])
 	}
 	return strings.Join(parts, ";")
 }
