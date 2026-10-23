@@ -66,10 +66,6 @@ func (s *Session) InvalidateCache() {
 	s.cacheMu.Unlock()
 }
 
-func (s *Session) invalidateCache() {
-	s.InvalidateCache()
-}
-
 // IsPageCached reports whether the specified boundary has already been pre-rendered into the frame cache.
 func (s *Session) IsPageCached(mode inksvg.BoundaryMode, pageIndex int) bool {
 	s.cacheMu.RLock()
@@ -110,7 +106,7 @@ func (s *Session) LoadSVGData(data []byte, filename string) error {
 	s.CropBoundaryMode = inksvg.BoundaryPage
 	s.CropPageIndex = 0
 
-	s.invalidateCache()
+	s.InvalidateCache()
 
 	tRerender := time.Now()
 	if err := s.RerenderAllFrames(); err != nil {
@@ -127,13 +123,7 @@ func (s *Session) SetShowMotionLines(show bool) error {
 	if s.Document != nil {
 		s.Document.ShowMotionLines = show
 	}
-	s.invalidateCache()
-	return s.RerenderAllFrames()
-}
-
-// SetMode sets the animation mode (always inksvg.ModeTimeline).
-func (s *Session) SetMode(mode inksvg.FrameMode) error {
-	s.CurrentMode = inksvg.ModeTimeline
+	s.InvalidateCache()
 	return s.RerenderAllFrames()
 }
 
@@ -214,7 +204,7 @@ func (s *Session) ToggleFrameActive(index int) error {
 		return fmt.Errorf("invalid frame index %d", index)
 	}
 	s.Frames[index].IsActive = !s.Frames[index].IsActive
-	s.invalidateCache()
+	s.InvalidateCache()
 	if err := s.RerenderAllFrames(); err != nil {
 		return err
 	}
@@ -229,7 +219,7 @@ func (s *Session) MoveFrame(fromIndex, toIndex int) error {
 		return fmt.Errorf("invalid move indices: %d -> %d", fromIndex, toIndex)
 	}
 	s.Frames[fromIndex], s.Frames[toIndex] = s.Frames[toIndex], s.Frames[fromIndex]
-	s.invalidateCache()
+	s.InvalidateCache()
 	if err := s.RerenderAllFrames(); err != nil {
 		return err
 	}
@@ -256,11 +246,6 @@ func (s *Session) SetFrameOverride(index int, hasOverride bool, ms int) {
 		}
 	}
 	s.UpdateFrameDurations()
-}
-
-// SetFrameDuration sets the override duration (in milliseconds) for a specific frame.
-func (s *Session) SetFrameDuration(index int, ms int) {
-	s.SetFrameOverride(index, true, ms)
 }
 
 // UpdateFrameDurations synchronizes the effective duration on all RenderedFrames and cached frames without re-rasterizing.
