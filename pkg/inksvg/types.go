@@ -71,20 +71,6 @@ type Page struct {
 	DurationMs  int     `json:"durationMs"`
 }
 
-// EffectiveDuration returns the override duration if set, otherwise the global default.
-func (p Page) EffectiveDuration(globalDefault int) int {
-	if p.HasOverride && p.OverrideMs > 0 {
-		return p.OverrideMs
-	}
-	if globalDefault > 0 {
-		return globalDefault
-	}
-	if p.DurationMs > 0 {
-		return p.DurationMs
-	}
-	return 100
-}
-
 // MotionConfig holds the parsed animation parameters from IAMS syntax.
 type MotionConfig struct {
 	StartFrame     int

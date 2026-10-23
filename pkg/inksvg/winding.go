@@ -63,26 +63,6 @@ func (sp *Subpath) ContainsPoint(x, y float64) bool {
 	return inside
 }
 
-// InteriorPoint returns an approximate interior point of the subpath polygon.
-func (sp *Subpath) InteriorPoint() Point2D {
-	if len(sp.Points) == 0 {
-		return Point2D{}
-	}
-	var sumX, sumY float64
-	for _, p := range sp.Points {
-		sumX += p.X
-		sumY += p.Y
-	}
-	centroid := Point2D{X: sumX / float64(len(sp.Points)), Y: sumY / float64(len(sp.Points))}
-	if sp.ContainsPoint(centroid.X, centroid.Y) {
-		return centroid
-	}
-	// Fallback to average of first two points nudged slightly
-	p0 := sp.Points[0]
-	p1 := sp.Points[len(sp.Points)/2]
-	return Point2D{X: (p0.X + p1.X) / 2.0, Y: (p0.Y + p1.Y) / 2.0}
-}
-
 // NormalizeEvenOddPath converts an SVG path d string authored under evenodd fill rules
 // into equivalent NonZero winding subpaths by reversing the contour direction of internal
 // cutouts (Issue #62).
