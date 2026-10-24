@@ -11,6 +11,7 @@ import (
 
 	"inkanim/internal/app"
 	"inkanim/internal/gif"
+	"inkanim/pkg/inksvg"
 )
 
 // RightExportPanel manages dimension inputs, Twitch presets, and single animated GIF export.
@@ -18,6 +19,10 @@ type RightExportPanel struct {
 	session      *app.Session
 	container    *container.Scroll
 	parentWindow fyne.Window
+
+	cropBoundaryRadio *widget.RadioGroup
+	cropPageSelect    *widget.Select
+	isUpdating        bool
 
 	presetSelect       *widget.Select
 	customResContainer *fyne.Container
@@ -58,6 +63,47 @@ func NewRightExportPanel(sess *app.Session, win fyne.Window, onOptionsChange fun
 	// Pre-allocate status label first so callbacks are safe
 	p.twitchStatusLabel = widget.NewLabel("Twitch Status: Ready")
 	p.twitchStatusLabel.Wrapping = fyne.TextWrapWord
+
+	p.cropBoundaryRadio = widget.NewRadioGroup([]string{"Drawing", "Page"}, func(selected string) {
+		if p.isUpdating || p.session == nil {
+			return
+		}
+		if selected == "Page" {
+			_ = p.session.SetCropBoundary(inksvg.BoundaryPage, p.session.CropPageIndex)
+		} else {
+			_ = p.session.SetCropBoundary(inksvg.BoundaryDrawing, p.session.CropPageIndex)
+		}
+		p.Refresh()
+		if p.onOptionsChange != nil {
+			p.onOptionsChange()
+		}
+	})
+	p.cropBoundaryRadio.Selected = "Page"
+
+	p.cropPageSelect = widget.NewSelect([]string{"(No document loaded)"}, func(selected string) {
+		if p.isUpdating || p.session == nil || p.session.Document == nil {
+			return
+		}
+		pageIdx := 0
+		docRect := p.session.Document.GetDocumentRect()
+		docLabel := fmt.Sprintf("Document (%0.0fx%0.0f)", docRect.Width, docRect.Height)
+		if selected == docLabel {
+			pageIdx = 0
+		} else {
+			for i, pg := range p.session.Pages {
+				optLabel := fmt.Sprintf("%d. %s (%0.0fx%0.0f)", i+1, pg.Label, pg.Width, pg.Height)
+				if optLabel == selected {
+					pageIdx = i + 1
+					break
+				}
+			}
+		}
+		_ = p.session.SetCropBoundary(p.session.CropBoundaryMode, pageIdx)
+		p.Refresh()
+		if p.onOptionsChange != nil {
+			p.onOptionsChange()
+		}
+	})
 
 	p.squareSizeInput = NewNumericCommitInput(512, 16, 4096, "Resolution (px):", func(val int) {
 		p.session.ExportOptions.SquareSize = val
@@ -211,6 +257,10 @@ func NewRightExportPanel(sess *app.Session, win fyne.Window, onOptionsChange fun
 
 	form := container.NewVBox(
 		header,
+		widget.NewLabel("Crop Boundary:"),
+		p.cropBoundaryRadio,
+		p.cropPageSelect,
+		widget.NewSeparator(),
 		widget.NewLabel("Export Preset:"),
 		p.presetSelect,
 		p.customResContainer,
@@ -225,6 +275,7 @@ func NewRightExportPanel(sess *app.Session, win fyne.Window, onOptionsChange fun
 	)
 
 	p.container = container.NewVScroll(form)
+	p.Refresh()
 	return p
 }
 
@@ -235,16 +286,55 @@ func (p *RightExportPanel) Container() *container.Scroll {
 
 // Refresh re-validates export specifications and updates status.
 func (p *RightExportPanel) Refresh() {
+	if !p.isUpdating {
+		p.isUpdating = true
+		p.syncCropControls()
+		p.isUpdating = false
+	}
 	p.validateTwitch()
+}
+
+func (p *RightExportPanel) syncCropControls() {
+	if p.cropBoundaryRadio == nil || p.cropPageSelect == nil {
+		return
+	}
+	if p.session == nil || p.session.Document == nil {
+		p.cropPageSelect.Options = []string{"(No document loaded)"}
+		p.cropPageSelect.SetSelected("(No document loaded)")
+		p.cropPageSelect.Disable()
+		return
+	}
+	if p.session.CropBoundaryMode == inksvg.BoundaryPage {
+		if p.cropBoundaryRadio.Selected != "Page" {
+			p.cropBoundaryRadio.SetSelected("Page")
+		}
+	} else {
+		if p.cropBoundaryRadio.Selected != "Drawing" {
+			p.cropBoundaryRadio.SetSelected("Drawing")
+		}
+	}
+	docRect := p.session.Document.GetDocumentRect()
+	var pageOptions []string
+	pageOptions = append(pageOptions, fmt.Sprintf("Document (%0.0fx%0.0f)", docRect.Width, docRect.Height))
+	for i, pg := range p.session.Pages {
+		pageOptions = append(pageOptions, fmt.Sprintf("%d. %s (%0.0fx%0.0f)", i+1, pg.Label, pg.Width, pg.Height))
+	}
+	p.cropPageSelect.Options = pageOptions
+	selectedIdx := p.session.CropPageIndex
+	if selectedIdx < 0 || selectedIdx >= len(pageOptions) {
+		selectedIdx = 0
+	}
+	p.cropPageSelect.SetSelected(pageOptions[selectedIdx])
+	if p.session.CropBoundaryMode == inksvg.BoundaryPage {
+		p.cropPageSelect.Enable()
+	} else {
+		p.cropPageSelect.Disable()
+	}
 }
 
 // SetOnExportSuccess registers a callback invoked when an animated GIF is successfully exported.
 func (p *RightExportPanel) SetOnExportSuccess(fn func(outputPath string)) {
 	p.onExportSuccess = fn
-}
-
-func (p *RightExportPanel) syncOptions() {
-	p.validateTwitch()
 }
 
 func (p *RightExportPanel) validateTwitch() {

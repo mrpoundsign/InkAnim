@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -68,6 +69,10 @@ type CenterPreviewPanel struct {
 	currentBg          PreviewBackground
 	bgSelect           *widget.Select
 	frameLabel         *widget.Label
+	durationInput      *FloatCommitInput
+	fpsSelect          *widget.Select
+	totalFramesLabel   *widget.Label
+	isUpdatingTiming   bool
 	playPauseBtn       *widget.Button
 	loopCheck          *widget.Check
 	pingPongCheck      *widget.Check
@@ -111,6 +116,7 @@ type CenterPreviewPanel struct {
 	buttonImportance widget.Importance
 
 	onPingPongChange func()
+	onTimingChange   func()
 
 	// Async preview build state (guarded by mu)
 	rebuildGen       int          // bumped per requested build; stale results are dropped
@@ -325,17 +331,17 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 		p.progressOverlay,
 	)
 
-	p.frameLabel = widget.NewLabelWithStyle("Frame: 0 / 0", fyne.TextAlignCenter, fyne.TextStyle{})
+	p.frameLabel = widget.NewLabelWithStyle("Frame: 0 / 0", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
 
 	p.playPauseBtn = widget.NewButtonWithIcon("Play", theme.MediaPlayIcon(), func() {
 		p.TogglePlay()
 	})
 	p.playPauseBtn.Importance = widget.DangerImportance
 
-	prevBtn := widget.NewButtonWithIcon("Step Back", theme.MediaSkipPreviousIcon(), func() {
+	prevBtn := widget.NewButtonWithIcon("", theme.MediaSkipPreviousIcon(), func() {
 		p.StepFrame(-1)
 	})
-	nextBtn := widget.NewButtonWithIcon("Step Forward", theme.MediaSkipNextIcon(), func() {
+	nextBtn := widget.NewButtonWithIcon("", theme.MediaSkipNextIcon(), func() {
 		p.StepFrame(1)
 	})
 
@@ -350,13 +356,15 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 		if p.session != nil {
 			p.session.ExportOptions.PingPong = checked
 		}
+		p.updateTimingSummaryLocked()
+		p.renderCurrentFrameLocked()
 		p.mu.Unlock()
 		if p.onPingPongChange != nil {
 			p.onPingPongChange()
 		}
 	})
 
-	p.cropGuidesCheck = widget.NewCheck("Crop Guides", func(checked bool) {
+	p.cropGuidesCheck = widget.NewCheck("Guides", func(checked bool) {
 		p.mu.Lock()
 		p.showCropGuides = checked
 		if len(p.mainCanvasFrames) == len(p.cachedFrames) {
@@ -374,7 +382,7 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 	})
 	p.cropGuidesCheck.Checked = true
 
-	p.motionLinesCheck = widget.NewCheck("Motion Lines", func(checked bool) {
+	p.motionLinesCheck = widget.NewCheck("Paths", func(checked bool) {
 		p.mu.Lock()
 		if p.session != nil {
 			_ = p.session.SetShowMotionLines(checked)
@@ -385,38 +393,12 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 	})
 	p.motionLinesCheck.Checked = false
 
-	speedSelect := widget.NewSelect([]string{"0.25x", "0.5x", "1x", "1.5x", "2x"}, func(s string) {
-		p.mu.Lock()
-		defer p.mu.Unlock()
-		if p.isPlaying && !p.playStartTime.IsZero() {
-			realElapsed := time.Since(p.playStartTime)
-			p.playStartOffset += time.Duration(float64(realElapsed) * p.speedFactor)
-			p.playStartTime = time.Now()
-		}
-		switch s {
-		case "0.25x":
-			p.speedFactor = 0.25
-		case "0.5x":
-			p.speedFactor = 0.5
-		case "1x":
-			p.speedFactor = 1.0
-		case "1.5x":
-			p.speedFactor = 1.5
-		case "2x":
-			p.speedFactor = 2.0
-		default:
-			p.speedFactor = 1.0
-		}
-		p.resetFPSMonitorLocked()
-	})
-	speedSelect.SetSelected("1x")
-
 	p.bgSelect = widget.NewSelect(PreviewBackgrounds, func(s string) {
 		p.SetBackground(PreviewBackground(s))
 	})
 	p.bgSelect.SetSelected(string(BgCheckerboard))
 
-	p.inspectorCheck = widget.NewCheck("Scale Inspector", func(checked bool) {
+	p.inspectorCheck = widget.NewCheck("Scales", func(checked bool) {
 		p.mu.Lock()
 		if checked {
 			p.twitchEmulationBox.Show()
@@ -440,28 +422,75 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 	})
 	p.wysiwygCheck.Checked = true
 
-	playbackRow := container.NewHBox(
-		prevBtn,
-		p.playPauseBtn,
-		nextBtn,
-		speedSelect,
-		p.loopCheck,
-		p.pingPongCheck,
-	)
+	p.durationInput = NewFloatCommitInput(1.0, 0.1, 60.0, "Duration (s):", func(sec float64) {
+		if p.isUpdatingTiming || p.session == nil {
+			return
+		}
+		_ = p.session.SetTotalDurationSec(sec)
+		p.Refresh()
+		if p.onTimingChange != nil {
+			p.onTimingChange()
+		}
+		p.session.PrerenderPages()
+	})
 
-	viewOptionsRow := container.NewHBox(
+	p.fpsSelect = widget.NewSelect([]string{
+		"10 FPS (100ms)",
+		"12 FPS (83ms)",
+		"15 FPS (66ms)",
+		"20 FPS (50ms)",
+		"24 FPS (41ms)",
+		"30 FPS (33ms)",
+		"60 FPS (16ms)",
+	}, func(selected string) {
+		if p.isUpdatingTiming || p.session == nil {
+			return
+		}
+		fps := parseFPSOption(selected)
+		if fps > 0 {
+			_ = p.session.SetFPS(fps)
+			p.Refresh()
+			if p.onTimingChange != nil {
+				p.onTimingChange()
+			}
+			p.session.PrerenderPages()
+		}
+	})
+	p.fpsSelect.SetSelected("10 FPS (100ms)")
+
+	p.totalFramesLabel = widget.NewLabelWithStyle("Total: 0 frames (0ms)", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+
+	topViewRow := container.NewHBox(
 		widget.NewLabel("BG:"),
 		p.bgSelect,
 		p.cropGuidesCheck,
 		p.motionLinesCheck,
-		p.wysiwygCheck,
 		p.inspectorCheck,
+	)
+	topViewBar := container.NewVBox(
+		container.NewCenter(topViewRow),
+		widget.NewSeparator(),
+	)
+
+	transportRow := container.NewHBox(
+		prevBtn,
+		p.playPauseBtn,
+		nextBtn,
+		p.loopCheck,
+		p.pingPongCheck,
+	)
+
+	timingRow := container.NewHBox(
+		container.New(&fixedWidthLayout{width: 220}, p.durationInput.Container),
+		widget.NewLabel("FPS:"),
+		container.New(&fixedWidthLayout{width: 165}, p.fpsSelect),
 	)
 
 	playbackControls := container.NewVBox(
-		container.NewCenter(playbackRow),
-		container.NewCenter(viewOptionsRow),
+		widget.NewSeparator(),
 		p.frameLabel,
+		container.NewCenter(transportRow),
+		container.NewCenter(timingRow),
 	)
 
 	// Twitch Scale Emulation Dock: 3 sizes (112px, 56px, 28px) on Dark & Light backgrounds
@@ -525,20 +554,20 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 		container.NewVScroll(container.NewPadded(inspectorContent)),
 	)
 
-	stageWithInspector := container.NewBorder(
+	middleColumn := container.NewBorder(
+		topViewBar,
+		playbackControls,
 		nil,
 		nil,
-		nil,
-		p.twitchEmulationBox,
 		p.stageStack,
 	)
 
 	p.container = container.NewBorder(
 		nil,
-		playbackControls,
 		nil,
 		nil,
-		stageWithInspector,
+		p.twitchEmulationBox,
+		middleColumn,
 	)
 
 	return p
@@ -562,6 +591,90 @@ func (p *CenterPreviewPanel) SetPingPong(enabled bool) {
 // SetOnPingPongChange registers a callback when ping-pong mode changes.
 func (p *CenterPreviewPanel) SetOnPingPongChange(fn func()) {
 	p.onPingPongChange = fn
+}
+
+// SetOnTimingChange registers a callback when animation duration or FPS changes.
+func (p *CenterPreviewPanel) SetOnTimingChange(fn func()) {
+	p.onTimingChange = fn
+}
+
+func parseFPSOption(selected string) int {
+	switch selected {
+	case "10 FPS (100ms)":
+		return 10
+	case "12 FPS (83ms)":
+		return 12
+	case "15 FPS (66ms)":
+		return 15
+	case "20 FPS (50ms)":
+		return 20
+	case "24 FPS (41ms)":
+		return 24
+	case "30 FPS (33ms)":
+		return 30
+	case "60 FPS (16ms)":
+		return 60
+	default:
+		return 0
+	}
+}
+
+func formatFPSOption(fps int) string {
+	switch fps {
+	case 10:
+		return "10 FPS (100ms)"
+	case 12:
+		return "12 FPS (83ms)"
+	case 15:
+		return "15 FPS (66ms)"
+	case 20:
+		return "20 FPS (50ms)"
+	case 24:
+		return "24 FPS (41ms)"
+	case 30:
+		return "30 FPS (33ms)"
+	case 60:
+		return "60 FPS (16ms)"
+	default:
+		return "10 FPS (100ms)"
+	}
+}
+
+func (p *CenterPreviewPanel) updateTimingSummaryLocked() {
+	if p.session == nil {
+		return
+	}
+	p.isUpdatingTiming = true
+	if p.durationInput != nil && p.session.TotalDurationMs > 0 {
+		p.durationInput.SetValue(float64(p.session.TotalDurationMs) / 1000.0)
+	}
+	if p.fpsSelect != nil && p.session.FPS > 0 {
+		opt := formatFPSOption(p.session.FPS)
+		if p.fpsSelect.Selected != opt {
+			p.fpsSelect.SetSelected(opt)
+		}
+	}
+	p.isUpdatingTiming = false
+
+	if p.totalFramesLabel == nil {
+		return
+	}
+	frames := p.session.RenderedFrames
+	if len(frames) == 0 {
+		p.totalFramesLabel.SetText("Total: 0 frames (0ms)")
+		return
+	}
+	baseCount := len(frames)
+	delayMs := p.session.ExportOptions.DefaultDurationMs
+	if len(frames) > 0 && frames[0].DurationMs > 0 {
+		delayMs = frames[0].DurationMs
+	}
+	displayCount := baseCount
+	if p.pingPong && baseCount >= 3 {
+		displayCount = baseCount*2 - 2
+	}
+	totalMs := displayCount * delayMs
+	p.totalFramesLabel.SetText(fmt.Sprintf("Total: %d frames (%dms @ %dms/frame)", displayCount, totalMs, delayMs))
 }
 
 type fixedSquareLayout struct {
@@ -616,6 +729,7 @@ func (p *CenterPreviewPanel) Refresh() {
 	defer p.mu.Unlock()
 
 	frames := p.session.RenderedFrames
+	p.updateTimingSummaryLocked()
 	if len(frames) == 0 {
 		p.rebuildGen++ // drop any in-flight build
 		p.rebuilding = false
@@ -1320,7 +1434,13 @@ func (p *CenterPreviewPanel) renderCurrentFrameLocked() {
 		labelPart = fmt.Sprintf(" (%s)", curr.Label)
 	}
 
-	p.frameLabel.SetText(fmt.Sprintf("Frame %d of %d%s - %dms%s", displayIdx+1, displayTotal, labelPart, curr.DurationMs, p.fpsWarningText))
+	kfCount := 1
+	if p.session != nil {
+		kfCount = p.session.KeyframeCount()
+	}
+	digits := len(strconv.Itoa(displayTotal))
+	p.frameLabel.SetText(fmt.Sprintf("Frame %0*d / %d (%d keyframes)%s%s",
+		digits, displayIdx+1, displayTotal, kfCount, labelPart, p.fpsWarningText))
 
 	cached := p.cachedFrames[p.currentIdx]
 

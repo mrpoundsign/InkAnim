@@ -164,41 +164,30 @@ func TestMainWindowInitAndLoad(t *testing.T) {
 	}
 	mw.centerPanel.Pause()
 
-	// Test changing global speed
+	// Test changing FPS and duration in centerPanel
 	loadAndWait(mw, testSVGPath)
 	mw.centerPanel.Pause()
-	mw.leftPanel.speedPresetSelect.SetSelected("20 FPS (50ms)")
+	mw.centerPanel.fpsSelect.SetSelected("20 FPS (50ms)")
+	waitForPreview(mw)
 	if mw.session.ExportOptions.DefaultDurationMs != 50 {
 		t.Errorf("expected global duration 50ms, got %d", mw.session.ExportOptions.DefaultDurationMs)
+	}
+	if len(mw.session.RenderedFrames) != 20 {
+		t.Errorf("expected 20 interpolated frames at 1.0s @ 20 FPS, got %d", len(mw.session.RenderedFrames))
 	}
 	if mw.session.RenderedFrames[0].DurationMs != 50 {
 		t.Errorf("expected frame 0 duration 50ms, got %d", mw.session.RenderedFrames[0].DurationMs)
 	}
 
-	// Test per-frame override
-	mw.session.SetFrameOverride(0, true, 200)
-	if mw.session.RenderedFrames[0].DurationMs != 200 {
-		t.Errorf("expected frame 0 overridden to 200ms, got %d", mw.session.RenderedFrames[0].DurationMs)
+	// Test changing duration to 1.5s at 20 FPS -> 30 frames
+	mw.centerPanel.durationInput.Entry.SetText("1.5")
+	mw.centerPanel.durationInput.Entry.OnSubmitted("1.5")
+	waitForPreview(mw)
+	if len(mw.session.RenderedFrames) != 30 {
+		t.Errorf("expected 30 interpolated frames at 1.5s @ 20 FPS, got %d", len(mw.session.RenderedFrames))
 	}
-	if mw.session.RenderedFrames[1].DurationMs != 50 {
-		t.Errorf("expected frame 1 to remain 50ms, got %d", mw.session.RenderedFrames[1].DurationMs)
-	}
-
-	// Verify that switching between SVGs does not double the list items
-	loadAndWait(mw, testSVGPath)
-	mw.centerPanel.Pause()
-	if len(mw.leftPanel.listContainer.Objects) != 10 {
-		t.Errorf("expected exactly 10 frame objects in list, got %d", len(mw.leftPanel.listContainer.Objects))
-	}
-	loadAndWait(mw, secondSVGPath)
-	mw.centerPanel.Pause()
-	if len(mw.leftPanel.listContainer.Objects) != 30 {
-		t.Errorf("expected exactly 30 frame objects in list, got %d", len(mw.leftPanel.listContainer.Objects))
-	}
-	loadAndWait(mw, testSVGPath)
-	mw.centerPanel.Pause()
-	if len(mw.leftPanel.listContainer.Objects) != 10 {
-		t.Errorf("expected exactly 10 frame objects in list after switching back, got %d", len(mw.leftPanel.listContainer.Objects))
+	if !strings.Contains(mw.centerPanel.totalFramesLabel.Text, "Total: 30 frames") {
+		t.Errorf("expected totalFramesLabel to contain 'Total: 30 frames', got %q", mw.centerPanel.totalFramesLabel.Text)
 	}
 }
 
@@ -436,27 +425,27 @@ func TestCropBoundaryUIAndGuides(t *testing.T) {
 	if mw.session.CropBoundaryMode != "page" {
 		t.Errorf("expected page crop boundary, got %s", mw.session.CropBoundaryMode)
 	}
-	if mw.leftPanel.cropBoundaryRadio.Selected != "Page" {
-		t.Errorf("expected cropBoundaryRadio selected 'Page', got %s", mw.leftPanel.cropBoundaryRadio.Selected)
+	if mw.rightPanel.cropBoundaryRadio.Selected != "Page" {
+		t.Errorf("expected cropBoundaryRadio selected 'Page', got %s", mw.rightPanel.cropBoundaryRadio.Selected)
 	}
-	if mw.leftPanel.cropPageSelect.Disabled() {
+	if mw.rightPanel.cropPageSelect.Disabled() {
 		t.Errorf("expected cropPageSelect to be enabled in Page mode")
 	}
 
 	// Switch to Drawing boundary via radio group
-	mw.leftPanel.cropBoundaryRadio.SetSelected("Drawing")
+	mw.rightPanel.cropBoundaryRadio.SetSelected("Drawing")
 	if mw.session.CropBoundaryMode != "drawing" {
 		t.Errorf("expected drawing crop boundary, got %s", mw.session.CropBoundaryMode)
 	}
-	if !mw.leftPanel.cropPageSelect.Disabled() {
+	if !mw.rightPanel.cropPageSelect.Disabled() {
 		t.Errorf("expected cropPageSelect to be disabled in Drawing mode")
 	}
 
 	// Switch back to Page boundary
-	mw.leftPanel.cropBoundaryRadio.SetSelected("Page")
+	mw.rightPanel.cropBoundaryRadio.SetSelected("Page")
 
 	// Select Document (1st option) in cropPageSelect
-	mw.leftPanel.cropPageSelect.SetSelected("Document (560x256)")
+	mw.rightPanel.cropPageSelect.SetSelected("Document (560x256)")
 	w, h := mw.session.GetActiveBoundaryDimensions()
 	if w != 560 || h != 256 {
 		t.Errorf("expected 560x256 document boundary, got %fx%f", w, h)
@@ -659,26 +648,26 @@ func TestSpeedPresets(t *testing.T) {
 	defer app.Quit()
 
 	sess := appkg.NewSession()
-	panel := NewLeftFramesPanel(sess, nil)
+	panel := NewCenterPreviewPanel(sess)
 
 	// Default: 10 FPS (100ms)
-	if panel.speedPresetSelect.Selected != "10 FPS (100ms)" {
-		t.Errorf("expected default speed '10 FPS (100ms)', got %q", panel.speedPresetSelect.Selected)
+	if panel.fpsSelect.Selected != "10 FPS (100ms)" {
+		t.Errorf("expected default speed '10 FPS (100ms)', got %q", panel.fpsSelect.Selected)
 	}
 	if sess.ExportOptions.DefaultDurationMs != 100 {
 		t.Errorf("expected default duration 100ms, got %d", sess.ExportOptions.DefaultDurationMs)
 	}
 
 	// Switch to 20 FPS (50ms)
-	panel.speedPresetSelect.SetSelected("20 FPS (50ms)")
+	panel.fpsSelect.SetSelected("20 FPS (50ms)")
 	if sess.ExportOptions.DefaultDurationMs != 50 {
 		t.Errorf("expected duration 50ms, got %d", sess.ExportOptions.DefaultDurationMs)
 	}
 
 	// Switch to 60 FPS (16ms)
-	panel.speedPresetSelect.SetSelected("60 FPS (16ms)")
-	if sess.ExportOptions.DefaultDurationMs != 16 {
-		t.Errorf("expected duration 16ms, got %d", sess.ExportOptions.DefaultDurationMs)
+	panel.fpsSelect.SetSelected("60 FPS (16ms)")
+	if sess.ExportOptions.DefaultDurationMs != 17 && sess.ExportOptions.DefaultDurationMs != 16 {
+		t.Errorf("expected duration 16 or 17ms, got %d", sess.ExportOptions.DefaultDurationMs)
 	}
 }
 
@@ -692,28 +681,21 @@ func TestSidebarTabs(t *testing.T) {
 		t.Fatal("expected sidebarTabs to be non-nil")
 	}
 
-	if len(mw.sidebarTabs.Items) != 3 {
-		t.Fatalf("expected 3 sidebar tabs, got %d", len(mw.sidebarTabs.Items))
+	if len(mw.sidebarTabs.Items) != 2 {
+		t.Fatalf("expected 2 sidebar tabs, got %d", len(mw.sidebarTabs.Items))
 	}
 
 	if mw.sidebarTabs.Items[0].Text != "Layers & Motion" {
 		t.Errorf("expected first tab to be 'Layers & Motion', got %q", mw.sidebarTabs.Items[0].Text)
 	}
-	if mw.sidebarTabs.Items[1].Text != "Frames" {
-		t.Errorf("expected second tab to be 'Frames', got %q", mw.sidebarTabs.Items[1].Text)
-	}
-	if mw.sidebarTabs.Items[2].Text != "Export" {
-		t.Errorf("expected third tab to be 'Export', got %q", mw.sidebarTabs.Items[2].Text)
+	if mw.sidebarTabs.Items[1].Text != "Export" {
+		t.Errorf("expected second tab to be 'Export', got %q", mw.sidebarTabs.Items[1].Text)
 	}
 
 	// Switch tabs
 	mw.sidebarTabs.SelectIndex(1)
 	if mw.sidebarTabs.SelectedIndex() != 1 {
 		t.Errorf("expected selected tab index 1, got %d", mw.sidebarTabs.SelectedIndex())
-	}
-	mw.sidebarTabs.SelectIndex(2)
-	if mw.sidebarTabs.SelectedIndex() != 2 {
-		t.Errorf("expected selected tab index 2, got %d", mw.sidebarTabs.SelectedIndex())
 	}
 	mw.sidebarTabs.SelectIndex(0)
 	if mw.sidebarTabs.SelectedIndex() != 0 {

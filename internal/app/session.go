@@ -20,16 +20,19 @@ import (
 
 // Session manages the loaded SVG, frame pipeline, preview buffers, and export settings.
 type Session struct {
-	FilePath         string
-	Document         *inksvg.SVGDocument
-	CurrentMode      inksvg.FrameMode
-	CropBoundaryMode inksvg.BoundaryMode
-	CropPageIndex    int
-	Frames           []inksvg.Frame
-	Pages            []inksvg.Page
-	ExportOptions    gif.ExportOptions
-	RenderedFrames   []inksvg.RenderedFrame
-	ShowMotionLines  bool
+	FilePath          string
+	Document          *inksvg.SVGDocument
+	CurrentMode       inksvg.FrameMode
+	CropBoundaryMode  inksvg.BoundaryMode
+	CropPageIndex     int
+	FPS               int
+	TotalDurationMs   int
+	HasManualDuration bool
+	Frames            []inksvg.Frame
+	Pages             []inksvg.Page
+	ExportOptions     gif.ExportOptions
+	RenderedFrames    []inksvg.RenderedFrame
+	ShowMotionLines   bool
 
 	frameCache map[string][]inksvg.RenderedFrame
 	cacheMu    sync.RWMutex
@@ -42,9 +45,112 @@ func NewSession() *Session {
 		CurrentMode:      inksvg.ModeTimeline,
 		CropBoundaryMode: inksvg.BoundaryPage,
 		CropPageIndex:    0,
+		FPS:              10,
+		TotalDurationMs:  1000,
 		ExportOptions:    gif.DefaultOptions(),
 		frameCache:       make(map[string][]inksvg.RenderedFrame),
 	}
+}
+
+// ResetManualDuration clears the manual duration override so the next loaded SVG
+// derives its initial duration from its keyframe count and the active FPS.
+func (s *Session) ResetManualDuration() {
+	s.HasManualDuration = false
+}
+
+// KeyframeCount returns the number of keyframes defined in the SVG document (at least 1).
+func (s *Session) KeyframeCount() int {
+	if s.Document == nil {
+		return 1
+	}
+	return s.Document.FrameCount()
+}
+
+// IsAnimated reports whether the loaded SVG has any motion paths or multiple keyframes.
+func (s *Session) IsAnimated() bool {
+	if s.Document == nil {
+		return false
+	}
+	return len(s.Document.MotionPaths) > 0 || s.Document.FrameCount() > 1
+}
+
+// TargetFrameCount returns the number of interpolated output frames for the current
+// TotalDurationMs and FPS (or 1 if the SVG is static).
+func (s *Session) TargetFrameCount() int {
+	if s.Document == nil || !s.IsAnimated() {
+		return 1
+	}
+	fps := s.FPS
+	if fps <= 0 {
+		fps = 10
+	}
+	durMs := s.TotalDurationMs
+	if durMs <= 0 {
+		durMs = int(math.Round(float64(s.KeyframeCount()) * 1000.0 / float64(fps)))
+	}
+	count := max(int(math.Round(float64(durMs)*float64(fps)/1000.0)), 2)
+	return count
+}
+
+func (s *Session) rebuildTimelineFrames() {
+	count := s.TargetFrameCount()
+	dur := s.ExportOptions.DefaultDurationMs
+	if dur <= 0 {
+		dur = 100
+	}
+	s.Frames = make([]inksvg.Frame, count)
+	for i := range count {
+		s.Frames[i] = inksvg.Frame{
+			ID:         fmt.Sprintf("frame_%d", i+1),
+			Label:      fmt.Sprintf("Frame %d", i+1),
+			DurationMs: dur,
+			IsActive:   true,
+		}
+	}
+}
+
+// SetFPS updates the target frame rate (1..60 FPS), updates per-frame delay,
+// and re-renders the interpolated timeline frames.
+func (s *Session) SetFPS(fps int) error {
+	if fps < 1 {
+		fps = 1
+	}
+	if fps > 60 {
+		fps = 60
+	}
+	s.FPS = fps
+	delayMs := max(int(math.Round(1000.0/float64(fps))), 10)
+	s.ExportOptions.DefaultDurationMs = delayMs
+	if s.Document == nil {
+		return nil
+	}
+	s.rebuildTimelineFrames()
+	s.InvalidateCache()
+	return s.RerenderAllFrames()
+}
+
+// SetTotalDurationMs updates the total animation duration in milliseconds (100..60000ms),
+// marks duration as manually set, and re-renders the interpolated timeline frames.
+func (s *Session) SetTotalDurationMs(ms int) error {
+	if ms < 100 {
+		ms = 100
+	}
+	if ms > 60000 {
+		ms = 60000
+	}
+	s.TotalDurationMs = ms
+	s.HasManualDuration = true
+	if s.Document == nil {
+		return nil
+	}
+	s.rebuildTimelineFrames()
+	s.InvalidateCache()
+	return s.RerenderAllFrames()
+}
+
+// SetTotalDurationSec updates the total animation duration in seconds (0.1..60.0s).
+func (s *Session) SetTotalDurationSec(sec float64) error {
+	return s.SetTotalDurationMs(int(math.Round(sec * 1000.0)))
 }
 
 func (s *Session) activeCacheKey() string {
@@ -96,8 +202,13 @@ func (s *Session) LoadSVGData(data []byte, filename string) error {
 	s.FilePath = filename
 	doc.ShowMotionLines = s.ShowMotionLines
 	s.Document = doc
-	s.Frames = make([]inksvg.Frame, len(doc.Frames))
-	copy(s.Frames, doc.Frames)
+	if s.FPS <= 0 {
+		s.FPS = 10
+	}
+	if !s.HasManualDuration || s.TotalDurationMs <= 0 {
+		s.TotalDurationMs = max(int(math.Round(float64(doc.FrameCount())*1000.0/float64(s.FPS))), 100)
+	}
+	s.rebuildTimelineFrames()
 
 	s.Pages = make([]inksvg.Page, len(doc.Pages))
 	copy(s.Pages, doc.Pages)
@@ -197,7 +308,6 @@ func (s *Session) GetPreviewBoundaryRect() inksvg.Rect {
 	return s.GetActiveBoundaryRect(0)
 }
 
-
 // ToggleFrameActive toggles whether a frame is included in the animation.
 func (s *Session) ToggleFrameActive(index int) error {
 	if index < 0 || index >= len(s.Frames) {
@@ -211,7 +321,6 @@ func (s *Session) ToggleFrameActive(index int) error {
 	s.PrerenderPages()
 	return nil
 }
-
 
 // MoveFrame moves a frame up or down in the animation order.
 func (s *Session) MoveFrame(fromIndex, toIndex int) error {
@@ -314,13 +423,17 @@ func (s *Session) renderFramesForBoundary(boundaryRect inksvg.Rect) ([]inksvg.Re
 		})
 	}
 
+	totalOutFrames := len(s.Frames)
+	keyframeCount := s.KeyframeCount()
+
 	if inksvg.CustomBatchRasterizer != nil && len(jobs) > 0 {
 		tBuild := time.Now()
 		svgList := make([][]byte, len(jobs))
 		var buildErr error
 		for i, j := range jobs {
 			var frameSVG []byte
-			frameSVG, buildErr = inksvg.BuildTimelineFrameSVG(s.Document, j.docFrameIdx, boundaryRect)
+			kfPos := inksvg.KeyframePosition(j.docFrameIdx, totalOutFrames, keyframeCount)
+			frameSVG, buildErr = inksvg.BuildTimelineFrameSVGAt(s.Document, kfPos, boundaryRect)
 			if buildErr != nil {
 				return nil, fmt.Errorf("failed to build frame %d: %w", j.frameIdx+1, buildErr)
 			}
@@ -352,8 +465,9 @@ func (s *Session) renderFramesForBoundary(boundaryRect inksvg.Rect) ([]inksvg.Re
 	frames := make([]inksvg.RenderedFrame, len(jobs))
 	err := parallel.Run(len(jobs), func(idx int) error {
 		j := jobs[idx]
-		
-		frameSVG, err := inksvg.BuildTimelineFrameSVG(s.Document, j.docFrameIdx, boundaryRect)
+
+		kfPos := inksvg.KeyframePosition(j.docFrameIdx, totalOutFrames, keyframeCount)
+		frameSVG, err := inksvg.BuildTimelineFrameSVGAt(s.Document, kfPos, boundaryRect)
 		if err != nil {
 			return fmt.Errorf("failed to build frame %d: %w", j.frameIdx+1, err)
 		}
@@ -620,11 +734,15 @@ func (s *Session) RenderExportFrames() ([]gif.FrameInput, error) {
 		})
 	}
 
+	totalOutFrames := len(s.Frames)
+	keyframeCount := s.KeyframeCount()
+
 	frameInputs := make([]gif.FrameInput, len(jobs))
 	err := parallel.Run(len(jobs), func(idx int) error {
 		j := jobs[idx]
-		
-		frameSVG, err := inksvg.BuildTimelineFrameSVG(exportDoc, j.docFrameIdx, boundaryRect)
+
+		kfPos := inksvg.KeyframePosition(j.docFrameIdx, totalOutFrames, keyframeCount)
+		frameSVG, err := inksvg.BuildTimelineFrameSVGAt(exportDoc, kfPos, boundaryRect)
 		if err != nil {
 			return fmt.Errorf("failed to build frame %d: %w", j.frameIdx+1, err)
 		}

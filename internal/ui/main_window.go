@@ -24,7 +24,6 @@ import (
 type MainWindow struct {
 	window          fyne.Window
 	session         *app.Session
-	leftPanel       *LeftFramesPanel
 	centerPanel     *CenterPreviewPanel
 	rightPanel      *RightExportPanel
 	sidebarTabs     *container.AppTabs
@@ -88,17 +87,13 @@ func NewMainWindow(appInstance fyne.App) *MainWindow {
 	mw.reloadBtn.Hide() // Hidden until a file is opened
 
 	// Construct panels with coordinated refresh hooks
-	mw.leftPanel = NewLeftFramesPanel(sess, func() {
-		if mw.centerPanel != nil {
-			mw.centerPanel.Refresh()
-		}
+	mw.centerPanel = NewCenterPreviewPanel(sess)
+	mw.centerPanel.SetOnPingPongChange(func() {
 		if mw.rightPanel != nil {
 			mw.rightPanel.validateTwitch()
 		}
 	})
-
-	mw.centerPanel = NewCenterPreviewPanel(sess)
-	mw.centerPanel.SetOnPingPongChange(func() {
+	mw.centerPanel.SetOnTimingChange(func() {
 		if mw.rightPanel != nil {
 			mw.rightPanel.validateTwitch()
 		}
@@ -132,10 +127,9 @@ func NewMainWindow(appInstance fyne.App) *MainWindow {
 	// Layers & Motion tab
 	motionSplit := setupLayersAndMotionTab(mw)
 
-	// Unified tabbed sidebar hosting Layers & Motion, Frames, and Export panels
+	// Unified tabbed sidebar hosting Layers & Motion and Export panels
 	mw.sidebarTabs = container.NewAppTabs(
 		container.NewTabItemWithIcon("Layers & Motion", theme.VisibilityIcon(), motionSplit),
-		container.NewTabItemWithIcon("Frames", theme.ListIcon(), mw.leftPanel.Container()),
 		container.NewTabItemWithIcon("Export", theme.DownloadIcon(), mw.rightPanel.Container()),
 	)
 
@@ -174,8 +168,8 @@ func NewMainWindow(appInstance fyne.App) *MainWindow {
 	saveAsItem.Shortcut = &desktop.CustomShortcut{KeyName: fyne.KeyS, Modifier: fyne.KeyModifierControl | fyne.KeyModifierShift}
 
 	exportItem := fyne.NewMenuItem("Export GIF...", func() {
-		if mw.sidebarTabs != nil && len(mw.sidebarTabs.Items) >= 3 {
-			mw.sidebarTabs.SelectIndex(2)
+		if mw.sidebarTabs != nil && len(mw.sidebarTabs.Items) >= 2 {
+			mw.sidebarTabs.SelectIndex(1)
 		}
 		if mw.rightPanel != nil {
 			mw.rightPanel.PromptExport()
@@ -220,8 +214,8 @@ func NewMainWindow(appInstance fyne.App) *MainWindow {
 		mw.SaveAs()
 	})
 	win.Canvas().AddShortcut(&desktop.CustomShortcut{KeyName: fyne.KeyE, Modifier: fyne.KeyModifierControl}, func(_ fyne.Shortcut) {
-		if mw.sidebarTabs != nil && len(mw.sidebarTabs.Items) >= 3 {
-			mw.sidebarTabs.SelectIndex(2)
+		if mw.sidebarTabs != nil && len(mw.sidebarTabs.Items) >= 2 {
+			mw.sidebarTabs.SelectIndex(1)
 		}
 		if mw.rightPanel != nil {
 			mw.rightPanel.PromptExport()
@@ -369,6 +363,7 @@ func (mw *MainWindow) loadData(data []byte, filename string) {
 	}
 	state := mw.editorState
 
+	mw.session.ResetManualDuration()
 	if err := mw.session.LoadSVGData(data, filename); err != nil {
 		mw.centerPanel.EndLoading()
 		dialog.ShowError(err, mw.window)
@@ -396,9 +391,8 @@ func (mw *MainWindow) loadData(data []byte, filename string) {
 		mw.updateUndoRedo()
 	}
 
-	mw.leftPanel.Refresh()
 	mw.centerPanel.Refresh()
-	mw.rightPanel.syncOptions()
+	mw.rightPanel.Refresh()
 
 	if len(mw.session.RenderedFrames) > 1 {
 		mw.centerPanel.Play()

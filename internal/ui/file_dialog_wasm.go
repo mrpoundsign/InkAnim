@@ -306,6 +306,7 @@ func (mw *MainWindow) loadDataAsync(data []byte, filename string, onLoaded func(
 
 	go func() {
 		state, stateErr := NewEditorState(data, mw.currentPath, nil)
+		mw.session.ResetManualDuration()
 		err := mw.session.LoadSVGData(data, filename)
 
 		fyne.Do(func() {
@@ -342,9 +343,8 @@ func (mw *MainWindow) loadDataAsync(data []byte, filename string, onLoaded func(
 					mw.updateUndoRedo()
 				}
 
-				mw.leftPanel.Refresh()
 				mw.centerPanel.Refresh() // starts the async preview build; overlay stays up until it swaps in
-				mw.rightPanel.syncOptions()
+				mw.rightPanel.Refresh()
 
 				if len(mw.session.RenderedFrames) > 1 {
 					mw.centerPanel.Play() // deferred until the preview cache is ready
