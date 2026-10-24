@@ -769,11 +769,8 @@ func (mw *MainWindow) schedulePreviewUpdate() {
 					mw.centerPanel.Play()
 				}
 			}
-			if mw.leftPanel != nil {
-				mw.leftPanel.Refresh()
-			}
 			if mw.rightPanel != nil {
-				mw.rightPanel.syncOptions()
+				mw.rightPanel.Refresh()
 			}
 		})
 	})

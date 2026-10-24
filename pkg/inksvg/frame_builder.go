@@ -7,6 +7,7 @@ import (
 	"io"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/srwiley/oksvg"
@@ -380,10 +381,32 @@ func parseTimelineTemplate(rawContent []byte) (*timelineTemplate, error) {
 	}, nil
 }
 
-// BuildTimelineFrameSVG generates an SVG frame for a timeline animation.
+const kfEps = 1e-9
+
+// KeyframePosition maps a 0-based output frame index in [0, totalOutputFrames-1]
+// onto a 1-based continuous keyframe coordinate in [1.0, keyframeCount].
+func KeyframePosition(outputFrameIndex, totalOutputFrames, keyframeCount int) float64 {
+	if totalOutputFrames <= 1 || keyframeCount <= 1 {
+		return 1.0
+	}
+	if outputFrameIndex <= 0 {
+		return 1.0
+	}
+	if outputFrameIndex >= totalOutputFrames-1 {
+		return float64(keyframeCount)
+	}
+	return 1.0 + (float64(outputFrameIndex)/float64(totalOutputFrames-1))*float64(keyframeCount-1)
+}
+
+// BuildTimelineFrameSVG generates an SVG frame for a timeline animation at a 0-based integer frame index.
 // It hides any motion paths/markers, dynamically reorders top-level groups according to Depth directives,
 // and injects translate/rotate/scale/opacity/visibility into animated groups.
 func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]byte, error) {
+	return BuildTimelineFrameSVGAt(doc, float64(frameIndex+1), boundary)
+}
+
+// BuildTimelineFrameSVGAt generates an SVG frame at a continuous 1-based keyframe position (1.0 .. maxF).
+func BuildTimelineFrameSVGAt(doc *SVGDocument, kfPos float64, boundary Rect) ([]byte, error) {
 	if boundary.Width <= 0 || boundary.Height <= 0 {
 		boundary = doc.GetDocumentRect()
 	}
@@ -416,7 +439,9 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 	nodes := make([]topLevelNode, len(tpl.nodes))
 	copy(nodes, tpl.nodes)
 
-	frame1Idx := frameIndex + 1
+	if kfPos < 1.0 {
+		kfPos = 1.0
+	}
 	maxF := doc.FrameCount()
 	if maxF == 0 {
 		for _, mp := range doc.MotionPaths {
@@ -442,15 +467,15 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 			cStartF = 1
 			cEndF = maxF
 		}
-		duration := cEndF - cStartF
+		duration := float64(cEndF - cStartF)
 		var progress float64
 		switch {
-		case frame1Idx <= cStartF:
+		case kfPos <= float64(cStartF)+kfEps:
 			progress = 0.0
-		case frame1Idx >= cEndF:
+		case kfPos >= float64(cEndF)-kfEps:
 			progress = 1.0
 		case duration > 0:
-			progress = float64(frame1Idx-cStartF) / float64(duration)
+			progress = (kfPos - float64(cStartF)) / duration
 		}
 		t := ApplyEasing(progress, doc.CameraPath.Config.Ease)
 		if doc.CameraPath.Config.Reverse {
@@ -493,7 +518,7 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 					startF = 1
 					endF = maxF
 				}
-				if frame1Idx >= startF && frame1Idx <= endF {
+				if kfPos >= float64(startF)-kfEps && kfPos <= float64(endF)+kfEps {
 					activeDepth = mp.Config.DepthOffset
 				}
 			}
@@ -521,7 +546,7 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 
 	var buf bytes.Buffer
 	encoder := xml.NewEncoder(&buf)
-	dynamicGradients, groupSweepMap := generateSweepGradients(doc, frame1Idx, maxF)
+	dynamicGradients, groupSweepMap := generateSweepGradients(doc, kfPos, maxF)
 
 	for _, tok := range preamble {
 		if err := encoder.EncodeToken(tok); err != nil {
@@ -578,7 +603,7 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 	}
 
 	for _, node := range nodes {
-		if err := serializeNodeTokens(encoder, node.tokens, doc, frame1Idx, maxF, motionMap, cameraActive, camX, camY, groupSweepMap); err != nil {
+		if err := serializeNodeTokens(encoder, node.tokens, doc, kfPos, maxF, motionMap, cameraActive, camX, camY, groupSweepMap); err != nil {
 			return nil, err
 		}
 	}
@@ -605,7 +630,7 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 	return buf.Bytes(), nil
 }
 
-func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocument, frame1Idx, maxF int, motionMap map[string][]MotionPath, cameraActive bool, camX, camY float64, groupSweepMap map[string]string) error {
+func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocument, kfPos float64, maxF int, motionMap map[string][]MotionPath, cameraActive bool, camX, camY float64, groupSweepMap map[string]string) error {
 	var currentGDepth int
 	var parallaxActiveDepth int
 
@@ -697,7 +722,7 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 							startF = 1
 							endF = maxF
 						}
-						inRange := frame1Idx >= startF && frame1Idx <= endF
+						inRange := kfPos >= float64(startF)-kfEps && kfPos <= float64(endF)+kfEps
 
 						switch mp.Config.VisibilityState {
 						case "show":
@@ -784,11 +809,11 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 							endF = maxF
 						}
 
-						if frame1Idx < startF {
+						if kfPos < float64(startF)-kfEps {
 							continue
 						}
 
-						if frame1Idx > endF {
+						if kfPos > float64(endF)+kfEps {
 							superseded := false
 							for _, other := range sortedPaths {
 								if other.ID == mp.ID {
@@ -801,7 +826,7 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 								if other.Config.IsAll {
 									oStartF = 1
 								}
-								if frame1Idx >= oStartF && oStartF > startF {
+								if kfPos >= float64(oStartF)-kfEps && oStartF > startF {
 									// An earlier rotation is only superseded if the later rotation
 									// explicitly specifies an absolute range (HasRotationRange).
 									// If the later rotation uses a relative angle, the earlier rotation
@@ -818,15 +843,15 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 							}
 						}
 
-						duration := endF - startF
+						duration := float64(endF - startF)
 						progress := 0.0
 						if duration > 0 {
-							if frame1Idx >= endF {
+							if kfPos >= float64(endF)-kfEps {
 								progress = 1.0
-							} else {
-								progress = float64(frame1Idx-startF) / float64(duration)
+							} else if kfPos > float64(startF) {
+								progress = (kfPos - float64(startF)) / duration
 							}
-						} else if frame1Idx >= endF {
+						} else if kfPos >= float64(endF)-kfEps {
 							progress = 1.0
 						}
 
@@ -990,11 +1015,16 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 									startF = 1
 									endF = maxF
 								}
-								if frame1Idx >= startF && frame1Idx <= endF {
+								if kfPos >= float64(startF)-kfEps && kfPos <= float64(endF)+kfEps {
 									duration := endF - startF
 									p := 0.0
 									if duration > 0 {
-										p = float64(frame1Idx-startF) / float64(duration)
+										p = (kfPos - float64(startF)) / float64(duration)
+										if p < 0 {
+											p = 0
+										} else if p > 1 {
+											p = 1
+										}
 									}
 									r := mp.Config.ColorRepeat
 									if r <= 0 {
@@ -1218,7 +1248,7 @@ type dynamicSweepGradient struct {
 	Stops []GradientStop
 }
 
-func generateSweepGradients(doc *SVGDocument, frame1Idx, maxF int) ([]dynamicSweepGradient, map[string]string) {
+func generateSweepGradients(doc *SVGDocument, kfPos float64, maxF int) ([]dynamicSweepGradient, map[string]string) {
 	var dynGradients []dynamicSweepGradient
 	groupSweepMap := make(map[string]string)
 
@@ -1232,13 +1262,18 @@ func generateSweepGradients(doc *SVGDocument, frame1Idx, maxF int) ([]dynamicSwe
 			startF = 1
 			endF = maxF
 		}
-		if frame1Idx < startF || frame1Idx > endF {
+		if kfPos < float64(startF)-kfEps || kfPos > float64(endF)+kfEps {
 			continue
 		}
 		duration := endF - startF
 		p := 0.0
 		if duration > 0 {
-			p = float64(frame1Idx-startF) / float64(duration)
+			p = (kfPos - float64(startF)) / float64(duration)
+			if p < 0 {
+				p = 0
+			} else if p > 1 {
+				p = 1
+			}
 		}
 		r := mp.Config.ColorRepeat
 		if r <= 0 {
@@ -1330,9 +1365,15 @@ func generateSweepGradients(doc *SVGDocument, frame1Idx, maxF int) ([]dynamicSwe
 			}
 		}
 
-		sweepID := fmt.Sprintf("inkanim_sweep_%s_%d", mp.ID, frame1Idx)
+		var kfKey string
+		if math.Abs(kfPos-math.Round(kfPos)) < 1e-6 {
+			kfKey = strconv.Itoa(int(math.Round(kfPos)))
+		} else {
+			kfKey = strings.ReplaceAll(fmt.Sprintf("%.3f", kfPos), ".", "_")
+		}
+		sweepID := fmt.Sprintf("inkanim_sweep_%s_%s", mp.ID, kfKey)
 		if mp.ID == "" {
-			sweepID = fmt.Sprintf("inkanim_sweep_%s_%d", mp.GroupID, frame1Idx)
+			sweepID = fmt.Sprintf("inkanim_sweep_%s_%s", mp.GroupID, kfKey)
 		}
 
 		if mp.GroupID != "" {

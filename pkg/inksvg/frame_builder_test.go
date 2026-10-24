@@ -3,6 +3,7 @@ package inksvg
 import (
 	"bytes"
 	"encoding/xml"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -110,3 +111,41 @@ func TestBuildPageFrameSVG_ValidXML(t *testing.T) {
 		}
 	}
 }
+
+func TestKeyframePosition(t *testing.T) {
+	if got := KeyframePosition(0, 1, 1); got != 1.0 {
+		t.Fatalf("expected 1.0 for single frame, got %v", got)
+	}
+	if got := KeyframePosition(0, 11, 2); math.Abs(got-1.0) > 1e-9 {
+		t.Fatalf("expected 1.0 at start, got %v", got)
+	}
+	if got := KeyframePosition(5, 11, 2); math.Abs(got-1.5) > 1e-9 {
+		t.Fatalf("expected 1.5 at midpoint, got %v", got)
+	}
+	if got := KeyframePosition(10, 11, 2); math.Abs(got-2.0) > 1e-9 {
+		t.Fatalf("expected 2.0 at end, got %v", got)
+	}
+}
+
+func TestBuildTimelineFrameSVGAt_FractionalKeyframe(t *testing.T) {
+	svg := `<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" viewBox="0 0 100 100">
+		<g id="box" inkscape:label="box">
+			<rect x="0" y="0" width="10" height="10" fill="#ff0000"/>
+			<path id="m1" d="M 0,0 L 100,0" inkscape:label="Move {f:1-2}"/>
+		</g>
+	</svg>`
+
+	doc, err := ParseSVG([]byte(svg))
+	if err != nil {
+		t.Fatalf("ParseSVG failed: %v", err)
+	}
+	rect := doc.GetDocumentRect()
+	out, err := BuildTimelineFrameSVGAt(doc, 1.5, rect)
+	if err != nil {
+		t.Fatalf("BuildTimelineFrameSVGAt(1.5) failed: %v", err)
+	}
+	if !strings.Contains(string(out), "translate(50.000000, 0.000000)") {
+		t.Fatalf("expected midpoint translation translate(50.000000, 0.000000) at kfPos=1.5, got:\n%s", string(out))
+	}
+}
+

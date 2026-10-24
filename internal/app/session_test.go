@@ -602,3 +602,49 @@ func TestSessionMotionLinesMoveFrameAndBatchRasterizer(t *testing.T) {
 		t.Fatalf("ExportGIF failed: size=%d, err=%v", size, err)
 	}
 }
+
+func TestSessionDurationAndFPSInterpolation(t *testing.T) {
+	testSVGPath, err := filepath.Abs("../../testdata/pendulum.svg")
+	if err != nil {
+		t.Fatalf("failed to resolve test SVG path: %v", err)
+	}
+
+	sess := NewSession()
+	if err := sess.LoadSVG(testSVGPath); err != nil {
+		t.Fatalf("LoadSVG failed: %v", err)
+	}
+
+	// pendulum.svg has 10 keyframes. At default 10 FPS, initial duration is 1.0s (1000ms) -> 10 frames.
+	if sess.KeyframeCount() != 10 {
+		t.Fatalf("expected 10 keyframes, got %d", sess.KeyframeCount())
+	}
+	if sess.TotalDurationMs != 1000 {
+		t.Fatalf("expected initial TotalDurationMs 1000, got %d", sess.TotalDurationMs)
+	}
+	if len(sess.RenderedFrames) != 10 {
+		t.Fatalf("expected 10 rendered frames, got %d", len(sess.RenderedFrames))
+	}
+
+	// Set duration to 2.0 seconds at 10 FPS -> 20 interpolated frames
+	if err := sess.SetTotalDurationSec(2.0); err != nil {
+		t.Fatalf("SetTotalDurationSec(2.0) failed: %v", err)
+	}
+	if !sess.HasManualDuration {
+		t.Errorf("expected HasManualDuration to be true")
+	}
+	if len(sess.RenderedFrames) != 20 {
+		t.Fatalf("expected 20 rendered frames at 2.0s @ 10 FPS, got %d", len(sess.RenderedFrames))
+	}
+
+	// Change FPS to 15 FPS at 2.0s -> 30 interpolated frames at 67ms/frame
+	if err := sess.SetFPS(15); err != nil {
+		t.Fatalf("SetFPS(15) failed: %v", err)
+	}
+	if len(sess.RenderedFrames) != 30 {
+		t.Fatalf("expected 30 rendered frames at 2.0s @ 15 FPS, got %d", len(sess.RenderedFrames))
+	}
+	if sess.ExportOptions.DefaultDurationMs != 67 {
+		t.Errorf("expected DefaultDurationMs 67 at 15 FPS, got %d", sess.ExportOptions.DefaultDurationMs)
+	}
+}
+

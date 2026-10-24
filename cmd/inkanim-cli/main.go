@@ -4,6 +4,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -35,6 +36,7 @@ func run() error {
 	width := flag.Int("width", 0, "Custom target width (if not using square mode)")
 	height := flag.Int("height", 0, "Custom target height (if not using square mode)")
 	fps := flag.Int("fps", 10, "Frames per second (playback speed)")
+	duration := flag.Float64("duration", 0, "Target total GIF duration in seconds (e.g. 2.0). 0 derives duration from keyframes and -fps")
 	colors := flag.Int("colors", 256, "Max palette colors (2-256)")
 	dither := flag.Bool("dither", false, "Apply Bayer 8x8 dithering")
 	pingpong := flag.Bool("pingpong", false, "Enable Ping-Pong (bounce/reverse) loop playback")
@@ -71,20 +73,27 @@ func run() error {
 	}
 
 	sess := app.NewSession()
+	if *fps > 0 {
+		sess.FPS = *fps
+	}
+	if *duration > 0 {
+		sess.TotalDurationMs = max(100, int(math.Round(*duration*1000.0)))
+		sess.HasManualDuration = true
+	}
 	fmt.Printf("Loading SVG: %s ...\n", *inputFile)
 	if err := sess.LoadSVG(*inputFile); err != nil {
 		return fmt.Errorf("loading SVG: %w", err)
 	}
 
 	frameCount := len(sess.RenderedFrames)
-	fmt.Printf("Detected %d animation frames.\n", frameCount)
+	fmt.Printf("Detected %d keyframes -> %d animation frames.\n", sess.KeyframeCount(), frameCount)
 	if frameCount == 0 {
 		return errors.New("no animation frames found")
 	}
 
 	frameDelayMs := 100
 	if *fps > 0 {
-		frameDelayMs = 1000 / *fps
+		frameDelayMs = int(math.Round(1000.0 / float64(*fps)))
 	}
 
 	opts := gif.ExportOptions{
