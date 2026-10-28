@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -104,6 +105,9 @@ func NewMainWindow(appInstance fyne.App) *MainWindow {
 			mw.centerPanel.Refresh()
 		}
 	}, mw.PausePlayback)
+	mw.rightPanel.SetOnExportSuccess(func(_ string) {
+		mw.saveSidecarControlFile()
+	})
 
 	aboutBtn := widget.NewButtonWithIcon(fmt.Sprintf("About (v%s)", app.Version), theme.InfoIcon(), func() {
 		resume := mw.PausePlayback()
@@ -222,22 +226,27 @@ func NewMainWindow(appInstance fyne.App) *MainWindow {
 		}
 	})
 
-	// Drag & Drop of SVG files onto window
+	// Drag & Drop of SVG or .inka files onto window
 	win.SetOnDropped(func(pos fyne.Position, uris []fyne.URI) {
 		for _, u := range uris {
-			if u.Extension() == ".svg" {
-				reader, err := storage.Reader(u)
-				if err == nil {
-					data, readErr := io.ReadAll(reader)
-					_ = reader.Close()
-					if readErr == nil {
-						mw.currentPath = u.Path()
-						mw.loadData(data, u.Name())
-						break
+			ext := strings.ToLower(u.Extension())
+			if ext == ".svg" || ext == app.ControlFileExt {
+				if u.Path() != "" {
+					mw.loadFilePath(u.Path())
+					break
+				}
+				if ext == ".svg" {
+					reader, err := storage.Reader(u)
+					if err == nil {
+						data, readErr := io.ReadAll(reader)
+						_ = reader.Close()
+						if readErr == nil {
+							mw.currentPath = u.Path()
+							mw.loadData(data, u.Name())
+							break
+						}
 					}
 				}
-				mw.loadFilePath(u.Path())
-				break
 			}
 		}
 	})
@@ -316,33 +325,76 @@ func (mw *MainWindow) SaveAs() {
 	mw.promptSaveSVGAs()
 }
 
-// OpenFile loads and displays an SVG file from the specified file path.
+// OpenFile loads and displays an SVG or .inka project file from the specified file path.
 func (mw *MainWindow) OpenFile(path string) {
 	mw.loadFilePath(path)
 }
 
-// Reload reloads the currently opened SVG file from disk.
+// Reload reloads the currently opened SVG file from disk while preserving active session settings.
 func (mw *MainWindow) Reload() {
-	if mw.currentPath != "" {
-		mw.loadFilePath(mw.currentPath)
+	if mw.currentPath == "" {
+		return
 	}
-}
-
-func (mw *MainWindow) loadFilePath(path string) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(mw.currentPath)
 	if err != nil {
 		dialog.ShowError(err, mw.window)
 		mw.statusLabel.SetText("Failed to read SVG file.")
 		return
 	}
-	mw.currentPath = path
-	mw.currentFilename = filepath.Base(path)
-	mw.fileWatcher.watchFile(path)
+	mw.loadDataWithOptions(data, filepath.Base(mw.currentPath), nil, true)
+}
+
+func (mw *MainWindow) buildControlFile() *app.ControlFile {
+	if mw.session == nil {
+		return nil
+	}
+	ctrl := mw.session.BuildControlFile(mw.currentPath)
+	if mw.centerPanel != nil {
+		mw.centerPanel.PopulateControlFile(ctrl)
+	}
+	if mw.rightPanel != nil {
+		mw.rightPanel.PopulateControlFile(ctrl)
+	}
+	return ctrl
+}
+
+func (mw *MainWindow) saveSidecarControlFile() {
+	if mw.isExtMode || mw.currentPath == "" || mw.session == nil || mw.session.Document == nil {
+		return
+	}
+	sidecarPath := app.SidecarPathForSVG(mw.currentPath)
+	if sidecarPath == "" {
+		return
+	}
+	ctrl := mw.buildControlFile()
+	_ = app.SaveControlFile(sidecarPath, ctrl)
+}
+
+func (mw *MainWindow) loadFilePath(path string) {
+	svgPath, ctrl, err := app.ResolveSVGAndControlFile(path)
+	if err != nil {
+		dialog.ShowError(err, mw.window)
+		mw.statusLabel.SetText("Failed to read SVG or project file.")
+		return
+	}
+	data, err := os.ReadFile(svgPath)
+	if err != nil {
+		dialog.ShowError(err, mw.window)
+		mw.statusLabel.SetText("Failed to read SVG file.")
+		return
+	}
+	mw.currentPath = svgPath
+	mw.currentFilename = filepath.Base(svgPath)
+	mw.fileWatcher.watchFile(svgPath)
 	mw.showReloadButton(mw.reloadBtn)
-	mw.loadData(data, filepath.Base(path))
+	mw.loadDataWithOptions(data, filepath.Base(svgPath), ctrl, false)
 }
 
 func (mw *MainWindow) loadData(data []byte, filename string) {
+	mw.loadDataWithOptions(data, filename, nil, false)
+}
+
+func (mw *MainWindow) loadDataWithOptions(data []byte, filename string, ctrl *app.ControlFile, preserveSettings bool) {
 	if mw.centerPanel != nil {
 		mw.centerPanel.Pause()
 	}
@@ -363,7 +415,14 @@ func (mw *MainWindow) loadData(data []byte, filename string) {
 	}
 	state := mw.editorState
 
-	mw.session.ResetManualDuration()
+	switch {
+	case ctrl != nil:
+		mw.session.ApplyControlFile(ctrl)
+	case preserveSettings:
+		mw.session.HasManualDuration = true
+	default:
+		mw.session.ResetManualDuration()
+	}
 	if err := mw.session.LoadSVGData(data, filename); err != nil {
 		mw.centerPanel.EndLoading()
 		dialog.ShowError(err, mw.window)
@@ -391,6 +450,10 @@ func (mw *MainWindow) loadData(data []byte, filename string) {
 		mw.updateUndoRedo()
 	}
 
+	if ctrl != nil {
+		mw.centerPanel.ApplyControlFileUI(ctrl)
+		mw.rightPanel.ApplyControlFileUI(ctrl)
+	}
 	mw.centerPanel.Refresh()
 	mw.rightPanel.Refresh()
 

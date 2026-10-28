@@ -598,6 +598,50 @@ func (p *CenterPreviewPanel) SetOnTimingChange(fn func()) {
 	p.onTimingChange = fn
 }
 
+// PopulateControlFile writes the preview panel's playback and viewport settings into ctrl.
+func (p *CenterPreviewPanel) PopulateControlFile(ctrl *app.ControlFile) {
+	if p == nil || ctrl == nil {
+		return
+	}
+	p.mu.Lock()
+	ctrl.Timing.Loop = p.loop
+	ctrl.Timing.PingPong = p.pingPong
+	ctrl.Preview.Background = string(p.currentBg)
+	ctrl.Preview.ShowGuides = p.showCropGuides
+	if p.session != nil {
+		ctrl.Preview.ShowPaths = p.session.ShowMotionLines
+	}
+	if p.inspectorCheck != nil {
+		ctrl.Preview.ShowScales = p.inspectorCheck.Checked
+	}
+	p.mu.Unlock()
+}
+
+// ApplyControlFileUI synchronizes the preview panel's UI widgets with a loaded ControlFile.
+func (p *CenterPreviewPanel) ApplyControlFileUI(ctrl *app.ControlFile) {
+	if p == nil || ctrl == nil {
+		return
+	}
+	if p.loopCheck != nil {
+		p.loopCheck.SetChecked(ctrl.Timing.Loop)
+	}
+	if p.pingPongCheck != nil {
+		p.pingPongCheck.SetChecked(ctrl.Timing.PingPong)
+	}
+	if ctrl.Preview.Background != "" {
+		p.SetBackground(PreviewBackground(ctrl.Preview.Background))
+	}
+	if p.cropGuidesCheck != nil {
+		p.cropGuidesCheck.SetChecked(ctrl.Preview.ShowGuides)
+	}
+	if p.motionLinesCheck != nil {
+		p.motionLinesCheck.SetChecked(ctrl.Preview.ShowPaths)
+	}
+	if p.inspectorCheck != nil {
+		p.inspectorCheck.SetChecked(ctrl.Preview.ShowScales)
+	}
+}
+
 func parseFPSOption(selected string) int {
 	switch selected {
 	case "10 FPS (100ms)":
