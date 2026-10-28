@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-10-28
+
+### Added
+- **Manual GIF Duration & Continuous Keyframe Interpolation**:
+  - IAMS frame directives (`f: 1-K`) now act as continuous keyframes (`KeyframePosition`, `BuildTimelineFrameSVGAt`), allowing authors to freely adjust total GIF duration (`Duration (s)`) and frame rate (`FPS`) while smoothly interpolating transforms, motion paths, opacity, colors, and gradient sweeps across the exact target frame count ([#138](https://github.com/mrpoundsign/InkAnim/issues/138)).
+  - Added `-duration` flag to `inkanim-cli` for headless manual duration exports ([#138](https://github.com/mrpoundsign/InkAnim/issues/138)).
+- **`.inka` Sidecar Project Control Files**:
+  - Introduced human-readable JSON sidecar files (`<basename>.inka`) saved automatically alongside `<basename>.svg` on Save (`Ctrl+S` / `Save As...`) and GIF Export (`Ctrl+E`) to persist animation timing (`duration_sec`, `fps`, `ping_pong`, `loop`), crop boundary settings (`boundary_mode`, `page_index`), export presets/palette options, and viewport preferences across sessions ([#139](https://github.com/mrpoundsign/InkAnim/issues/139)).
+  - Added bidirectional support for opening both `*.svg` and `*.inka` files via `File -> Open` (`Ctrl+O`), CLI arguments, and drag-and-drop, automatically restoring saved project settings ([#139](https://github.com/mrpoundsign/InkAnim/issues/139)).
+- **Expanded Unit Test Coverage**:
+  - Added comprehensive unit test suites across `pkg/inksvg`, `internal/app`, `internal/ui`, and `cmd/inkanim-cli` ([#137](https://github.com/mrpoundsign/InkAnim/issues/137)).
+
+### Changed
+- **Streamlined 2-Tab Sidebar & Redesigned Center Preview**:
+  - Consolidated the left sidebar into 2 tabs (**Layers & Motion** and **Export**) by moving **Crop Boundary** (`Drawing` / `Page`) controls into the **Export** tab and removing the redundant **Frames** tab ([#138](https://github.com/mrpoundsign/InkAnim/issues/138)).
+  - Redesigned the **Center Preview** panel with a compact top viewport bar (`BG`, `Guides`, `Paths`, `Scales`), always-on WYSIWYG color quantization preview, a zero-wiggle frame/keyframe readout directly beneath the canvas, and stacked transport + Duration/FPS controls ([#138](https://github.com/mrpoundsign/InkAnim/issues/138)).
+- **Performance & Memory Optimizations**:
+  - Eliminated regex compilation inside hot loops, redundant XML re-parsing passes, and `float64` per-pixel alpha blending overhead across the rendering pipeline ([#135](https://github.com/mrpoundsign/InkAnim/issues/135)).
+  - Removed obsolete and dead code paths across `pkg/inksvg` and `internal/app` ([#134](https://github.com/mrpoundsign/InkAnim/issues/134)).
+
+### Fixed
+- **Concurrency, Security & Resource Hardening**:
+  - Resolved concurrency data races, XML attribute escaping/injection edge cases, image dimension bounds checks, and resource leaks ([#136](https://github.com/mrpoundsign/InkAnim/issues/136)).
+
+---
+
 ## [0.5.0-beta4] - 2026-10-21
 
 ### Added
