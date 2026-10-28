@@ -214,8 +214,17 @@ func (s *Session) LoadSVGData(data []byte, filename string) error {
 	copy(s.Pages, doc.Pages)
 
 	s.CurrentMode = inksvg.ModeTimeline
-	s.CropBoundaryMode = inksvg.BoundaryPage
-	s.CropPageIndex = 0
+	if !s.HasManualDuration {
+		s.CropBoundaryMode = inksvg.BoundaryPage
+		s.CropPageIndex = 0
+	} else {
+		if s.CropBoundaryMode != inksvg.BoundaryDrawing && s.CropBoundaryMode != inksvg.BoundaryPage {
+			s.CropBoundaryMode = inksvg.BoundaryPage
+		}
+		if s.CropPageIndex < 0 || s.CropPageIndex > len(doc.Pages) {
+			s.CropPageIndex = 0
+		}
+	}
 
 	s.InvalidateCache()
 

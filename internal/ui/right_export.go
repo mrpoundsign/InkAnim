@@ -337,6 +337,64 @@ func (p *RightExportPanel) SetOnExportSuccess(fn func(outputPath string)) {
 	p.onExportSuccess = fn
 }
 
+// PopulateControlFile writes the export panel's active preset and settings into ctrl.
+func (p *RightExportPanel) PopulateControlFile(ctrl *app.ControlFile) {
+	if p == nil || ctrl == nil {
+		return
+	}
+	if p.presetSelect != nil {
+		ctrl.Export.Preset = p.presetSelect.Selected
+	}
+}
+
+// ApplyControlFileUI synchronizes the export panel's UI widgets with a loaded ControlFile.
+func (p *RightExportPanel) ApplyControlFileUI(ctrl *app.ControlFile) {
+	if p == nil || ctrl == nil {
+		return
+	}
+	if p.squareSizeInput != nil && ctrl.Export.SquareSize >= 16 {
+		p.squareSizeInput.SetValue(ctrl.Export.SquareSize)
+	}
+	if p.widthInput != nil && ctrl.Export.TargetWidth >= 16 {
+		p.widthInput.SetValue(ctrl.Export.TargetWidth)
+	}
+	if p.heightInput != nil && ctrl.Export.TargetHeight >= 16 {
+		p.heightInput.SetValue(ctrl.Export.TargetHeight)
+	}
+	if p.squareCheck != nil {
+		p.squareCheck.SetChecked(ctrl.Export.ExportSquare)
+	}
+	if p.presetSelect != nil {
+		preset := ctrl.Export.Preset
+		if preset == "" {
+			switch {
+			case ctrl.Export.ExportSquare && ctrl.Export.SquareSize == 512:
+				preset = "Twitch Emote (512x512 Square)"
+			case ctrl.Export.ExportSquare && ctrl.Export.SquareSize == 128:
+				preset = "Discord Emote (128x128 Square)"
+			default:
+				preset = "Custom Dimensions"
+			}
+		}
+		p.presetSelect.SetSelected(preset)
+	}
+	if p.colorsSelect != nil && ctrl.Export.NumColors >= 2 {
+		switch ctrl.Export.NumColors {
+		case 256, 128, 64, 32:
+			p.colorsSelect.SetSelected(strconv.Itoa(ctrl.Export.NumColors))
+		default:
+			if p.customColorsInput != nil {
+				p.customColorsInput.SetValue(ctrl.Export.NumColors)
+			}
+			p.colorsSelect.SetSelected("Custom")
+		}
+	}
+	if p.ditherCheck != nil {
+		p.ditherCheck.SetChecked(ctrl.Export.Dither)
+	}
+	p.Refresh()
+}
+
 func (p *RightExportPanel) validateTwitch() {
 	if p.twitchStatusLabel == nil {
 		return

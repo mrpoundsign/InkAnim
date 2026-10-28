@@ -1270,3 +1270,78 @@ func TestMainWindowSaveReloadAndCloseLifecycle(t *testing.T) {
 	mw.handleCloseRequest()
 }
 
+func TestSidecarControlFileUI(t *testing.T) {
+	testApp := test.NewApp()
+	defer testApp.Quit()
+
+	srcPath, err := filepath.Abs("../../testdata/pendulum.svg")
+	if err != nil {
+		t.Fatalf("failed to resolve pendulum.svg: %v", err)
+	}
+	rawBytes, err := os.ReadFile(srcPath)
+	if err != nil {
+		t.Fatalf("failed to read pendulum.svg: %v", err)
+	}
+	tmpDir := t.TempDir()
+	tmpSVG := filepath.Join(tmpDir, "emote.svg")
+	if err := os.WriteFile(tmpSVG, rawBytes, 0600); err != nil {
+		t.Fatalf("failed to write temp SVG: %v", err)
+	}
+
+	// 1. Open SVG, change timing/export settings, and save
+	mw1 := NewMainWindow(testApp)
+	loadAndWait(mw1, tmpSVG)
+	mw1.centerPanel.Pause()
+
+	mw1.centerPanel.fpsSelect.SetSelected("20 FPS (50ms)")
+	waitForPreview(mw1)
+	mw1.centerPanel.durationInput.Entry.SetText("1.5")
+	mw1.centerPanel.durationInput.Entry.OnSubmitted("1.5")
+	waitForPreview(mw1)
+	mw1.centerPanel.pingPongCheck.SetChecked(true)
+	mw1.rightPanel.presetSelect.SetSelected("Discord Emote (128x128 Square)")
+	mw1.rightPanel.colorsSelect.SetSelected("64")
+	mw1.rightPanel.ditherCheck.SetChecked(true)
+	waitForPreview(mw1)
+
+	mw1.Save()
+	mw1.Close()
+
+	inkaPath := filepath.Join(tmpDir, "emote.inka")
+	if _, statErr := os.Stat(inkaPath); statErr != nil {
+		t.Fatalf("expected sidecar %s to be created on Save(): %v", inkaPath, statErr)
+	}
+
+	// 2. Open the .inka file directly in a new window and verify all UI controls restore
+	mw2 := NewMainWindow(testApp)
+	defer waitForPreview(mw2)
+	loadAndWait(mw2, inkaPath)
+	mw2.centerPanel.Pause()
+
+	if mw2.currentPath != tmpSVG {
+		t.Errorf("expected currentPath to resolve to %q, got %q", tmpSVG, mw2.currentPath)
+	}
+	if len(mw2.session.RenderedFrames) != 30 {
+		t.Errorf("expected 30 restored frames (1.5s @ 20 FPS), got %d", len(mw2.session.RenderedFrames))
+	}
+	if mw2.centerPanel.fpsSelect.Selected != "20 FPS (50ms)" {
+		t.Errorf("expected fpsSelect '20 FPS (50ms)', got %q", mw2.centerPanel.fpsSelect.Selected)
+	}
+	if mw2.centerPanel.durationInput.Entry.Text != "1.5" {
+		t.Errorf("expected durationInput '1.5', got %q", mw2.centerPanel.durationInput.Entry.Text)
+	}
+	if !mw2.centerPanel.pingPongCheck.Checked {
+		t.Errorf("expected pingPongCheck to be restored as checked")
+	}
+	if mw2.rightPanel.presetSelect.Selected != "Discord Emote (128x128 Square)" {
+		t.Errorf("expected presetSelect 'Discord Emote (128x128 Square)', got %q", mw2.rightPanel.presetSelect.Selected)
+	}
+	if mw2.rightPanel.colorsSelect.Selected != "64" {
+		t.Errorf("expected colorsSelect '64', got %q", mw2.rightPanel.colorsSelect.Selected)
+	}
+	if !mw2.rightPanel.ditherCheck.Checked {
+		t.Errorf("expected ditherCheck to be restored as checked")
+	}
+}
+
+

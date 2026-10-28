@@ -30,6 +30,7 @@ func (mw *MainWindow) promptSaveSVGWithCallback(onSaved func()) {
 			return
 		}
 		mw.editorState.MarkClean()
+		mw.saveSidecarControlFile()
 		mw.updateStatus()
 		mw.updateFileLabel()
 		if onSaved != nil {
@@ -86,6 +87,7 @@ func (mw *MainWindow) promptSaveSVGAsWithCallback(onSaved func()) {
 			mw.currentFilename = filepath.Base(filename)
 			mw.editorState.InputPath = filename
 			mw.editorState.MarkClean()
+			mw.saveSidecarControlFile()
 			mw.fileWatcher.watchFile(filename)
 			mw.showReloadButton(mw.reloadBtn)
 			mw.updateStatus()
@@ -100,10 +102,10 @@ func (mw *MainWindow) promptSaveSVGAsWithCallback(onSaved func()) {
 func (mw *MainWindow) promptOpenFile() {
 	go func() {
 		filename, err := zenity.SelectFile(
-			zenity.Title("Open Inkscape SVG"),
+			zenity.Title("Open Inkscape SVG or InkAnim Project"),
 			zenity.FileFilter{
-				Name:     "Inkscape SVG (*.svg)",
-				Patterns: []string{"*.svg"},
+				Name:     "InkAnim & Inkscape Files (*.svg, *.inka)",
+				Patterns: []string{"*.svg", "*.inka"},
 			},
 		)
 		if err != nil {
