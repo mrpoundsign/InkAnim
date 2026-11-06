@@ -77,14 +77,20 @@ func ParseSVG(data []byte) (*SVGDocument, error) {
 					}
 				}
 
-				for _, cfg := range parseMotionConfigs(label) {
-					if cfg.HasParallax {
-						doc.MotionPaths = append(doc.MotionPaths, MotionPath{
-							ID:      id + "_dist",
-							GroupID: id,
-							Config:  cfg,
-						})
+				for i, cfg := range parseMotionConfigs(label) {
+					mpID := fmt.Sprintf("%s_gmotion_%d", id, i)
+					if cfg.HasParallax && i == 0 {
+						mpID = id + "_dist"
 					}
+					mp := MotionPath{
+						ID:      mpID,
+						GroupID: id,
+						Config:  cfg,
+					}
+					if cfg.IsCamera {
+						doc.CameraPath = &mp
+					}
+					doc.MotionPaths = append(doc.MotionPaths, mp)
 				}
 				activeGroups = append(activeGroups, id)
 			}
@@ -214,8 +220,7 @@ func ParseSVG(data []byte) (*SVGDocument, error) {
 						}
 						if cfg.IsCamera {
 							doc.CameraPath = &mp
-						}
-						if len(activeGroups) > 0 {
+						} else if len(activeGroups) > 0 {
 							doc.MotionPaths = append(doc.MotionPaths, mp)
 						}
 					}

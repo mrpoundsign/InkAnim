@@ -21,18 +21,20 @@ type Directive struct {
 
 // DocNode represents an element in the SVG document hierarchy.
 type DocNode struct {
-	ID          string
-	Tag         string
-	Label       string // inkscape:label if set
-	IsLayer     bool   // true if inkscape:groupmode="layer"
-	IsGroup     bool   // true if tag == "g"
-	SyntheticID bool   // true if element lacked an SVG 'id' attribute
-	Directives  []Directive
-	LabelPrefix string // text before any motion directive (e.g. "Fade In: ")
-	LabelSuffix string // text after all motion directives (e.g. " · Preset")
-	ParentID    string
-	Parent      *DocNode
-	Children    []*DocNode
+	ID           string
+	Tag          string
+	Label        string // inkscape:label if set
+	IsLinkedFile bool   // true if top-level linked SVG source group (data-inka-source)
+	SourceID     string // linked SVG source ID (e.g. "src_1")
+	IsLayer      bool   // true if inkscape:groupmode="layer"
+	IsGroup      bool   // true if tag == "g"
+	SyntheticID  bool   // true if element lacked an SVG 'id' attribute
+	Directives   []Directive
+	LabelPrefix  string // text before any motion directive (e.g. "Fade In: ")
+	LabelSuffix  string // text after all motion directives (e.g. " · Preset")
+	ParentID     string
+	Parent       *DocNode
+	Children     []*DocNode
 }
 
 // DisplayTitle returns a friendly label for the UI tree node.
@@ -172,7 +174,7 @@ func ParseTree(svgData []byte) ([]*DocNode, map[string]*DocNode, error) {
 				continue
 			}
 
-			var id, label, groupMode string
+			var id, label, groupMode, sourceIDAttr string
 			for _, attr := range tok.Attr {
 				switch attr.Name.Local {
 				case "id":
@@ -181,6 +183,8 @@ func ParseTree(svgData []byte) ([]*DocNode, map[string]*DocNode, error) {
 					label = attr.Value
 				case "groupmode":
 					groupMode = attr.Value
+				case "data-inka-source":
+					sourceIDAttr = attr.Value
 				}
 			}
 
@@ -195,20 +199,6 @@ func ParseTree(svgData []byte) ([]*DocNode, map[string]*DocNode, error) {
 				prefix = id
 			}
 
-			node := &DocNode{
-				ID:          id,
-				Tag:         localTag,
-				Label:       label,
-				IsLayer:     groupMode == "layer",
-				IsGroup:     localTag == "g",
-				SyntheticID: !hasRealID,
-				Directives:  directives,
-				LabelPrefix: prefix,
-				LabelSuffix: suffix,
-			}
-
-			nodeMap[id] = node
-
 			// Attach to closest parent DocNode in stack
 			var parent *DocNode
 			for _, s := range slices.Backward(stack) {
@@ -217,6 +207,27 @@ func ParseTree(svgData []byte) ([]*DocNode, map[string]*DocNode, error) {
 					break
 				}
 			}
+
+			sourceID := sourceIDAttr
+			if sourceID == "" && parent != nil {
+				sourceID = parent.SourceID
+			}
+
+			node := &DocNode{
+				ID:           id,
+				Tag:          localTag,
+				Label:        label,
+				IsLinkedFile: sourceIDAttr != "",
+				SourceID:     sourceID,
+				IsLayer:      groupMode == "layer",
+				IsGroup:      localTag == "g",
+				SyntheticID:  !hasRealID,
+				Directives:   directives,
+				LabelPrefix:  prefix,
+				LabelSuffix:  suffix,
+			}
+
+			nodeMap[id] = node
 
 			if parent != nil {
 				node.Parent = parent

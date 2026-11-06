@@ -16,6 +16,10 @@ func (fw *fileWatcher) watchFile(path string) {
 	// No-op for WASM
 }
 
+func (fw *fileWatcher) watchFiles(paths []string) {
+	// No-op for WASM
+}
+
 func (fw *fileWatcher) close() {
 	// No-op for WASM
 }

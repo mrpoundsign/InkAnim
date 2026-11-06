@@ -110,11 +110,19 @@ func (mw *MainWindow) initPlatform() {
 }
 
 func (mw *MainWindow) promptOpenFile() {
+	mw.promptBrowserFilePicker(".inka,.svg")
+}
+
+func (mw *MainWindow) promptAddSVG() {
+	mw.promptBrowserFilePicker(".svg")
+}
+
+func (mw *MainWindow) promptBrowserFilePicker(accept string) {
 	doc := js.Global().Get("document")
 	body := doc.Get("body")
 	input := doc.Call("createElement", "input")
 	input.Set("type", "file")
-	input.Set("accept", ".svg")
+	input.Set("accept", accept)
 	input.Get("style").Set("display", "none")
 	body.Call("appendChild", input)
 

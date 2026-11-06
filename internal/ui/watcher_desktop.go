@@ -5,7 +5,6 @@ package ui
 import (
 	"log"
 
-	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/widget"
 	"github.com/fsnotify/fsnotify"
 )
@@ -38,7 +37,7 @@ func (fw *fileWatcher) watch() {
 			}
 			if event.Has(fsnotify.Write) {
 				// File was saved, trigger reload
-				fyne.Do(func() {
+				dispatchUI(func() {
 					fw.mw.Reload()
 				})
 			}
@@ -52,15 +51,27 @@ func (fw *fileWatcher) watch() {
 }
 
 func (fw *fileWatcher) watchFile(path string) {
+	if path == "" {
+		fw.watchFiles(nil)
+		return
+	}
+	fw.watchFiles([]string{path})
+}
+
+func (fw *fileWatcher) watchFiles(paths []string) {
 	if fw.watcher == nil {
 		return
 	}
 	for _, w := range fw.watcher.WatchList() {
 		_ = fw.watcher.Remove(w)
 	}
-	err := fw.watcher.Add(path)
-	if err != nil {
-		log.Println("Error adding file to watcher:", err)
+	for _, p := range paths {
+		if p == "" {
+			continue
+		}
+		if err := fw.watcher.Add(p); err != nil {
+			log.Println("Error adding file to watcher:", err)
+		}
 	}
 }
 

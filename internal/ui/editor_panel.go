@@ -3,6 +3,8 @@ package ui
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,6 +17,7 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
+	"inkanim/internal/app"
 	"inkanim/internal/ext/doctree"
 	"inkanim/internal/ext/presets"
 )
@@ -263,6 +266,8 @@ func setupLayersAndMotionTab(mw *MainWindow) fyne.CanvasObject {
 
 		var kind string
 		switch {
+		case node.IsLinkedFile:
+			kind = "Linked SVG"
 		case node.IsLayer:
 			kind = "Layer"
 		case node.IsGroup:
@@ -271,8 +276,8 @@ func setupLayersAndMotionTab(mw *MainWindow) fyne.CanvasObject {
 			kind = strings.ToUpper(node.Tag)
 		}
 
-		titleLabel := widget.NewLabelWithStyle(fmt.Sprintf("%s: %s", kind, node.ID), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
-		tagLabel := widget.NewLabel(fmt.Sprintf("Tag: <%s>", node.Tag))
+		titleLabel := widget.NewLabelWithStyle(fmt.Sprintf("%s: %s", kind, node.DisplayTitle()), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+		tagLabel := widget.NewLabel(fmt.Sprintf("ID: %s • Tag: <%s>", node.ID, node.Tag))
 
 		canDelete, deleteReason := state.CanDeleteElement(node.ID)
 		deleteBtn := widget.NewButtonWithIcon("Delete", theme.DeleteIcon(), mw.doDeleteActiveElement)
@@ -518,8 +523,14 @@ func setupLayersAndMotionTab(mw *MainWindow) fyne.CanvasObject {
 			container.NewHBox(copyAllBtn, pasteBtn),
 		)
 
-		content := container.NewVBox(
-			headerBox,
+		inspectorItems := []fyne.CanvasObject{headerBox}
+		if !mw.isExtMode && (node.IsLinkedFile || node.IsLayer || node.IsGroup) {
+			inspectorItems = append(inspectorItems,
+				mw.buildStagePropertiesCard(node),
+				widget.NewSeparator(),
+			)
+		}
+		inspectorItems = append(inspectorItems,
 			widget.NewLabelWithStyle("Motion Presets", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 			presetBox,
 			widget.NewSeparator(),
@@ -531,6 +542,7 @@ func setupLayersAndMotionTab(mw *MainWindow) fyne.CanvasObject {
 			widget.NewSeparator(),
 			addBar,
 		)
+		content := container.NewVBox(inspectorItems...)
 
 		scrollContent := container.NewVScroll(content)
 		mw.inspectorCard.Objects = []fyne.CanvasObject{scrollContent}
@@ -547,9 +559,11 @@ func setupLayersAndMotionTab(mw *MainWindow) fyne.CanvasObject {
 				return nil
 			}
 			if uid == "" {
-				uids := make([]string, len(state.Roots))
-				for i, r := range state.Roots {
-					uids[i] = r.ID
+				var uids []string
+				for _, r := range state.Roots {
+					if mw.isVisibleTreeNode(r) {
+						uids = append(uids, r.ID)
+					}
 				}
 				return uids
 			}
@@ -557,9 +571,11 @@ func setupLayersAndMotionTab(mw *MainWindow) fyne.CanvasObject {
 			if node == nil {
 				return nil
 			}
-			uids := make([]string, len(node.Children))
-			for i, c := range node.Children {
-				uids[i] = c.ID
+			var uids []string
+			for _, c := range node.Children {
+				if mw.isVisibleTreeNode(c) {
+					uids = append(uids, c.ID)
+				}
 			}
 			return uids
 		},
@@ -569,10 +585,13 @@ func setupLayersAndMotionTab(mw *MainWindow) fyne.CanvasObject {
 				return false
 			}
 			if uid == "" {
-				return len(state.Roots) > 0
+				return slices.ContainsFunc(state.Roots, mw.isVisibleTreeNode)
 			}
 			node := state.NodeMap[uid]
-			return node != nil && len(node.Children) > 0
+			if node == nil {
+				return false
+			}
+			return slices.ContainsFunc(node.Children, mw.isVisibleTreeNode)
 		},
 		func(branch bool) fyne.CanvasObject {
 			icon := widget.NewIcon(theme.DocumentIcon())
@@ -605,6 +624,8 @@ func setupLayersAndMotionTab(mw *MainWindow) fyne.CanvasObject {
 			}
 
 			switch {
+			case node.IsLinkedFile:
+				icon.SetResource(theme.FileImageIcon())
 			case node.IsLayer:
 				icon.SetResource(theme.FolderOpenIcon())
 			case node.IsGroup:
@@ -615,6 +636,8 @@ func setupLayersAndMotionTab(mw *MainWindow) fyne.CanvasObject {
 
 			displayText := node.DisplayTitle()
 			switch {
+			case node.IsLinkedFile:
+				displayText = "SVG: " + displayText
 			case node.IsLayer:
 				displayText = "Layer: " + displayText
 			case node.IsGroup:
@@ -623,15 +646,25 @@ func setupLayersAndMotionTab(mw *MainWindow) fyne.CanvasObject {
 				displayText = "<" + node.Tag + "> " + displayText
 			}
 
-			hasDirectives := node.HasDirectives()
+			_, objCfg, hasObjCfg := mw.resolveNodeObjectConfig(node)
+			hasStageOverrides := hasObjCfg && (objCfg.OverrideStartPos || objCfg.HasDisplayWindow || objCfg.ZOffset != 0)
+			hasDirectives := node.HasDirectives() || (hasObjCfg && len(objCfg.Actions) > 0) || hasStageOverrides
 			isModified := state.ModifiedIDs[node.ID]
 
-			if hasDirectives {
-				var dirTypes []string
-				for _, d := range node.Directives {
-					dirTypes = append(dirTypes, d.Type)
+			var badges []string
+			for _, d := range node.Directives {
+				badges = append(badges, d.Type)
+			}
+			if hasObjCfg {
+				for _, a := range objCfg.Actions {
+					badges = append(badges, strings.ToUpper(a.Type[:1])+a.Type[1:])
 				}
-				displayText = fmt.Sprintf("%s [%s]", displayText, strings.Join(dirTypes, ", "))
+				if hasStageOverrides {
+					badges = append(badges, "Stage")
+				}
+			}
+			if len(badges) > 0 {
+				displayText = fmt.Sprintf("%s [%s]", displayText, strings.Join(badges, ", "))
 			}
 
 			txt.TextStyle = fyne.TextStyle{
@@ -668,9 +701,15 @@ func setupLayersAndMotionTab(mw *MainWindow) fyne.CanvasObject {
 		}
 	}
 
+	addSVGBtn := widget.NewButtonWithIcon("Add SVG", theme.ContentAddIcon(), func() {
+		mw.promptAddSVG()
+	})
+	addSVGBtn.Importance = widget.LowImportance
+
 	treeHeader := container.NewHBox(
 		widget.NewLabelWithStyle("Objects", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 		layout.NewSpacer(),
+		addSVGBtn,
 		mw.undoBtn,
 		mw.redoBtn,
 	)
@@ -755,7 +794,7 @@ func (mw *MainWindow) schedulePreviewUpdate() {
 			return
 		}
 
-		fyne.Do(func() {
+		dispatchUI(func() {
 			mw.previewMu.Lock()
 			if mw.closed || mw.previewGen != gen {
 				mw.previewMu.Unlock()
@@ -777,11 +816,256 @@ func (mw *MainWindow) schedulePreviewUpdate() {
 	mw.previewMu.Unlock()
 }
 
+func (mw *MainWindow) isVisibleTreeNode(n *doctree.DocNode) bool {
+	if n == nil {
+		return false
+	}
+	if mw.isExtMode {
+		return true
+	}
+	return n.IsLinkedFile || n.IsLayer || n.IsGroup
+}
+
+func (mw *MainWindow) resolveNodeObjectConfig(n *doctree.DocNode) (string, app.ObjectConfig, bool) {
+	if mw.session == nil || mw.session.Objects == nil || n == nil {
+		return "", app.ObjectConfig{}, false
+	}
+	if cfg, ok := mw.session.Objects[n.ID]; ok {
+		return n.ID, cfg, true
+	}
+	for k, cfg := range mw.session.Objects {
+		if cfg.FallbackXMLID == n.ID {
+			return k, cfg, true
+		}
+	}
+	return n.ID, app.ObjectConfig{
+		SourceID:      n.SourceID,
+		FallbackXMLID: n.ID,
+	}, false
+}
+
+func (mw *MainWindow) buildStagePropertiesCard(node *doctree.DocNode) fyne.CanvasObject {
+	if mw.session.Objects == nil {
+		mw.session.Objects = make(map[string]app.ObjectConfig)
+	}
+	objKey, objCfg, _ := mw.resolveNodeObjectConfig(node)
+	if objKey == "" {
+		objKey = node.ID
+	}
+
+	saveStageObj := func() {
+		objCfg.SourceID = node.SourceID
+		objCfg.FallbackXMLID = node.ID
+		mw.session.Objects[objKey] = objCfg
+		mw.projectDirty = true
+		mw.updateStatus()
+		mw.updateFileLabel()
+		if mw.refreshTreeFn != nil {
+			mw.refreshTreeFn()
+		}
+		mw.schedulePreviewUpdate()
+	}
+
+	var items []fyne.CanvasObject
+
+	if node.IsLinkedFile && node.SourceID != "" {
+		stripBtn := widget.NewButtonWithIcon("Strip Legacy IAMS", theme.ContentCutIcon(), func() {
+			if err := mw.StripIAMSFromLinkedSVG(node.SourceID); err != nil {
+				dialog.ShowError(err, mw.window)
+			}
+		})
+		stripBtn.Importance = widget.LowImportance
+
+		unlinkBtn := widget.NewButtonWithIcon("Unlink SVG", theme.DeleteIcon(), func() {
+			if err := mw.RemoveLinkedSVG(node.SourceID); err != nil {
+				dialog.ShowError(err, mw.window)
+			}
+		})
+		unlinkBtn.Importance = widget.DangerImportance
+
+		items = append(items,
+			widget.NewLabelWithStyle("Linked Artwork File", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+			container.NewHBox(stripBtn, unlinkBtn),
+			widget.NewSeparator(),
+		)
+	}
+
+	items = append(items, widget.NewLabelWithStyle("Stage Placement & Display Timing", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}))
+
+	// 1. Start Position Override
+	startXEntry := newEditorCommitEntry(
+		fmt.Sprintf("%g", objCfg.StartX),
+		func(s string) {
+			if v, err := strconv.ParseFloat(s, 64); err == nil {
+				objCfg.StartX = v
+				saveStageObj()
+			}
+		},
+		nil,
+		mw.doUndo,
+		mw.doRedo,
+	)
+	startYEntry := newEditorCommitEntry(
+		fmt.Sprintf("%g", objCfg.StartY),
+		func(s string) {
+			if v, err := strconv.ParseFloat(s, 64); err == nil {
+				objCfg.StartY = v
+				saveStageObj()
+			}
+		},
+		nil,
+		mw.doUndo,
+		mw.doRedo,
+	)
+
+	updateStartPosEnables := func(enabled bool) {
+		if enabled {
+			startXEntry.Enable()
+			startYEntry.Enable()
+		} else {
+			startXEntry.Disable()
+			startYEntry.Disable()
+		}
+	}
+	updateStartPosEnables(objCfg.OverrideStartPos)
+
+	startPosCheck := widget.NewCheck("Custom Start Position (override SVG page position)", nil)
+	startPosCheck.Checked = objCfg.OverrideStartPos
+	startPosCheck.OnChanged = func(checked bool) {
+		objCfg.OverrideStartPos = checked
+		if checked && objCfg.StartX == 0 && objCfg.StartY == 0 && mw.session != nil && mw.session.Document != nil {
+			r := mw.session.Document.GetElementRect(node.ID)
+			if r.Width > 0 || r.Height > 0 {
+				objCfg.StartX = r.X + r.Width/2.0
+				objCfg.StartY = r.Y + r.Height/2.0
+				startXEntry.SetText(fmt.Sprintf("%.1f", objCfg.StartX))
+				startYEntry.SetText(fmt.Sprintf("%.1f", objCfg.StartY))
+			}
+		}
+		updateStartPosEnables(checked)
+		saveStageObj()
+	}
+
+	startPosRow := container.NewHBox(
+		widget.NewLabel("Start X:"),
+		startXEntry,
+		widget.NewLabel("Start Y:"),
+		startYEntry,
+	)
+
+	// 2. Display Time Window (Seconds)
+	totalDurSec := 1.0
+	if mw.session != nil && mw.session.TotalDurationMs > 0 {
+		totalDurSec = float64(mw.session.TotalDurationMs) / 1000.0
+	}
+	endSecInit := objCfg.EndTimeSec
+	if endSecInit <= 0 {
+		endSecInit = totalDurSec
+	}
+
+	startSecEntry := newEditorCommitEntry(
+		fmt.Sprintf("%g", objCfg.StartTimeSec),
+		func(s string) {
+			if v, err := strconv.ParseFloat(s, 64); err == nil && v >= 0 {
+				objCfg.StartTimeSec = v
+				saveStageObj()
+			}
+		},
+		nil,
+		mw.doUndo,
+		mw.doRedo,
+	)
+	endSecEntry := newEditorCommitEntry(
+		fmt.Sprintf("%g", endSecInit),
+		func(s string) {
+			if v, err := strconv.ParseFloat(s, 64); err == nil && v >= 0 {
+				objCfg.EndTimeSec = v
+				saveStageObj()
+			}
+		},
+		nil,
+		mw.doUndo,
+		mw.doRedo,
+	)
+
+	updateDisplayWinEnables := func(enabled bool) {
+		if enabled {
+			startSecEntry.Enable()
+			endSecEntry.Enable()
+		} else {
+			startSecEntry.Disable()
+			endSecEntry.Disable()
+		}
+	}
+	updateDisplayWinEnables(objCfg.HasDisplayWindow)
+
+	displayWinCheck := widget.NewCheck("Custom Display Time Window (seconds)", nil)
+	displayWinCheck.Checked = objCfg.HasDisplayWindow
+	displayWinCheck.OnChanged = func(checked bool) {
+		objCfg.HasDisplayWindow = checked
+		if checked && objCfg.EndTimeSec <= 0 {
+			objCfg.EndTimeSec = totalDurSec
+			endSecEntry.SetText(fmt.Sprintf("%g", objCfg.EndTimeSec))
+		}
+		updateDisplayWinEnables(checked)
+		saveStageObj()
+	}
+
+	displayWinRow := container.NewHBox(
+		widget.NewLabel("Appear (s):"),
+		startSecEntry,
+		widget.NewLabel("Hide (s):"),
+		endSecEntry,
+	)
+
+	// 3. Z-Order & Pivot
+	zOffsetEntry := newEditorCommitEntry(
+		strconv.Itoa(objCfg.ZOffset),
+		func(s string) {
+			if v, err := strconv.Atoi(s); err == nil {
+				objCfg.ZOffset = v
+				saveStageObj()
+			}
+		},
+		nil,
+		mw.doUndo,
+		mw.doRedo,
+	)
+
+	pivotSelect := widget.NewSelect([]string{"center", "top", "bottom", "left", "right"}, nil)
+	if objCfg.PivotType != "" {
+		pivotSelect.SetSelected(objCfg.PivotType)
+	} else {
+		pivotSelect.SetSelected("center")
+	}
+	pivotSelect.OnChanged = func(sel string) {
+		objCfg.PivotType = sel
+		saveStageObj()
+	}
+
+	zAndPivotRow := container.NewHBox(
+		widget.NewLabel("Z-Offset:"),
+		zOffsetEntry,
+		widget.NewLabel("Pivot:"),
+		pivotSelect,
+	)
+
+	items = append(items,
+		startPosCheck,
+		startPosRow,
+		displayWinCheck,
+		displayWinRow,
+		zAndPivotRow,
+	)
+
+	return container.NewVBox(items...)
+}
+
 // updateStatus updates the bottom status bar with the active object and change summary.
 func (mw *MainWindow) updateStatus() {
 	state := mw.editorState
 	if state == nil {
-		mw.statusLabel.SetText("Ready. Open an Inkscape SVG to begin.")
+		mw.statusLabel.SetText("New project ready. Add an SVG or open a .inka project.")
 		return
 	}
 
@@ -793,7 +1077,8 @@ func (mw *MainWindow) updateStatus() {
 	}
 
 	var changeStatus string
-	if state.IsDirty() {
+	switch {
+	case state.IsDirty():
 		count := state.HistoryIndex + 1
 		switch {
 		case count == 1:
@@ -803,7 +1088,9 @@ func (mw *MainWindow) updateStatus() {
 		default:
 			changeStatus = "Unapplied changes"
 		}
-	} else {
+	case mw.projectDirty:
+		changeStatus = "Unsaved project changes"
+	default:
 		changeStatus = "No changes"
 	}
 
@@ -816,24 +1103,29 @@ func (mw *MainWindow) updateStatus() {
 
 // updateFileLabel updates the top header filename with dimension and an asterisk if dirty.
 func (mw *MainWindow) updateFileLabel() {
-	if mw.currentFilename == "" {
-		mw.fileLabel.SetText("No file loaded")
+	name := mw.currentFilename
+	if !mw.isExtMode {
+		name = mw.projectDisplayName()
+	}
+	if name == "" {
+		mw.fileLabel.SetText("Untitled Project")
 		return
 	}
 	dirtyMarker := ""
-	if mw.editorState != nil && mw.editorState.IsDirty() {
+	if (mw.editorState != nil && mw.editorState.IsDirty()) || mw.projectDirty {
 		dirtyMarker = " *"
 	}
 	if mw.session != nil && mw.session.Document != nil {
-		mw.fileLabel.SetText(fmt.Sprintf("%s (%0.0fx%0.0f)%s", mw.currentFilename, mw.session.Document.Width, mw.session.Document.Height, dirtyMarker))
+		mw.fileLabel.SetText(fmt.Sprintf("%s (%0.0fx%0.0f)%s", name, mw.session.Document.Width, mw.session.Document.Height, dirtyMarker))
 	} else {
-		mw.fileLabel.SetText(fmt.Sprintf("%s%s", mw.currentFilename, dirtyMarker))
+		mw.fileLabel.SetText(fmt.Sprintf("%s%s", name, dirtyMarker))
 	}
 }
 
 // handleCloseRequest prompts the user when closing with unapplied or unsaved changes.
 func (mw *MainWindow) handleCloseRequest() {
-	if mw.editorState == nil || !mw.editorState.IsDirty() {
+	isDirty := (mw.editorState != nil && mw.editorState.IsDirty()) || mw.projectDirty
+	if !isDirty {
 		if mw.isExtMode && mw.editorState != nil {
 			mw.editorState.Result = mw.editorState.OriginalSVG
 			mw.editorState.Applied = false
@@ -843,9 +1135,12 @@ func (mw *MainWindow) handleCloseRequest() {
 	}
 
 	state := mw.editorState
-	count := state.HistoryIndex + 1
+	count := 0
+	if state != nil {
+		count = state.HistoryIndex + 1
+	}
 
-	if mw.isExtMode {
+	if mw.isExtMode && state != nil {
 		var message string
 		switch {
 		case count == 1:
@@ -895,9 +1190,11 @@ func (mw *MainWindow) handleCloseRequest() {
 	}
 
 	// Standalone Desktop or Web
-	message := fmt.Sprintf("You have %d unsaved change(s). Would you like to save before closing?", count)
-	if count == 1 {
+	message := "You have unsaved project changes. Would you like to save before closing?"
+	if state != nil && count == 1 {
 		message = fmt.Sprintf("You have unsaved changes (%s). Would you like to save before closing?", state.History[state.HistoryIndex].Description)
+	} else if count > 1 {
+		message = fmt.Sprintf("You have %d unsaved change(s). Would you like to save before closing?", count)
 	}
 
 	var d *dialog.CustomDialog
