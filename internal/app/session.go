@@ -9,6 +9,7 @@ import (
 	"log"
 	"math"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -33,6 +34,8 @@ type Session struct {
 	ExportOptions     gif.ExportOptions
 	RenderedFrames    []inksvg.RenderedFrame
 	ShowMotionLines   bool
+	LinkedSources     []LinkedSVG
+	Objects           map[string]ObjectConfig
 
 	frameCache map[string][]inksvg.RenderedFrame
 	cacheMu    sync.RWMutex
@@ -48,6 +51,7 @@ func NewSession() *Session {
 		FPS:              10,
 		TotalDurationMs:  1000,
 		ExportOptions:    gif.DefaultOptions(),
+		Objects:          make(map[string]ObjectConfig),
 		frameCache:       make(map[string][]inksvg.RenderedFrame),
 	}
 }
@@ -66,12 +70,12 @@ func (s *Session) KeyframeCount() int {
 	return s.Document.FrameCount()
 }
 
-// IsAnimated reports whether the loaded SVG has any motion paths or multiple keyframes.
+// IsAnimated reports whether the loaded SVG has any motion paths, stage objects, or multiple keyframes.
 func (s *Session) IsAnimated() bool {
 	if s.Document == nil {
 		return false
 	}
-	return len(s.Document.MotionPaths) > 0 || s.Document.FrameCount() > 1
+	return len(s.Document.MotionPaths) > 0 || len(s.Document.StageObjects) > 0 || s.Document.CameraPath != nil || s.Document.FrameCount() > 1
 }
 
 // TargetFrameCount returns the number of interpolated output frames for the current
@@ -143,6 +147,7 @@ func (s *Session) SetTotalDurationMs(ms int) error {
 	if s.Document == nil {
 		return nil
 	}
+	s.Document.TotalDurationSec = float64(s.TotalDurationMs) / 1000.0
 	s.rebuildTimelineFrames()
 	s.InvalidateCache()
 	return s.RerenderAllFrames()
@@ -181,13 +186,35 @@ func (s *Session) IsPageCached(mode inksvg.BoundaryMode, pageIndex int) bool {
 	return ok
 }
 
-// LoadSVG loads and parses an SVG file from disk.
+// LoadSVG loads and parses an SVG or .inka project file from disk.
 func (s *Session) LoadSVG(filePath string) error {
-	data, err := os.ReadFile(filePath)
+	svgPath, ctrl, err := ResolveSVGAndControlFile(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to resolve SVG file: %w", err)
+	}
+	if ctrl != nil {
+		s.ApplyControlFile(ctrl)
+		if len(ctrl.Sources) > 1 {
+			projectDir := filepath.Dir(filePath)
+			if projectDir == "" || projectDir == "." {
+				projectDir = filepath.Dir(svgPath)
+			}
+			linked, loadErr := LoadLinkedSources(projectDir, ctrl, svgPath)
+			if loadErr != nil {
+				return fmt.Errorf("failed to load linked SVGs: %w", loadErr)
+			}
+			composed, compErr := inksvg.ComposeLinkedSVGs(linked)
+			if compErr != nil {
+				return fmt.Errorf("failed to compose linked SVGs: %w", compErr)
+			}
+			return s.LoadSVGData(composed, svgPath)
+		}
+	}
+	data, err := os.ReadFile(svgPath)
 	if err != nil {
 		return fmt.Errorf("failed to read SVG file: %w", err)
 	}
-	return s.LoadSVGData(data, filePath)
+	return s.LoadSVGData(data, svgPath)
 }
 
 // LoadSVGData parses an SVG from in-memory byte slice with a filename.
@@ -208,6 +235,7 @@ func (s *Session) LoadSVGData(data []byte, filename string) error {
 	if !s.HasManualDuration || s.TotalDurationMs <= 0 {
 		s.TotalDurationMs = max(int(math.Round(float64(doc.FrameCount())*1000.0/float64(s.FPS))), 100)
 	}
+	ApplyObjectsToDocument(doc, s.Objects, float64(s.TotalDurationMs)/1000.0)
 	s.rebuildTimelineFrames()
 
 	s.Pages = make([]inksvg.Page, len(doc.Pages))
