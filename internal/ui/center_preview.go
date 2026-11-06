@@ -778,7 +778,7 @@ func (p *CenterPreviewPanel) Refresh() {
 		p.rebuildGen++ // drop any in-flight build
 		p.rebuilding = false
 		p.hideProgressLocked()
-		p.cachedFrames = nil
+		p.clearCanvasImagesLocked()
 		p.frameLabel.SetText("Frame: 0 / 0")
 		p.resetFPSMonitorLocked()
 		p.pauseLocked()
@@ -1354,13 +1354,7 @@ func (p *CenterPreviewPanel) applyRebuildResult(gen int, frames []cachedPreviewF
 	}
 }
 
-// BeginLoading clears the preview and shows the loading overlay while a new
-// document is rasterized. The overlay stays up until its preview cache lands.
-func (p *CenterPreviewPanel) BeginLoading(stage string) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.rebuildGen++ // drop any in-flight build for the previous document
-	p.rebuilding = false
+func (p *CenterPreviewPanel) clearCanvasImagesLocked() {
 	p.cachedFrames = nil
 	if len(p.mainCanvasFrames) > 0 {
 		for _, img := range p.mainCanvasFrames {
@@ -1368,6 +1362,7 @@ func (p *CenterPreviewPanel) BeginLoading(stage string) {
 		}
 		p.mainCanvasFrames = nil
 	}
+	blankThumb := image.NewRGBA(image.Rect(0, 0, 1, 1))
 	clearThumbFrames := func(frames *[]*canvas.Image, stack *fyne.Container, placeholder *canvas.Image) {
 		if len(*frames) > 0 {
 			for _, img := range *frames {
@@ -1376,8 +1371,11 @@ func (p *CenterPreviewPanel) BeginLoading(stage string) {
 			*frames = nil
 		}
 		if stack != nil && placeholder != nil {
-			stack.Objects = []fyne.CanvasObject{placeholder}
+			placeholder.Image = blankThumb
 			placeholder.Show()
+			placeholder.Refresh()
+			stack.Objects = []fyne.CanvasObject{placeholder}
+			stack.Refresh()
 		}
 	}
 	clearThumbFrames(&p.twitch112DarkFrames, p.twitch112DarkStack, p.twitch112Dark)
@@ -1393,12 +1391,27 @@ func (p *CenterPreviewPanel) BeginLoading(stage string) {
 	p.playStartTime = time.Time{}
 	p.playStartOffset = 0
 	p.playLastCycle = 0
+	if p.mainCanvasImage != nil {
+		p.mainCanvasImage.Image = image.NewRGBA(image.Rect(0, 0, 1, 1))
+		p.mainCanvasImage.Show()
+		p.mainCanvasImage.Refresh()
+		if p.mainCanvasStack != nil {
+			p.mainCanvasStack.Objects = []fyne.CanvasObject{p.mainCanvasImage}
+			p.mainCanvasStack.Refresh()
+		}
+	}
+}
+
+// BeginLoading clears the preview and shows the loading overlay while a new
+// document is rasterized. The overlay stays up until its preview cache lands.
+func (p *CenterPreviewPanel) BeginLoading(stage string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.rebuildGen++ // drop any in-flight build for the previous document
+	p.rebuilding = false
+	p.clearCanvasImagesLocked()
 	p.resetFPSMonitorLocked()
 	p.loadStart = time.Now()
-	p.mainCanvasImage.Image = image.NewRGBA(image.Rect(0, 0, 1, 1))
-	p.mainCanvasImage.Show()
-	p.mainCanvasStack.Objects = []fyne.CanvasObject{p.mainCanvasImage}
-	p.mainCanvasImage.Refresh()
 	p.showProgressLocked(stage, 0, 0)
 }
 

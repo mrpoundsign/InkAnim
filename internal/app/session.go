@@ -56,6 +56,25 @@ func NewSession() *Session {
 	}
 }
 
+// Reset clears all project state on the session while preserving the Session pointer.
+func (s *Session) Reset() {
+	s.FilePath = ""
+	s.Document = nil
+	s.Frames = nil
+	s.RenderedFrames = nil
+	s.Pages = nil
+	s.CurrentMode = inksvg.ModeTimeline
+	s.CropBoundaryMode = inksvg.BoundaryPage
+	s.CropPageIndex = 0
+	s.FPS = 10
+	s.TotalDurationMs = 1000
+	s.HasManualDuration = false
+	s.ExportOptions = gif.DefaultOptions()
+	s.LinkedSources = nil
+	s.Objects = make(map[string]ObjectConfig)
+	s.InvalidateCache()
+}
+
 // ResetManualDuration clears the manual duration override so the next loaded SVG
 // derives its initial duration from its keyframe count and the active FPS.
 func (s *Session) ResetManualDuration() {
@@ -67,7 +86,11 @@ func (s *Session) KeyframeCount() int {
 	if s.Document == nil {
 		return 1
 	}
-	return s.Document.FrameCount()
+	kf := s.Document.FrameCount()
+	if kf <= 1 && s.IsAnimated() {
+		return 15
+	}
+	return kf
 }
 
 // IsAnimated reports whether the loaded SVG has any motion paths, stage objects, or multiple keyframes.
@@ -75,7 +98,15 @@ func (s *Session) IsAnimated() bool {
 	if s.Document == nil {
 		return false
 	}
-	return len(s.Document.MotionPaths) > 0 || len(s.Document.StageObjects) > 0 || s.Document.CameraPath != nil || s.Document.FrameCount() > 1
+	if len(s.Document.MotionPaths) > 0 || s.Document.CameraPath != nil || s.Document.FrameCount() > 1 {
+		return true
+	}
+	for _, stObj := range s.Document.StageObjects {
+		if stObj.HasDisplayWindow {
+			return true
+		}
+	}
+	return false
 }
 
 // TargetFrameCount returns the number of interpolated output frames for the current
@@ -232,10 +263,31 @@ func (s *Session) LoadSVGData(data []byte, filename string) error {
 	if s.FPS <= 0 {
 		s.FPS = 10
 	}
+	ApplyObjectsToDocument(doc, s.Objects, float64(max(s.TotalDurationMs, 1000))/1000.0)
 	if !s.HasManualDuration || s.TotalDurationMs <= 0 {
-		s.TotalDurationMs = max(int(math.Round(float64(doc.FrameCount())*1000.0/float64(s.FPS))), 100)
+		fc := doc.FrameCount()
+		if fc <= 1 && s.IsAnimated() {
+			var maxEndSec float64
+			for _, stObj := range doc.StageObjects {
+				if stObj.EndTimeSec > maxEndSec {
+					maxEndSec = stObj.EndTimeSec
+				}
+			}
+			for _, mp := range doc.MotionPaths {
+				if mp.Config.EndSec > maxEndSec {
+					maxEndSec = mp.Config.EndSec
+				}
+			}
+			if maxEndSec > 0 {
+				s.TotalDurationMs = max(int(math.Round(maxEndSec*1000.0)), 100)
+			} else {
+				s.TotalDurationMs = 1000
+			}
+		} else {
+			s.TotalDurationMs = max(int(math.Round(float64(fc)*1000.0/float64(s.FPS))), 100)
+		}
 	}
-	ApplyObjectsToDocument(doc, s.Objects, float64(s.TotalDurationMs)/1000.0)
+	doc.TotalDurationSec = float64(s.TotalDurationMs) / 1000.0
 	s.rebuildTimelineFrames()
 
 	s.Pages = make([]inksvg.Page, len(doc.Pages))

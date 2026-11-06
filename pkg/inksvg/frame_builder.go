@@ -679,7 +679,8 @@ func BuildTimelineFrameSVGAt(doc *SVGDocument, kfPos float64, boundary Rect) ([]
 	}
 
 	for _, node := range nodes {
-		if err := serializeNodeTokens(encoder, node.tokens, doc, kfPos, maxF, curTimeSec, totalDurSec, motionMap, cameraActive, camX, camY, groupSweepMap); err != nil {
+		nodeTokens := reorderSourceWrapperChildren(node.tokens, doc, motionMap, kfPos, maxF, curTimeSec, totalDurSec)
+		if err := serializeNodeTokens(encoder, nodeTokens, doc, kfPos, maxF, curTimeSec, totalDurSec, motionMap, cameraActive, camX, camY, groupSweepMap); err != nil {
 			return nil, err
 		}
 	}
@@ -704,6 +705,120 @@ func BuildTimelineFrameSVGAt(doc *SVGDocument, kfPos float64, boundary Rect) ([]
 	}
 
 	return buf.Bytes(), nil
+}
+
+func reorderSourceWrapperChildren(tokens []xml.Token, doc *SVGDocument, motionMap map[string][]MotionPath, kfPos float64, maxF int, curTimeSec, totalDurSec float64) []xml.Token {
+	if len(tokens) < 3 {
+		return tokens
+	}
+	startElem, ok := tokens[0].(xml.StartElement)
+	if !ok || startElem.Name.Local != "g" {
+		return tokens
+	}
+	var isSource bool
+	for _, a := range startElem.Attr {
+		if a.Name.Local == "data-inka-source" && a.Value != "" {
+			isSource = true
+			break
+		}
+	}
+	if !isSource {
+		return tokens
+	}
+
+	var children []topLevelNode
+	var cur []xml.Token
+	var depth int
+	var baseZ int
+	for _, tok := range tokens[1 : len(tokens)-1] {
+		switch tok.(type) {
+		case xml.StartElement:
+			if depth == 0 {
+				cur = []xml.Token{tok}
+			} else {
+				cur = append(cur, tok)
+			}
+			depth++
+		case xml.EndElement:
+			cur = append(cur, tok)
+			depth--
+			if depth == 0 {
+				var id string
+				if se, ok := cur[0].(xml.StartElement); ok {
+					for _, a := range se.Attr {
+						if a.Name.Local == "id" {
+							id = a.Value
+							break
+						}
+					}
+				}
+				children = append(children, topLevelNode{
+					id:     id,
+					baseZ:  baseZ,
+					tokens: cur,
+				})
+				baseZ++
+				cur = nil
+			}
+		default:
+			if depth > 0 {
+				cur = append(cur, tok)
+			} else if len(children) > 0 {
+				children[len(children)-1].tokens = append(children[len(children)-1].tokens, tok)
+			}
+		}
+	}
+	if len(children) < 2 {
+		return tokens
+	}
+
+	var anyDepth bool
+	for i := range children {
+		activeDepth := 0
+		if stObj, exists := doc.StageObjects[children[i].id]; exists {
+			activeDepth += stObj.ZOffset
+		}
+		if paths, exists := motionMap[children[i].id]; exists {
+			for _, mp := range paths {
+				if !mp.Config.HasDepth {
+					continue
+				}
+				inRange, _, _, _, _ := evalMotionTiming(mp.Config, kfPos, maxF, curTimeSec, totalDurSec)
+				if inRange {
+					activeDepth = mp.Config.DepthOffset
+				}
+			}
+		}
+		if activeDepth != 0 {
+			anyDepth = true
+		}
+		switch {
+		case activeDepth == 0:
+			children[i].effectiveZ = children[i].baseZ * 2
+		case activeDepth < 0:
+			children[i].effectiveZ = (children[i].baseZ+activeDepth)*2 - 1
+		default:
+			children[i].effectiveZ = (children[i].baseZ+activeDepth)*2 + 1
+		}
+	}
+	if !anyDepth {
+		return tokens
+	}
+
+	sort.SliceStable(children, func(i, j int) bool {
+		if children[i].effectiveZ != children[j].effectiveZ {
+			return children[i].effectiveZ < children[j].effectiveZ
+		}
+		return children[i].baseZ < children[j].baseZ
+	})
+
+	out := make([]xml.Token, 0, len(tokens))
+	out = append(out, tokens[0])
+	for _, c := range children {
+		out = append(out, c.tokens...)
+	}
+	out = append(out, tokens[len(tokens)-1])
+	return out
 }
 
 func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocument, kfPos float64, maxF int, curTimeSec, totalDurSec float64, motionMap map[string][]MotionPath, cameraActive bool, camX, camY float64, groupSweepMap map[string]string) error {
@@ -760,16 +875,19 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 			if elem.Name.Local == "g" {
 				currentGDepth++
 				var id string
+				var isSourceWrapper bool
 				for _, attr := range elem.Attr {
-					if attr.Name.Local == "id" {
+					switch attr.Name.Local {
+					case "id":
 						id = attr.Value
-						break
+					case "data-inka-source":
+						isSourceWrapper = attr.Value != ""
 					}
 				}
 				paths := motionMap[id]
 				hasPaths := len(paths) > 0
 				stObj, hasStageObj := doc.StageObjects[id]
-				applyCamera := cameraActive && parallaxActiveDepth == 0
+				applyCamera := cameraActive && parallaxActiveDepth == 0 && (!isSourceWrapper || hasPaths)
 
 				if hasPaths || hasStageObj || applyCamera {
 					factor := 1.0

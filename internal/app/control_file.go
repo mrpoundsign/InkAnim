@@ -542,13 +542,14 @@ func ApplyObjectsToDocument(doc *inksvg.SVGDocument, objects map[string]ObjectCo
 
 	_, lookup := inksvg.ExtractGroupHierarchy(doc.RawContent)
 
-	existingMPs := make(map[string]bool, len(doc.MotionPaths))
-	for _, mp := range doc.MotionPaths {
+	existingMPIdx := make(map[string]int, len(doc.MotionPaths))
+	for idx, mp := range doc.MotionPaths {
 		if mp.ID != "" {
-			existingMPs[mp.ID] = true
+			existingMPIdx[mp.ID] = idx
 		}
 	}
 
+	var hasAnimatedStageObj bool
 	for _, key := range slices.Sorted(maps.Keys(objects)) {
 		obj := objects[key]
 		resolvedID := resolveObjectXMLID(key, obj, lookup)
@@ -556,9 +557,14 @@ func ApplyObjectsToDocument(doc *inksvg.SVGDocument, objects map[string]ObjectCo
 			continue
 		}
 
+		hasWin := obj.HasDisplayWindow || obj.StartTimeSec > 0 || obj.EndTimeSec > 0
+		if hasWin {
+			hasAnimatedStageObj = true
+		}
+
 		doc.StageObjects[resolvedID] = inksvg.StageObject{
 			GroupID:          resolvedID,
-			HasDisplayWindow: obj.HasDisplayWindow || obj.StartTimeSec > 0 || obj.EndTimeSec > 0,
+			HasDisplayWindow: hasWin,
 			StartTimeSec:     obj.StartTimeSec,
 			EndTimeSec:       obj.EndTimeSec,
 			OverrideStartPos: obj.OverrideStartPos,
@@ -580,20 +586,20 @@ func ApplyObjectsToDocument(doc *inksvg.SVGDocument, objects map[string]ObjectCo
 			if actID == "" {
 				actID = fmt.Sprintf("%s_act_%d", resolvedID, i+1)
 			}
-			if existingMPs[actID] {
-				continue
-			}
-			existingMPs[actID] = true
-
 			mp := actionConfigToMotionPath(act, actID, resolvedID)
 			if mp.Config.IsCamera {
 				doc.CameraPath = &mp
 			}
+			if idx, exists := existingMPIdx[actID]; exists {
+				doc.MotionPaths[idx] = mp
+				continue
+			}
+			existingMPIdx[actID] = len(doc.MotionPaths)
 			doc.MotionPaths = append(doc.MotionPaths, mp)
 		}
 	}
 
-	if len(doc.Frames) <= 1 && (len(doc.MotionPaths) > 0 || len(doc.StageObjects) > 0 || doc.CameraPath != nil) {
+	if len(doc.Frames) <= 1 && (len(doc.MotionPaths) > 0 || hasAnimatedStageObj || doc.CameraPath != nil) {
 		const defaultFrames = 15
 		doc.Frames = make([]inksvg.Frame, defaultFrames)
 		for i := range defaultFrames {
@@ -783,7 +789,6 @@ func MigrateDocumentIAMSToControlFile(doc *inksvg.SVGDocument, sourceID string, 
 				SourceID:      srcID,
 				LabelPath:     labelPath,
 				FallbackXMLID: groupID,
-				EndTimeSec:    totalDurationSec,
 			}
 		}
 

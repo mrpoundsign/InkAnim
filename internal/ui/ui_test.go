@@ -1344,4 +1344,162 @@ func TestSidecarControlFileUI(t *testing.T) {
 	}
 }
 
+func TestProjectWorkflowAndLinkedSVGTree(t *testing.T) {
+	testApp := test.NewApp()
+	defer testApp.Quit()
+
+	mw := NewMainWindow(testApp)
+	defer waitForPreview(mw)
+
+	// 1. Verify blank Untitled Project startup state and project-centric File menu
+	if mw.fileLabel.Text != "Untitled Project" {
+		t.Errorf("expected initial fileLabel 'Untitled Project', got %q", mw.fileLabel.Text)
+	}
+	if !strings.Contains(mw.statusLabel.Text, "New project ready") {
+		t.Errorf("expected initial statusLabel to mention 'New project ready', got %q", mw.statusLabel.Text)
+	}
+
+	var fileMenu *fyne.Menu
+	for _, m := range mw.mainMenu.Items {
+		if m.Label == "File" {
+			fileMenu = m
+			break
+		}
+	}
+	if fileMenu == nil {
+		t.Fatalf("File menu not found")
+	}
+	var menuLabels []string
+	for _, item := range fileMenu.Items {
+		if !item.IsSeparator {
+			menuLabels = append(menuLabels, item.Label)
+		}
+	}
+	expectedLabels := []string{
+		"New Project",
+		"Open Project...",
+		"Save Project",
+		"Save Project As...",
+		"Add / Import SVG...",
+		"Reload Linked SVGs",
+		"Export GIF...",
+	}
+	if len(menuLabels) != len(expectedLabels) {
+		t.Fatalf("expected File menu items %v, got %v", expectedLabels, menuLabels)
+	}
+	for i, want := range expectedLabels {
+		if menuLabels[i] != want {
+			t.Errorf("File menu item %d: got %q, want %q", i, menuLabels[i], want)
+		}
+	}
+
+	// 2. Create two SVGs in an external directory and link them into the Untitled Project
+	extDir := t.TempDir()
+	heroSVG := `<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" viewBox="0 0 128 128" width="128" height="128">
+  <g id="layer_hero" inkscape:groupmode="layer" inkscape:label="Hero">
+    <g id="g_arm" inkscape:label="LeftArm">
+      <rect id="arm_rect" x="32" y="32" width="32" height="16" fill="#38bdf8"/>
+      <path id="arm_rot" inkscape:label="Rot {f: 1-10; deg: 45}" d="M 32,32 L 64,32"/>
+    </g>
+  </g>
+</svg>`
+	propsSVG := `<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" viewBox="0 0 128 128" width="128" height="128">
+  <g id="layer_props" inkscape:groupmode="layer" inkscape:label="Props">
+    <g id="g_star" inkscape:label="Star">
+      <circle id="star_circle" cx="96" cy="32" r="12" fill="#facc15"/>
+    </g>
+  </g>
+</svg>`
+	heroPath := filepath.Join(extDir, "Hero.svg")
+	propsPath := filepath.Join(extDir, "Props.svg")
+	if err := os.WriteFile(heroPath, []byte(heroSVG), 0600); err != nil {
+		t.Fatalf("write Hero.svg: %v", err)
+	}
+	if err := os.WriteFile(propsPath, []byte(propsSVG), 0600); err != nil {
+		t.Fatalf("write Props.svg: %v", err)
+	}
+
+	hasIAMS, err := mw.AddSVGFileWithOptions(heroPath, false)
+	if err != nil {
+		t.Fatalf("AddSVGFileWithOptions(Hero.svg) failed: %v", err)
+	}
+	waitForPreview(mw)
+	mw.centerPanel.Pause()
+	if !hasIAMS {
+		t.Errorf("expected Hero.svg to report hasIAMS == true")
+	}
+
+	// Strip legacy IAMS from Hero.svg in-project and verify animations remain driven by .inka Objects
+	if err := mw.StripIAMSFromLinkedSVG("src_1"); err != nil {
+		t.Fatalf("StripIAMSFromLinkedSVG(src_1) failed: %v", err)
+	}
+	waitForPreview(mw)
+	mw.centerPanel.Pause()
+
+	// Add second linked SVG (Props.svg)
+	if _, err := mw.AddSVGFileWithOptions(propsPath, false); err != nil {
+		t.Fatalf("AddSVGFileWithOptions(Props.svg) failed: %v", err)
+	}
+	waitForPreview(mw)
+	mw.centerPanel.Pause()
+
+	// 3. Verify tree shows ONLY Linked File roots -> Layers -> Nested Groups (no leaf shapes!)
+	roots := mw.tree.ChildUIDs("")
+	if len(roots) != 2 {
+		t.Fatalf("expected 2 linked SVG root groups in tree, got %v", roots)
+	}
+	for _, uid := range []string{"src_1__arm_rect", "src_1__arm_rot", "src_2__star_circle"} {
+		for _, parentUID := range []string{"", "src_1", "src_2", "src_1__layer_hero", "src_1__g_arm", "src_2__layer_props", "src_2__g_star"} {
+			for _, child := range mw.tree.ChildUIDs(parentUID) {
+				if child == uid {
+					t.Errorf("expected leaf shape %q to be hidden from tree under %q", uid, parentUID)
+				}
+			}
+		}
+	}
+
+	// Select nested group src_2__g_star and verify Stage Properties card is rendered in Inspector
+	mw.tree.Select("src_2__g_star")
+	if mw.editorState.ActiveNode == nil || mw.editorState.ActiveNode.ID != "src_2__g_star" {
+		t.Fatalf("expected active node src_2__g_star, got %+v", mw.editorState.ActiveNode)
+	}
+
+	// 4. Save project to a new directory and verify both linked SVGs are co-located alongside the .inka file
+	projDir := t.TempDir()
+	inkaPath := filepath.Join(projDir, "my_scene.inka")
+	if err := mw.saveProjectToPath(inkaPath); err != nil {
+		t.Fatalf("saveProjectToPath failed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(projDir, "Hero.svg")); err != nil {
+		t.Errorf("expected Hero.svg to be co-located in project dir: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(projDir, "Props.svg")); err != nil {
+		t.Errorf("expected Props.svg to be co-located in project dir: %v", err)
+	}
+
+	// 5. Call NewProject() and verify reset to blank state, then re-open my_scene.inka
+	mw.NewProject()
+	if mw.session.Document != nil || len(mw.session.LinkedSources) != 0 {
+		t.Errorf("expected NewProject() to clear session Document and LinkedSources")
+	}
+	if len(mw.centerPanel.cachedFrames) != 0 || len(mw.centerPanel.mainCanvasFrames) != 0 {
+		t.Errorf("expected NewProject() to clear centerPanel cachedFrames and mainCanvasFrames")
+	}
+	if mw.centerPanel.mainCanvasImage == nil || mw.centerPanel.mainCanvasImage.Image == nil || mw.centerPanel.mainCanvasImage.Image.Bounds().Dx() != 1 {
+		t.Errorf("expected NewProject() to reset mainCanvasImage to blank 1x1 image")
+	}
+	if mw.fileLabel.Text != "Untitled Project" {
+		t.Errorf("expected fileLabel 'Untitled Project' after NewProject(), got %q", mw.fileLabel.Text)
+	}
+
+	loadAndWait(mw, inkaPath)
+	mw.centerPanel.Pause()
+	if len(mw.session.LinkedSources) != 2 {
+		t.Errorf("expected 2 linked sources restored from my_scene.inka, got %d", len(mw.session.LinkedSources))
+	}
+	if len(mw.session.RenderedFrames) < 2 {
+		t.Errorf("expected animated frames restored from my_scene.inka, got %d", len(mw.session.RenderedFrames))
+	}
+}
+
 
