@@ -19,6 +19,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"inkanim/internal/app"
+	"inkanim/pkg/inksvg"
 )
 
 // MainWindow builds and manages the primary Fyne application window.
@@ -330,12 +331,30 @@ func (mw *MainWindow) OpenFile(path string) {
 	mw.loadFilePath(path)
 }
 
+func readOrComposeProjectSVG(projectDir, svgPath string, ctrl *app.ControlFile) ([]byte, error) {
+	if ctrl != nil && len(ctrl.Sources) > 1 {
+		if projectDir == "" || projectDir == "." {
+			projectDir = filepath.Dir(svgPath)
+		}
+		linked, err := app.LoadLinkedSources(projectDir, ctrl, svgPath)
+		if err != nil {
+			return nil, err
+		}
+		return inksvg.ComposeLinkedSVGs(linked)
+	}
+	return os.ReadFile(svgPath)
+}
+
 // Reload reloads the currently opened SVG file from disk while preserving active session settings.
 func (mw *MainWindow) Reload() {
 	if mw.currentPath == "" {
 		return
 	}
-	data, err := os.ReadFile(mw.currentPath)
+	var ctrl *app.ControlFile
+	if mw.session != nil && len(mw.session.LinkedSources) > 1 {
+		ctrl = &app.ControlFile{Sources: mw.session.LinkedSources}
+	}
+	data, err := readOrComposeProjectSVG(filepath.Dir(mw.currentPath), mw.currentPath, ctrl)
 	if err != nil {
 		dialog.ShowError(err, mw.window)
 		mw.statusLabel.SetText("Failed to read SVG file.")
@@ -377,7 +396,7 @@ func (mw *MainWindow) loadFilePath(path string) {
 		mw.statusLabel.SetText("Failed to read SVG or project file.")
 		return
 	}
-	data, err := os.ReadFile(svgPath)
+	data, err := readOrComposeProjectSVG(filepath.Dir(path), svgPath, ctrl)
 	if err != nil {
 		dialog.ShowError(err, mw.window)
 		mw.statusLabel.SetText("Failed to read SVG file.")

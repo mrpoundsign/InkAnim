@@ -32,6 +32,7 @@ func ParseSVG(data []byte) (*SVGDocument, error) {
 		DefaultMode:  ModeTimeline,
 		Gradients:    make(map[string]SVGGradient),
 		ElementRects: make(map[string]Rect),
+		StageObjects: make(map[string]StageObject),
 	}
 
 	decoder := xml.NewDecoder(bytes.NewReader(processedData))

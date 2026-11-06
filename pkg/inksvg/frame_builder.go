@@ -13,7 +13,6 @@ import (
 	"github.com/srwiley/oksvg"
 )
 
-
 // BuildPageFrameSVG generates an SVG where the viewBox and dimensions correspond to the given boundary.
 // If boundary has zero dimensions, the page's native (x, y, width, height) is used.
 func BuildPageFrameSVG(doc *SVGDocument, page Page, boundary Rect) ([]byte, error) {
@@ -171,7 +170,6 @@ func applyBoundaryToSVG(elem *xml.StartElement, boundary Rect) {
 		elem.Attr = append(elem.Attr, xml.Attr{Name: xml.Name{Local: "style"}, Value: "overflow:hidden"})
 	}
 }
-
 
 // removeStyleProp removes a CSS property from a style string, e.g. "display:none;opacity:1" -> "opacity:1"
 func removeStyleProp(style, prop string) string {
@@ -405,6 +403,96 @@ func BuildTimelineFrameSVG(doc *SVGDocument, frameIndex int, boundary Rect) ([]b
 	return BuildTimelineFrameSVGAt(doc, float64(frameIndex+1), boundary)
 }
 
+func effectiveMaxFrames(doc *SVGDocument) int {
+	if doc == nil {
+		return 15
+	}
+	maxF := doc.FrameCount()
+	for _, mp := range doc.MotionPaths {
+		if mp.Config.EndFrame > maxF {
+			maxF = mp.Config.EndFrame
+		}
+	}
+	if doc.CameraPath != nil && doc.CameraPath.Config.EndFrame > maxF {
+		maxF = doc.CameraPath.Config.EndFrame
+	}
+	if maxF <= 1 && (len(doc.MotionPaths) > 0 || len(doc.StageObjects) > 0 || doc.CameraPath != nil) {
+		maxF = 15
+	}
+	if maxF <= 0 {
+		maxF = 15
+	}
+	return maxF
+}
+
+// BuildTimelineFrameSVGAtTime generates an SVG frame at a specific timestamp in seconds (0.0 .. totalDurationSec).
+func BuildTimelineFrameSVGAtTime(doc *SVGDocument, timeSec, totalDurationSec float64, boundary Rect) ([]byte, error) {
+	if totalDurationSec <= 0 && doc != nil {
+		totalDurationSec = doc.TotalDurationSec
+	}
+	if totalDurationSec <= 0 {
+		totalDurationSec = 1.0
+	}
+	maxF := max(effectiveMaxFrames(doc), 2)
+	norm := timeSec / totalDurationSec
+	if norm < 0 {
+		norm = 0
+	} else if norm > 1 {
+		norm = 1
+	}
+	kfPos := 1.0 + norm*float64(maxF-1)
+	return BuildTimelineFrameSVGAt(doc, kfPos, boundary)
+}
+
+func evalMotionTiming(cfg MotionConfig, kfPos float64, maxF int, curTimeSec, totalDurSec float64) (inRange, beforeStart, afterEnd bool, progress, startComparable float64) {
+	if cfg.HasTimeRange && totalDurSec > 0 {
+		startS := cfg.StartSec
+		endS := cfg.EndSec
+		if cfg.IsAll || endS <= 0 {
+			startS = 0.0
+			endS = totalDurSec
+		}
+		beforeStart = curTimeSec < startS-kfEps
+		afterEnd = curTimeSec > endS+kfEps
+		inRange = !beforeStart && !afterEnd
+		dur := endS - startS
+		switch {
+		case curTimeSec <= startS+kfEps:
+			progress = 0.0
+		case curTimeSec >= endS-kfEps:
+			progress = 1.0
+		case dur > 0:
+			progress = (curTimeSec - startS) / dur
+		}
+		return inRange, beforeStart, afterEnd, progress, startS
+	}
+
+	startF := cfg.StartFrame
+	endF := cfg.EndFrame
+	if cfg.IsAll {
+		startF = 1
+		endF = maxF
+	}
+	beforeStart = kfPos < float64(startF)-kfEps
+	afterEnd = kfPos > float64(endF)+kfEps
+	inRange = !beforeStart && !afterEnd
+	duration := float64(endF - startF)
+	switch {
+	case kfPos <= float64(startF)+kfEps:
+		progress = 0.0
+	case kfPos >= float64(endF)-kfEps:
+		progress = 1.0
+	case duration > 0:
+		progress = (kfPos - float64(startF)) / duration
+	}
+	if maxF > 1 && totalDurSec > 0 {
+		startComparable = (float64(startF-1) / float64(maxF-1)) * totalDurSec
+	} else {
+		startComparable = float64(startF)
+	}
+	return inRange, beforeStart, afterEnd, progress, startComparable
+}
+
 // BuildTimelineFrameSVGAt generates an SVG frame at a continuous 1-based keyframe position (1.0 .. maxF).
 func BuildTimelineFrameSVGAt(doc *SVGDocument, kfPos float64, boundary Rect) ([]byte, error) {
 	if boundary.Width <= 0 || boundary.Height <= 0 {
@@ -442,41 +530,31 @@ func BuildTimelineFrameSVGAt(doc *SVGDocument, kfPos float64, boundary Rect) ([]
 	if kfPos < 1.0 {
 		kfPos = 1.0
 	}
-	maxF := doc.FrameCount()
-	if maxF == 0 {
-		for _, mp := range doc.MotionPaths {
-			if mp.Config.EndFrame > maxF {
-				maxF = mp.Config.EndFrame
-			}
+	maxF := effectiveMaxFrames(doc)
+
+	totalDurSec := doc.TotalDurationSec
+	if totalDurSec <= 0 {
+		totalDurSec = float64(maxF) * 0.1
+		if totalDurSec <= 0 {
+			totalDurSec = 1.0
 		}
 	}
-	if doc.CameraPath != nil && doc.CameraPath.Config.EndFrame > maxF {
-		maxF = doc.CameraPath.Config.EndFrame
-	}
-	if maxF == 0 {
-		maxF = 15
+	var curTimeSec float64
+	if maxF > 1 {
+		norm := (kfPos - 1.0) / float64(maxF-1)
+		if norm < 0 {
+			norm = 0
+		} else if norm > 1 {
+			norm = 1
+		}
+		curTimeSec = norm * totalDurSec
 	}
 
 	var camX, camY float64
 	var cameraActive bool
 	if doc.CameraPath != nil && doc.CameraPath.PathData != "" {
 		cameraActive = true
-		cStartF := doc.CameraPath.Config.StartFrame
-		cEndF := doc.CameraPath.Config.EndFrame
-		if doc.CameraPath.Config.IsAll {
-			cStartF = 1
-			cEndF = maxF
-		}
-		duration := float64(cEndF - cStartF)
-		var progress float64
-		switch {
-		case kfPos <= float64(cStartF)+kfEps:
-			progress = 0.0
-		case kfPos >= float64(cEndF)-kfEps:
-			progress = 1.0
-		case duration > 0:
-			progress = (kfPos - float64(cStartF)) / duration
-		}
+		_, _, _, progress, _ := evalMotionTiming(doc.CameraPath.Config, kfPos, maxF, curTimeSec, totalDurSec)
 		t := ApplyEasing(progress, doc.CameraPath.Config.Ease)
 		if doc.CameraPath.Config.Reverse {
 			t = 1.0 - t
@@ -507,18 +585,16 @@ func BuildTimelineFrameSVGAt(doc *SVGDocument, kfPos float64, boundary Rect) ([]
 			continue
 		}
 		activeDepth := 0
+		if stObj, ok := doc.StageObjects[nodes[i].id]; ok {
+			activeDepth += stObj.ZOffset
+		}
 		if paths, ok := motionMap[nodes[i].id]; ok {
 			for _, mp := range paths {
 				if !mp.Config.HasDepth {
 					continue
 				}
-				startF := mp.Config.StartFrame
-				endF := mp.Config.EndFrame
-				if mp.Config.IsAll {
-					startF = 1
-					endF = maxF
-				}
-				if kfPos >= float64(startF)-kfEps && kfPos <= float64(endF)+kfEps {
+				inRange, _, _, _, _ := evalMotionTiming(mp.Config, kfPos, maxF, curTimeSec, totalDurSec)
+				if inRange {
 					activeDepth = mp.Config.DepthOffset
 				}
 			}
@@ -527,9 +603,9 @@ func BuildTimelineFrameSVGAt(doc *SVGDocument, kfPos float64, boundary Rect) ([]
 		case activeDepth == 0:
 			nodes[i].effectiveZ = nodes[i].baseZ * 2
 		case activeDepth < 0:
-			nodes[i].effectiveZ = (nodes[i].baseZ + activeDepth)*2 - 1
+			nodes[i].effectiveZ = (nodes[i].baseZ+activeDepth)*2 - 1
 		default:
-			nodes[i].effectiveZ = (nodes[i].baseZ + activeDepth)*2 + 1
+			nodes[i].effectiveZ = (nodes[i].baseZ+activeDepth)*2 + 1
 		}
 	}
 
@@ -546,7 +622,7 @@ func BuildTimelineFrameSVGAt(doc *SVGDocument, kfPos float64, boundary Rect) ([]
 
 	var buf bytes.Buffer
 	encoder := xml.NewEncoder(&buf)
-	dynamicGradients, groupSweepMap := generateSweepGradients(doc, kfPos, maxF)
+	dynamicGradients, groupSweepMap := generateSweepGradients(doc, kfPos, maxF, curTimeSec, totalDurSec)
 
 	for _, tok := range preamble {
 		if err := encoder.EncodeToken(tok); err != nil {
@@ -603,7 +679,7 @@ func BuildTimelineFrameSVGAt(doc *SVGDocument, kfPos float64, boundary Rect) ([]
 	}
 
 	for _, node := range nodes {
-		if err := serializeNodeTokens(encoder, node.tokens, doc, kfPos, maxF, motionMap, cameraActive, camX, camY, groupSweepMap); err != nil {
+		if err := serializeNodeTokens(encoder, node.tokens, doc, kfPos, maxF, curTimeSec, totalDurSec, motionMap, cameraActive, camX, camY, groupSweepMap); err != nil {
 			return nil, err
 		}
 	}
@@ -630,7 +706,7 @@ func BuildTimelineFrameSVGAt(doc *SVGDocument, kfPos float64, boundary Rect) ([]
 	return buf.Bytes(), nil
 }
 
-func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocument, kfPos float64, maxF int, motionMap map[string][]MotionPath, cameraActive bool, camX, camY float64, groupSweepMap map[string]string) error {
+func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocument, kfPos float64, maxF int, curTimeSec, totalDurSec float64, motionMap map[string][]MotionPath, cameraActive bool, camX, camY float64, groupSweepMap map[string]string) error {
 	var currentGDepth int
 	var parallaxActiveDepth int
 
@@ -692,9 +768,10 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 				}
 				paths := motionMap[id]
 				hasPaths := len(paths) > 0
+				stObj, hasStageObj := doc.StageObjects[id]
 				applyCamera := cameraActive && parallaxActiveDepth == 0
 
-				if hasPaths || applyCamera {
+				if hasPaths || hasStageObj || applyCamera {
 					factor := 1.0
 					for _, mp := range paths {
 						if mp.Config.HasParallax {
@@ -715,14 +792,22 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 					var hasHideRules bool
 					var isHidden bool
 
-					for _, mp := range paths {
-						startF := mp.Config.StartFrame
-						endF := mp.Config.EndFrame
-						if mp.Config.IsAll {
-							startF = 1
-							endF = maxF
+					if hasStageObj && stObj.HasDisplayWindow {
+						switch {
+						case curTimeSec < stObj.StartTimeSec-kfEps:
+							isHidden = true
+							hasHideRules = true
+						case stObj.EndTimeSec > 0 && curTimeSec > stObj.EndTimeSec+kfEps:
+							isHidden = true
+							hasHideRules = true
+						default:
+							hasShowRules = true
+							isShown = true
 						}
-						inRange := kfPos >= float64(startF)-kfEps && kfPos <= float64(endF)+kfEps
+					}
+
+					for _, mp := range paths {
+						inRange, _, _, _, _ := evalMotionTiming(mp.Config, kfPos, maxF, curTimeSec, totalDurSec)
 
 						switch mp.Config.VisibilityState {
 						case "show":
@@ -775,6 +860,17 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 						setElementVisible(&elem)
 					}
 
+					if hasStageObj && stObj.OverrideStartPos {
+						nativeRect := doc.GetElementRect(id)
+						if nativeRect.Width > 0 || nativeRect.Height > 0 {
+							totalDx += stObj.StartX - nativeRect.X
+							totalDy += stObj.StartY - nativeRect.Y
+						} else {
+							totalDx += stObj.StartX
+							totalDy += stObj.StartY
+						}
+					}
+
 					var totalRot float64
 					var rotPivotX, rotPivotY float64
 					var rotPivotDetermined bool
@@ -784,36 +880,45 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 					var scalePivotX, scalePivotY float64
 					var scalePivotDetermined bool
 
+					if hasStageObj {
+						if stObj.BaseRotation != 0 {
+							totalRot += stObj.BaseRotation
+							rotPivotDetermined = true
+							rotPivotX, rotPivotY = resolveStageObjectPivot(doc, id, stObj)
+						}
+						if stObj.BaseScaleX != 0 && math.Abs(stObj.BaseScaleX-1.0) > 1e-4 {
+							totalSx *= stObj.BaseScaleX
+							scalePivotDetermined = true
+							scalePivotX, scalePivotY = resolveStageObjectPivot(doc, id, stObj)
+						}
+						if stObj.BaseScaleY != 0 && math.Abs(stObj.BaseScaleY-1.0) > 1e-4 {
+							totalSy *= stObj.BaseScaleY
+							if !scalePivotDetermined {
+								scalePivotDetermined = true
+								scalePivotX, scalePivotY = resolveStageObjectPivot(doc, id, stObj)
+							}
+						}
+					}
+
 					totalOpacity := 1.0
 					var hasActiveFade bool
 
 					sortedPaths := make([]MotionPath, len(paths))
 					copy(sortedPaths, paths)
 					sort.SliceStable(sortedPaths, func(i, j int) bool {
-						sI := sortedPaths[i].Config.StartFrame
-						if sortedPaths[i].Config.IsAll {
-							sI = 1
-						}
-						sJ := sortedPaths[j].Config.StartFrame
-						if sortedPaths[j].Config.IsAll {
-							sJ = 1
-						}
+						_, _, _, _, sI := evalMotionTiming(sortedPaths[i].Config, kfPos, maxF, curTimeSec, totalDurSec)
+						_, _, _, _, sJ := evalMotionTiming(sortedPaths[j].Config, kfPos, maxF, curTimeSec, totalDurSec)
 						return sI < sJ
 					})
 
 					for _, mp := range sortedPaths {
-						startF := mp.Config.StartFrame
-						endF := mp.Config.EndFrame
-						if mp.Config.IsAll {
-							startF = 1
-							endF = maxF
-						}
+						_, beforeStart, afterEnd, progress, startComp := evalMotionTiming(mp.Config, kfPos, maxF, curTimeSec, totalDurSec)
 
-						if kfPos < float64(startF)-kfEps {
+						if beforeStart {
 							continue
 						}
 
-						if kfPos > float64(endF)+kfEps {
+						if afterEnd {
 							superseded := false
 							for _, other := range sortedPaths {
 								if other.ID == mp.ID {
@@ -822,11 +927,8 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 								if other.Config.Type != mp.Config.Type {
 									continue
 								}
-								oStartF := other.Config.StartFrame
-								if other.Config.IsAll {
-									oStartF = 1
-								}
-								if kfPos >= float64(oStartF)-kfEps && oStartF > startF {
+								_, oBeforeStart, _, _, oStartComp := evalMotionTiming(other.Config, kfPos, maxF, curTimeSec, totalDurSec)
+								if !oBeforeStart && oStartComp > startComp+kfEps {
 									// An earlier rotation is only superseded if the later rotation
 									// explicitly specifies an absolute range (HasRotationRange).
 									// If the later rotation uses a relative angle, the earlier rotation
@@ -841,18 +943,6 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 							if superseded {
 								continue
 							}
-						}
-
-						duration := float64(endF - startF)
-						progress := 0.0
-						if duration > 0 {
-							if kfPos >= float64(endF)-kfEps {
-								progress = 1.0
-							} else if kfPos > float64(startF) {
-								progress = (kfPos - float64(startF)) / duration
-							}
-						} else if kfPos >= float64(endF)-kfEps {
-							progress = 1.0
 						}
 
 						r := mp.Config.Repeat
@@ -926,7 +1016,7 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 						hasRotEffect := mp.Config.Type == "rot" || mp.Config.RotationAngle != 0 || mp.Config.HasRotationRange || mp.Config.OrientPath
 						if !rotPivotDetermined && hasRotEffect {
 							rotPivotDetermined = true
-							rotPivotX, rotPivotY = resolvePivot(doc, id, mp.Config, mp.PathData)
+							rotPivotX, rotPivotY = resolvePivotWithFallback(doc, id, mp.Config, mp.PathData, stObj, hasStageObj)
 						}
 
 						// Evaluate scale effect
@@ -942,7 +1032,7 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 
 							if !scalePivotDetermined {
 								scalePivotDetermined = true
-								scalePivotX, scalePivotY = resolvePivot(doc, id, mp.Config, mp.PathData)
+								scalePivotX, scalePivotY = resolvePivotWithFallback(doc, id, mp.Config, mp.PathData, stObj, hasStageObj)
 							}
 						}
 
@@ -1009,23 +1099,8 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 					if !colorSweepPushed {
 						for _, mp := range paths {
 							if mp.Config.IsColor && !mp.Config.HasColorAngle {
-								startF := mp.Config.StartFrame
-								endF := mp.Config.EndFrame
-								if mp.Config.IsAll {
-									startF = 1
-									endF = maxF
-								}
-								if kfPos >= float64(startF)-kfEps && kfPos <= float64(endF)+kfEps {
-									duration := endF - startF
-									p := 0.0
-									if duration > 0 {
-										p = (kfPos - float64(startF)) / float64(duration)
-										if p < 0 {
-											p = 0
-										} else if p > 1 {
-											p = 1
-										}
-									}
+								inRange, _, _, p, _ := evalMotionTiming(mp.Config, kfPos, maxF, curTimeSec, totalDurSec)
+								if inRange {
 									r := mp.Config.ColorRepeat
 									if r <= 0 {
 										r = 1
@@ -1095,8 +1170,28 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 	return nil
 }
 
+func resolveStageObjectPivot(doc *SVGDocument, groupID string, stObj StageObject) (float64, float64) {
+	cfg := MotionConfig{
+		PivotType:      stObj.PivotType,
+		PivotEdgeAngle: stObj.PivotEdgeAngle,
+		PivotNodeID:    stObj.PivotNodeID,
+		PivotX:         stObj.PivotX,
+		PivotY:         stObj.PivotY,
+	}
+	return resolvePivot(doc, groupID, cfg, "")
+}
+
+func resolvePivotWithFallback(doc *SVGDocument, groupID string, config MotionConfig, pathData string, stObj StageObject, hasStageObj bool) (float64, float64) {
+	if (config.PivotType == "" || config.PivotType == "center") && hasStageObj && stObj.PivotType != "" && stObj.PivotType != "center" {
+		return resolveStageObjectPivot(doc, groupID, stObj)
+	}
+	return resolvePivot(doc, groupID, config, pathData)
+}
+
 func resolvePivot(doc *SVGDocument, groupID string, config MotionConfig, pathData string) (float64, float64) {
 	switch config.PivotType {
+	case "custom":
+		return config.PivotX, config.PivotY
 	case "node":
 		if config.PivotNodeID != "" {
 			nodeRect := doc.GetElementRect(config.PivotNodeID)
@@ -1248,7 +1343,7 @@ type dynamicSweepGradient struct {
 	Stops []GradientStop
 }
 
-func generateSweepGradients(doc *SVGDocument, kfPos float64, maxF int) ([]dynamicSweepGradient, map[string]string) {
+func generateSweepGradients(doc *SVGDocument, kfPos float64, maxF int, curTimeSec, totalDurSec float64) ([]dynamicSweepGradient, map[string]string) {
 	var dynGradients []dynamicSweepGradient
 	groupSweepMap := make(map[string]string)
 
@@ -1256,24 +1351,9 @@ func generateSweepGradients(doc *SVGDocument, kfPos float64, maxF int) ([]dynami
 		if !mp.Config.IsColor || !mp.Config.HasColorAngle {
 			continue
 		}
-		startF := mp.Config.StartFrame
-		endF := mp.Config.EndFrame
-		if mp.Config.IsAll {
-			startF = 1
-			endF = maxF
-		}
-		if kfPos < float64(startF)-kfEps || kfPos > float64(endF)+kfEps {
+		inRange, _, _, p, _ := evalMotionTiming(mp.Config, kfPos, maxF, curTimeSec, totalDurSec)
+		if !inRange {
 			continue
-		}
-		duration := endF - startF
-		p := 0.0
-		if duration > 0 {
-			p = (kfPos - float64(startF)) / float64(duration)
-			if p < 0 {
-				p = 0
-			} else if p > 1 {
-				p = 1
-			}
 		}
 		r := mp.Config.ColorRepeat
 		if r <= 0 {
@@ -1577,5 +1657,3 @@ func applyColorOverride(elem *xml.StartElement, hex string, opacity float64, tar
 		elem.Attr[styleAttrIdx].Value = styleVal
 	}
 }
-
-

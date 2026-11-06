@@ -71,44 +71,69 @@ type Page struct {
 	DurationMs  int     `json:"durationMs"`
 }
 
-// MotionConfig holds the parsed animation parameters from IAMS syntax.
+// MotionConfig holds the parsed animation parameters from IAMS syntax or .inka actions.
 type MotionConfig struct {
-	StartFrame     int
-	EndFrame       int
-	IsAll          bool
-	Ease           string
-	Type           string  // "move" or "rot"
-	Reverse        bool
+	StartFrame       int
+	EndFrame         int
+	IsAll            bool
+	HasTimeRange     bool    // true if StartSec/EndSec are used instead of frame indices
+	StartSec         float64 // action start timestamp in seconds
+	EndSec           float64 // action end timestamp in seconds
+	Ease             string
+	Type             string  // "move" or "rot"
+	Reverse          bool
 	RotationAngle    float64 // degrees
 	RotationFrom     float64 // degrees start for range interpolation
 	RotationTo       float64 // degrees end for range interpolation
 	HasRotationRange bool    // true if from/to specified for Rot
 	RotationDir      string  // "cw" or "ccw"
 	OrientPath       bool    // true if orient: true
-	PivotType      string  // "center", "edge", "node", "path-start"
-	PivotEdgeAngle float64 // clock degrees (0 = top, 90 = right, 180 = bottom, 270 = left)
-	PivotNodeID    string  // element ID for node pivot (without '#')
-	ScaleFromX      float64 // starting horizontal scale multiplier (default 1.0)
-	ScaleFromY      float64 // starting vertical scale multiplier (default 1.0)
-	ScaleToX        float64 // target horizontal scale multiplier (default 1.0)
-	ScaleToY        float64 // target vertical scale multiplier (default 1.0)
-	OpacityFrom     float64 // starting opacity (0.0 - 1.0, default 1.0)
-	OpacityTo       float64 // target opacity (0.0 - 1.0, default 0.0 for fade out)
-	HasOpacity      bool    // true if Fade directive parsed
-	VisibilityState string  // "show" or "hide"
-	HasVisibility   bool    // true if Show or Hide directive parsed
-	DepthOffset     int     // signed integer modifier applied to base Z-index (e.g. -1, +1)
-	HasDepth        bool    // true if Depth directive parsed
-	IsCamera        bool    // true if Camera directive parsed
-	ParallaxFactor  float64 // parallax multiplier relative to camera (default 1.0, or 0.0 for fixed)
-	HasParallax     bool    // true if Dist directive parsed
-	IsColor         bool    // true if Color directive parsed
-	IsPingPong      bool    // true if pingpong: true
-	Repeat          int     // repetitions across frame range (default 1)
-	ColorRepeat     int     // legacy alias for Repeat
-	HasColorAngle   bool    // true if angle specified for Color
-	ColorAngle      float64 // degrees for gradient sweep
-	ColorTarget     string  // "fill", "stroke", or "all" (default "fill")
+	PivotType        string  // "center", "edge", "node", "path-start", "custom"
+	PivotEdgeAngle   float64 // clock degrees (0 = top, 90 = right, 180 = bottom, 270 = left)
+	PivotNodeID      string  // element ID for node pivot (without '#')
+	PivotX           float64 // explicit stage X coordinate when PivotType == "custom"
+	PivotY           float64 // explicit stage Y coordinate when PivotType == "custom"
+	ScaleFromX       float64 // starting horizontal scale multiplier (default 1.0)
+	ScaleFromY       float64 // starting vertical scale multiplier (default 1.0)
+	ScaleToX         float64 // target horizontal scale multiplier (default 1.0)
+	ScaleToY         float64 // target vertical scale multiplier (default 1.0)
+	OpacityFrom      float64 // starting opacity (0.0 - 1.0, default 1.0)
+	OpacityTo        float64 // target opacity (0.0 - 1.0, default 0.0 for fade out)
+	HasOpacity       bool    // true if Fade directive parsed
+	VisibilityState  string  // "show" or "hide"
+	HasVisibility    bool    // true if Show or Hide directive parsed
+	DepthOffset      int     // signed integer modifier applied to base Z-index (e.g. -1, +1)
+	HasDepth         bool    // true if Depth directive parsed
+	IsCamera         bool    // true if Camera directive parsed
+	ParallaxFactor   float64 // parallax multiplier relative to camera (default 1.0, or 0.0 for fixed)
+	HasParallax      bool    // true if Dist directive parsed
+	IsColor          bool    // true if Color directive parsed
+	IsPingPong       bool    // true if pingpong: true
+	Repeat           int     // repetitions across frame range (default 1)
+	ColorRepeat      int     // legacy alias for Repeat
+	HasColorAngle    bool    // true if angle specified for Color
+	ColorAngle       float64 // degrees for gradient sweep
+	ColorTarget      string  // "fill", "stroke", or "all" (default "fill")
+}
+
+// StageObject holds base stage placement, display timing, and pivot properties for a group or layer.
+type StageObject struct {
+	GroupID          string
+	HasDisplayWindow bool
+	StartTimeSec     float64
+	EndTimeSec       float64 // <= 0 means visible until end of timeline
+	OverrideStartPos bool
+	StartX           float64
+	StartY           float64
+	BaseScaleX       float64 // default 1.0
+	BaseScaleY       float64 // default 1.0
+	BaseRotation     float64 // degrees
+	ZOffset          int
+	PivotType        string // "center", "edge", "custom", "node"
+	PivotEdgeAngle   float64
+	PivotNodeID      string
+	PivotX           float64
+	PivotY           float64
 }
 
 // LayerRenderOrder tracks the document and effective Z-index for frame reordering.
@@ -188,25 +213,27 @@ type MotionPath struct {
 
 // SVGDocument holds parsed SVG metadata and elements.
 type SVGDocument struct {
-	RawContent   []byte
-	Width        float64
-	Height       float64
-	ViewBoxX     float64
-	ViewBoxY     float64
-	ViewBoxW     float64
-	ViewBoxH     float64
-	DrawingRect  Rect
-	Frames       []Frame
-	Pages        []Page
-	MotionPaths  []MotionPath
-	CameraPath   *MotionPath
-	Gradients    map[string]SVGGradient
-	DefaultMode     FrameMode
-	ElementRects    map[string]Rect
-	Migrations      []MigrationHit
-	ShowMotionLines bool
-	timelineTpl     *timelineTemplate
-	mu              sync.RWMutex
+	RawContent       []byte
+	Width            float64
+	Height           float64
+	ViewBoxX         float64
+	ViewBoxY         float64
+	ViewBoxW         float64
+	ViewBoxH         float64
+	DrawingRect      Rect
+	Frames           []Frame
+	Pages            []Page
+	MotionPaths      []MotionPath
+	CameraPath       *MotionPath
+	StageObjects     map[string]StageObject
+	TotalDurationSec float64
+	Gradients        map[string]SVGGradient
+	DefaultMode      FrameMode
+	ElementRects     map[string]Rect
+	Migrations       []MigrationHit
+	ShowMotionLines  bool
+	timelineTpl      *timelineTemplate
+	mu               sync.RWMutex
 }
 
 // FrameCount returns the number of animation frames in the document.
@@ -226,24 +253,26 @@ func (d *SVGDocument) CloneWithoutMotionLines() *SVGDocument {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 	return &SVGDocument{
-		RawContent:      d.RawContent,
-		Width:           d.Width,
-		Height:          d.Height,
-		ViewBoxX:        d.ViewBoxX,
-		ViewBoxY:        d.ViewBoxY,
-		ViewBoxW:        d.ViewBoxW,
-		ViewBoxH:        d.ViewBoxH,
-		DrawingRect:     d.DrawingRect,
-		Frames:          d.Frames,
-		Pages:           d.Pages,
-		MotionPaths:     d.MotionPaths,
-		CameraPath:      d.CameraPath,
-		Gradients:       d.Gradients,
-		DefaultMode:     d.DefaultMode,
-		ElementRects:    d.ElementRects,
-		Migrations:      d.Migrations,
-		ShowMotionLines: false,
-		timelineTpl:     d.timelineTpl,
+		RawContent:       d.RawContent,
+		Width:            d.Width,
+		Height:           d.Height,
+		ViewBoxX:         d.ViewBoxX,
+		ViewBoxY:         d.ViewBoxY,
+		ViewBoxW:         d.ViewBoxW,
+		ViewBoxH:         d.ViewBoxH,
+		DrawingRect:      d.DrawingRect,
+		Frames:           d.Frames,
+		Pages:            d.Pages,
+		MotionPaths:      d.MotionPaths,
+		CameraPath:       d.CameraPath,
+		StageObjects:     d.StageObjects,
+		TotalDurationSec: d.TotalDurationSec,
+		Gradients:        d.Gradients,
+		DefaultMode:      d.DefaultMode,
+		ElementRects:     d.ElementRects,
+		Migrations:       d.Migrations,
+		ShowMotionLines:  false,
+		timelineTpl:      d.timelineTpl,
 	}
 }
 
