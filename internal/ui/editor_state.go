@@ -9,18 +9,59 @@ import (
 	"slices"
 	"strings"
 
+	"inkanim/internal/app"
 	"inkanim/internal/ext/doctree"
 	"inkanim/internal/ext/presets"
 	"inkanim/internal/ext/svgpatch"
 	"inkanim/pkg/inksvg"
 )
 
+// StudioSnapshot captures the full .inka project and timeline state at a point in history.
+type StudioSnapshot struct {
+	Objects          map[string]app.ObjectConfig
+	LinkedSources    []app.LinkedSVG
+	RawSourceBytes   map[string][]byte
+	TotalDurationMs  int
+	FPS              int
+	PingPong         bool
+	SelectedActionID string
+}
+
+// Clone returns a deep copy of the StudioSnapshot so subsequent mutations do not alias history entries.
+func (ss StudioSnapshot) Clone() StudioSnapshot {
+	out := StudioSnapshot{
+		Objects:          cloneObjectsMap(ss.Objects),
+		LinkedSources:    slices.Clone(ss.LinkedSources),
+		RawSourceBytes:   make(map[string][]byte, len(ss.RawSourceBytes)),
+		TotalDurationMs:  ss.TotalDurationMs,
+		FPS:              ss.FPS,
+		PingPong:         ss.PingPong,
+		SelectedActionID: ss.SelectedActionID,
+	}
+	for k, raw := range ss.RawSourceBytes {
+		out.RawSourceBytes[k] = bytes.Clone(raw)
+	}
+	return out
+}
+
+func cloneObjectsMap(src map[string]app.ObjectConfig) map[string]app.ObjectConfig {
+	out := make(map[string]app.ObjectConfig, len(src))
+	for k, cfg := range src {
+		cfgCopy := cfg
+		cfgCopy.Actions = slices.Clone(cfg.Actions)
+		out[k] = cfgCopy
+	}
+	return out
+}
+
 // Change records a document mutation with a human-readable description, full SVG snapshot,
-// and the ID of the active node at the time of the change.
+// active node ID, and optional .inka studio/timeline snapshot at the time of the change.
 type Change struct {
 	Description  string
 	SVGData      []byte
 	ActiveNodeID string
+	Studio       StudioSnapshot
+	HasStudio    bool
 }
 
 type EditorState struct {
@@ -33,6 +74,10 @@ type EditorState struct {
 	SVGData             []byte
 	OriginalSVG         []byte
 	OriginalActiveID    string
+	OriginalStudio      StudioSnapshot
+	HasStudioSnapshot   bool
+	CaptureStudio       func() StudioSnapshot
+	ApplyStudio         func(StudioSnapshot)
 	History             []Change
 	HistoryIndex        int
 	ClipboardDirectives string
@@ -73,11 +118,16 @@ func (s *EditorState) RecordChange(description string) {
 	if s.ActiveNode != nil {
 		activeID = s.ActiveNode.ID
 	}
-	s.History = append(s.History, Change{
+	ch := Change{
 		Description:  description,
 		SVGData:      snapshot,
 		ActiveNodeID: activeID,
-	})
+	}
+	if s.CaptureStudio != nil {
+		ch.Studio = s.CaptureStudio().Clone()
+		ch.HasStudio = true
+	}
+	s.History = append(s.History, ch)
 	s.HistoryIndex = len(s.History) - 1
 	if len(s.History) > maxHistory {
 		excess := len(s.History) - maxHistory
@@ -135,9 +185,21 @@ func (s *EditorState) Undo() (string, error) {
 	s.HistoryIndex--
 	if s.HistoryIndex >= 0 {
 		prev := s.History[s.HistoryIndex]
-		return undoneDesc, s.RestoreSnapshot(prev.SVGData, prev.ActiveNodeID)
+		if err := s.RestoreSnapshot(prev.SVGData, prev.ActiveNodeID); err != nil {
+			return undoneDesc, err
+		}
+		if prev.HasStudio && s.ApplyStudio != nil {
+			s.ApplyStudio(prev.Studio.Clone())
+		}
+		return undoneDesc, nil
 	}
-	return undoneDesc, s.RestoreSnapshot(s.OriginalSVG, s.OriginalActiveID)
+	if err := s.RestoreSnapshot(s.OriginalSVG, s.OriginalActiveID); err != nil {
+		return undoneDesc, err
+	}
+	if s.HasStudioSnapshot && s.ApplyStudio != nil {
+		s.ApplyStudio(s.OriginalStudio.Clone())
+	}
+	return undoneDesc, nil
 }
 
 // Redo steps forward one action in history and restores the subsequent document state.
@@ -147,7 +209,13 @@ func (s *EditorState) Redo() (string, error) {
 	}
 	s.HistoryIndex++
 	next := s.History[s.HistoryIndex]
-	return next.Description, s.RestoreSnapshot(next.SVGData, next.ActiveNodeID)
+	if err := s.RestoreSnapshot(next.SVGData, next.ActiveNodeID); err != nil {
+		return next.Description, err
+	}
+	if next.HasStudio && s.ApplyStudio != nil {
+		s.ApplyStudio(next.Studio.Clone())
+	}
+	return next.Description, nil
 }
 
 // IsDirty reports whether the current document state differs from the original SVG loaded.
@@ -155,10 +223,14 @@ func (s *EditorState) IsDirty() bool {
 	return !bytes.Equal(s.ComputePatchedSVG(), s.OriginalSVG)
 }
 
-// MarkClean resets the baseline original SVG to the current patched state.
+// MarkClean resets the baseline original SVG and studio state to the current patched state.
 func (s *EditorState) MarkClean() {
 	s.SVGData = s.ComputePatchedSVG()
 	s.OriginalSVG = bytes.Clone(s.SVGData)
+	if s.CaptureStudio != nil {
+		s.OriginalStudio = s.CaptureStudio().Clone()
+		s.HasStudioSnapshot = true
+	}
 	s.ModifiedIDs = make(map[string]bool)
 }
 

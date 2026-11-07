@@ -463,3 +463,92 @@ func spliceOutElement(data []byte, tagStart, elemEnd int) []byte {
 	return res
 }
 
+func findElementSpan(data []byte, elementID string) (int, int, error) {
+	dec := xml.NewDecoder(bytes.NewReader(data))
+	var prevOffset int64
+	var insideTarget bool
+	var targetDepth int
+	var tagStart int
+
+	for {
+		tok, err := dec.Token()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return 0, 0, fmt.Errorf("xml decoding error: %w", err)
+		}
+
+		currOffset := dec.InputOffset()
+
+		switch elem := tok.(type) {
+		case xml.StartElement:
+			if !insideTarget {
+				for _, attr := range elem.Attr {
+					if attr.Name.Local == "id" && attr.Value == elementID {
+						segment := data[prevOffset:currOffset]
+						relStart := bytes.IndexByte(segment, '<')
+						if relStart == -1 {
+							return 0, 0, fmt.Errorf("failed to locate start of element %q", elementID)
+						}
+						tagStart = int(prevOffset) + relStart
+
+						tagBytes := segment[relStart:]
+						if bytes.HasSuffix(bytes.TrimSpace(tagBytes), []byte("/>")) {
+							return tagStart, int(currOffset), nil
+						}
+
+						insideTarget = true
+						targetDepth = 1
+						break
+					}
+				}
+			} else {
+				targetDepth++
+			}
+
+		case xml.EndElement:
+			if insideTarget {
+				targetDepth--
+				if targetDepth == 0 {
+					return tagStart, int(currOffset), nil
+				}
+			}
+		}
+
+		prevOffset = currOffset
+	}
+
+	return 0, 0, fmt.Errorf("element %q not found", elementID)
+}
+
+// SwapElements swaps two non-overlapping XML elements (and their subtrees) identified by idA and idB.
+func SwapElements(data []byte, idA, idB string) ([]byte, error) {
+	if idA == idB {
+		return data, nil
+	}
+	startA, endA, err := findElementSpan(data, idA)
+	if err != nil {
+		return data, err
+	}
+	startB, endB, err := findElementSpan(data, idB)
+	if err != nil {
+		return data, err
+	}
+	if startA > startB {
+		startA, startB = startB, startA
+		endA, endB = endB, endA
+	}
+	if endA > startB {
+		return data, fmt.Errorf("cannot swap overlapping elements %q and %q", idA, idB)
+	}
+	res := make([]byte, 0, len(data))
+	res = append(res, data[:startA]...)
+	res = append(res, data[startB:endB]...)
+	res = append(res, data[endA:startB]...)
+	res = append(res, data[startA:endA]...)
+	res = append(res, data[endB:]...)
+	return res, nil
+}
+
+

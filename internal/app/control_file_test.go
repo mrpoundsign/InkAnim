@@ -96,8 +96,8 @@ func TestControlFileRoundTripAndResolve(t *testing.T) {
 	if sess2.TotalDurationMs != 2500 {
 		t.Errorf("expected TotalDurationMs 2500, got %d", sess2.TotalDurationMs)
 	}
-	if len(sess2.RenderedFrames) != 50 {
-		t.Errorf("expected 50 interpolated frames (2.5s @ 20 FPS), got %d", len(sess2.RenderedFrames))
+	if len(sess2.RenderedFrames)*2-2 != 50 {
+		t.Errorf("expected 50 total ping-pong cycle frames (26 forward frames for 2.5s @ 20 FPS), got %d forward frames", len(sess2.RenderedFrames))
 	}
 	if sess2.CropBoundaryMode != inksvg.BoundaryDrawing {
 		t.Errorf("expected CropBoundaryMode drawing, got %s", sess2.CropBoundaryMode)

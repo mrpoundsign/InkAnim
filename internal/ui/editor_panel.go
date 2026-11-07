@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"slices"
@@ -20,6 +21,7 @@ import (
 	"inkanim/internal/app"
 	"inkanim/internal/ext/doctree"
 	"inkanim/internal/ext/presets"
+	"inkanim/internal/ext/svgpatch"
 )
 
 // setupLayersAndMotionTab builds the split view containing the Objects hierarchy tree on the left
@@ -65,6 +67,9 @@ func setupLayersAndMotionTab(mw *MainWindow) fyne.CanvasObject {
 			mw.copyItem.Disabled = true
 			mw.pasteItem.Disabled = true
 			mw.deleteItem.Disabled = true
+			if mw.timelinePanel != nil {
+				mw.timelinePanel.SyncUndoRedo()
+			}
 			if mw.mainMenu != nil {
 				mw.mainMenu.Refresh()
 			}
@@ -86,6 +91,9 @@ func setupLayersAndMotionTab(mw *MainWindow) fyne.CanvasObject {
 		} else {
 			mw.redoBtn.Disable()
 			mw.redoItem.Disabled = true
+		}
+		if mw.timelinePanel != nil {
+			mw.timelinePanel.SyncUndoRedo()
 		}
 
 		canCopy := state.ActiveNode != nil && len(state.ActiveNode.Directives) > 0
@@ -191,14 +199,17 @@ func setupLayersAndMotionTab(mw *MainWindow) fyne.CanvasObject {
 	}
 
 	mw.doDeleteActiveElement = func() {
-		state := mw.editorState
-		if state == nil || state.ActiveNode == nil {
-			return
-		}
 		if _, isEntry := w.Canvas().Focused().(*editorCommitEntry); isEntry {
 			return
 		}
 		if _, isEntry := w.Canvas().Focused().(*widget.Entry); isEntry {
+			return
+		}
+		if mw.timelinePanel != nil && mw.timelinePanel.DeleteSelectedAction() {
+			return
+		}
+		state := mw.editorState
+		if state == nil || state.ActiveNode == nil {
 			return
 		}
 		nodeID := state.ActiveNode.ID
@@ -652,16 +663,19 @@ func setupLayersAndMotionTab(mw *MainWindow) fyne.CanvasObject {
 			isModified := state.ModifiedIDs[node.ID]
 
 			var badges []string
-			for _, d := range node.Directives {
-				badges = append(badges, d.Type)
-			}
-			if hasObjCfg {
+			if hasObjCfg && len(objCfg.Actions) > 0 {
 				for _, a := range objCfg.Actions {
-					badges = append(badges, strings.ToUpper(a.Type[:1])+a.Type[1:])
+					if a.Type != "" {
+						badges = append(badges, strings.ToUpper(a.Type[:1])+a.Type[1:])
+					}
 				}
-				if hasStageOverrides {
-					badges = append(badges, "Stage")
+			} else {
+				for _, d := range node.Directives {
+					badges = append(badges, d.Type)
 				}
+			}
+			if hasStageOverrides {
+				badges = append(badges, "Stage")
 			}
 			if len(badges) > 0 {
 				displayText = fmt.Sprintf("%s [%s]", displayText, strings.Join(badges, ", "))
@@ -691,6 +705,9 @@ func setupLayersAndMotionTab(mw *MainWindow) fyne.CanvasObject {
 			if node, ok := mw.editorState.NodeMap[uid]; ok {
 				mw.editorState.ActiveNode = node
 				mw.refreshInspectorFn()
+				if mw.timelinePanel != nil {
+					mw.timelinePanel.Refresh()
+				}
 			}
 		}
 	}
@@ -706,9 +723,15 @@ func setupLayersAndMotionTab(mw *MainWindow) fyne.CanvasObject {
 	})
 	addSVGBtn.Importance = widget.LowImportance
 
+	mw.stripIAMSCheck = widget.NewCheck("Strip IAMS on Import", func(checked bool) {
+		mw.stripIAMSOnImport = checked
+	})
+	mw.stripIAMSCheck.Checked = mw.stripIAMSOnImport
+
 	treeHeader := container.NewHBox(
 		widget.NewLabelWithStyle("Objects", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 		layout.NewSpacer(),
+		mw.stripIAMSCheck,
 		addSVGBtn,
 		mw.undoBtn,
 		mw.redoBtn,
@@ -760,6 +783,9 @@ func (mw *MainWindow) rebuildAfterHistoryChange() {
 	}
 	if mw.refreshInspectorFn != nil {
 		mw.refreshInspectorFn()
+	}
+	if mw.timelinePanel != nil {
+		mw.timelinePanel.Refresh()
 	}
 	mw.schedulePreviewUpdate()
 	mw.updateStatus()
@@ -844,6 +870,183 @@ func (mw *MainWindow) resolveNodeObjectConfig(n *doctree.DocNode) (string, app.O
 	}, false
 }
 
+// RenameTrackNode renames a Layer or Group in the document tree, updates its inkscape:label
+// in the source SVG and EditorState, and preserves its bound .inka ObjectConfig.
+func (mw *MainWindow) RenameTrackNode(nodeID, newName string) error {
+	newName = strings.TrimSpace(newName)
+	if newName == "" {
+		return errors.New("layer/group name cannot be empty")
+	}
+	if mw.editorState == nil {
+		return errors.New("no active document")
+	}
+	node := mw.editorState.NodeMap[nodeID]
+	if node == nil {
+		return fmt.Errorf("object %q not found", nodeID)
+	}
+	if node.IsLinkedFile {
+		return errors.New("linked SVG filenames cannot be renamed here")
+	}
+
+	oldTitle := node.DisplayTitle()
+	if oldTitle == newName {
+		return nil
+	}
+
+	node.LabelPrefix = newName
+	mw.editorState.ModifiedIDs[node.ID] = true
+
+	// Also patch rawSourceBytes for the linked SVG source so saving/re-composing preserves the renamed label
+	if node.SourceID != "" && mw.rawSourceBytes != nil {
+		if raw, ok := mw.rawSourceBytes[node.SourceID]; ok && len(raw) > 0 {
+			origID := strings.TrimPrefix(node.ID, node.SourceID+"__")
+			if patched, err := svgpatch.SetAttr(raw, origID, svgpatch.InkscapeNS, "label", node.FormatLabel()); err == nil {
+				mw.rawSourceBytes[node.SourceID] = patched
+			}
+		}
+	}
+
+	// Update .inka ObjectConfig LabelPath / key while keeping FallbackXMLID intact
+	if mw.session != nil && mw.session.Objects != nil {
+		objKey, objCfg, hasCfg := mw.resolveNodeObjectConfig(node)
+		if hasCfg {
+			delete(mw.session.Objects, objKey)
+			if objCfg.LabelPath != "" {
+				parts := strings.Split(objCfg.LabelPath, "/")
+				parts[len(parts)-1] = newName
+				objCfg.LabelPath = strings.Join(parts, "/")
+			} else {
+				objCfg.LabelPath = newName
+			}
+			newKey := objCfg.LabelPath
+			if objCfg.SourceID != "" {
+				newKey = objCfg.SourceID + "/" + objCfg.LabelPath
+			}
+			objCfg.FallbackXMLID = node.ID
+			mw.session.Objects[newKey] = objCfg
+		}
+	}
+
+	mw.RecordStudioChange(fmt.Sprintf("Rename %s to '%s'", oldTitle, newName))
+	if mw.refreshTreeFn != nil {
+		mw.refreshTreeFn()
+	}
+	if mw.refreshInspectorFn != nil {
+		mw.refreshInspectorFn()
+	}
+	if mw.timelinePanel != nil {
+		mw.timelinePanel.Refresh()
+	}
+	mw.schedulePreviewUpdate()
+	return nil
+}
+
+func (mw *MainWindow) visibleSiblingsForNode(node *doctree.DocNode) ([]*doctree.DocNode, int) {
+	if mw.editorState == nil || node == nil {
+		return nil, -1
+	}
+	var rawSibs []*doctree.DocNode
+	if node.Parent == nil {
+		rawSibs = mw.editorState.Roots
+	} else {
+		rawSibs = node.Parent.Children
+	}
+	var vis []*doctree.DocNode
+	idx := -1
+	for _, s := range rawSibs {
+		if mw.isVisibleTreeNode(s) {
+			if s.ID == node.ID {
+				idx = len(vis)
+			}
+			vis = append(vis, s)
+		}
+	}
+	return vis, idx
+}
+
+// CanMoveTrackNode reports whether the specified track node can be moved up or down among its siblings.
+func (mw *MainWindow) CanMoveTrackNode(nodeID string) (canUp, canDown bool) {
+	if mw.editorState == nil {
+		return false, false
+	}
+	node := mw.editorState.NodeMap[nodeID]
+	if node == nil {
+		return false, false
+	}
+	vis, idx := mw.visibleSiblingsForNode(node)
+	if idx < 0 || len(vis) <= 1 {
+		return false, false
+	}
+	return idx > 0, idx < len(vis)-1
+}
+
+// MoveTrackNode moves a track node up (delta = -1) or down (delta = +1) relative to its siblings.
+func (mw *MainWindow) MoveTrackNode(nodeID string, delta int) error {
+	if mw.editorState == nil {
+		return errors.New("no active document")
+	}
+	node := mw.editorState.NodeMap[nodeID]
+	if node == nil {
+		return fmt.Errorf("object %q not found", nodeID)
+	}
+	vis, idx := mw.visibleSiblingsForNode(node)
+	targetIdx := idx + delta
+	if idx < 0 || targetIdx < 0 || targetIdx >= len(vis) {
+		return errors.New("cannot move track further in that direction")
+	}
+	other := vis[targetIdx]
+
+	currentSVG := mw.editorState.ComputePatchedSVG()
+	swapped, err := svgpatch.SwapElements(currentSVG, node.ID, other.ID)
+	if err != nil {
+		return err
+	}
+
+	if node.IsLinkedFile && other.IsLinkedFile && mw.session != nil {
+		idxA, idxB := -1, -1
+		for i, src := range mw.session.LinkedSources {
+			if src.ID == node.SourceID {
+				idxA = i
+			}
+			if src.ID == other.SourceID {
+				idxB = i
+			}
+		}
+		if idxA >= 0 && idxB >= 0 {
+			mw.session.LinkedSources[idxA], mw.session.LinkedSources[idxB] = mw.session.LinkedSources[idxB], mw.session.LinkedSources[idxA]
+		}
+	} else if !node.IsLinkedFile && node.SourceID != "" && node.SourceID == other.SourceID && mw.rawSourceBytes != nil {
+		if raw, ok := mw.rawSourceBytes[node.SourceID]; ok && len(raw) > 0 {
+			origA := strings.TrimPrefix(node.ID, node.SourceID+"__")
+			origB := strings.TrimPrefix(other.ID, other.SourceID+"__")
+			if patchedRaw, rawErr := svgpatch.SwapElements(raw, origA, origB); rawErr == nil {
+				mw.rawSourceBytes[node.SourceID] = patchedRaw
+			}
+		}
+	}
+
+	if err := mw.editorState.RestoreSnapshot(swapped, node.ID); err != nil {
+		return err
+	}
+	dirLabel := "down"
+	if delta < 0 {
+		dirLabel = "up"
+	}
+	mw.RecordStudioChange(fmt.Sprintf("Move %s %s", node.DisplayTitle(), dirLabel))
+
+	if mw.refreshTreeFn != nil {
+		mw.refreshTreeFn()
+	}
+	if mw.refreshInspectorFn != nil {
+		mw.refreshInspectorFn()
+	}
+	if mw.timelinePanel != nil {
+		mw.timelinePanel.Refresh()
+	}
+	mw.schedulePreviewUpdate()
+	return nil
+}
+
 func (mw *MainWindow) buildStagePropertiesCard(node *doctree.DocNode) fyne.CanvasObject {
 	if mw.session.Objects == nil {
 		mw.session.Objects = make(map[string]app.ObjectConfig)
@@ -862,6 +1065,9 @@ func (mw *MainWindow) buildStagePropertiesCard(node *doctree.DocNode) fyne.Canva
 		mw.updateFileLabel()
 		if mw.refreshTreeFn != nil {
 			mw.refreshTreeFn()
+		}
+		if mw.timelinePanel != nil {
+			mw.timelinePanel.Refresh()
 		}
 		mw.schedulePreviewUpdate()
 	}
@@ -1057,6 +1263,199 @@ func (mw *MainWindow) buildStagePropertiesCard(node *doctree.DocNode) fyne.Canva
 		displayWinRow,
 		zAndPivotRow,
 	)
+
+	if len(objCfg.Actions) > 0 {
+		items = append(items,
+			widget.NewSeparator(),
+			widget.NewLabelWithStyle("Timeline Actions (.inka Seconds)", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		)
+		for idx := range objCfg.Actions {
+			actIdx := idx
+			act := objCfg.Actions[actIdx]
+			isSelAct := mw.selectedActionID == act.ID
+			actTitle := fmt.Sprintf("%s (%s) • %.2fs – %.2fs", strings.ToUpper(act.Type), act.ID, act.StartSec, act.EndSec)
+			if isSelAct {
+				actTitle = "▶ " + actTitle
+			}
+
+			delActBtn := widget.NewButtonWithIcon("", theme.DeleteIcon(), func() {
+				objCfg.Actions = append(objCfg.Actions[:actIdx], objCfg.Actions[actIdx+1:]...)
+				saveStageObj()
+				if mw.refreshInspectorFn != nil {
+					mw.refreshInspectorFn()
+				}
+			})
+			delActBtn.Importance = widget.DangerImportance
+
+			actStartEntry := newEditorCommitEntry(
+				fmt.Sprintf("%g", act.StartSec),
+				func(s string) {
+					if v, err := strconv.ParseFloat(s, 64); err == nil && v >= 0 {
+						objCfg.Actions[actIdx].StartSec = v
+						objCfg.Actions[actIdx].IsAll = false
+						saveStageObj()
+					}
+				},
+				nil,
+				mw.doUndo,
+				mw.doRedo,
+			)
+			actEndEntry := newEditorCommitEntry(
+				fmt.Sprintf("%g", act.EndSec),
+				func(s string) {
+					if v, err := strconv.ParseFloat(s, 64); err == nil && v > 0 {
+						objCfg.Actions[actIdx].EndSec = v
+						objCfg.Actions[actIdx].IsAll = false
+						saveStageObj()
+					}
+				},
+				nil,
+				mw.doUndo,
+				mw.doRedo,
+			)
+
+			easeSelect := widget.NewSelect([]string{"linear", "in", "out", "in-out"}, nil)
+			if act.Ease != "" {
+				easeSelect.SetSelected(act.Ease)
+			} else {
+				easeSelect.SetSelected("in-out")
+			}
+			easeSelect.OnChanged = func(sel string) {
+				objCfg.Actions[actIdx].Ease = sel
+				saveStageObj()
+			}
+
+			timingRow := container.NewHBox(
+				widget.NewLabel("Start (s):"),
+				actStartEntry,
+				widget.NewLabel("End (s):"),
+				actEndEntry,
+				widget.NewLabel("Ease:"),
+				easeSelect,
+			)
+
+			var paramRow fyne.CanvasObject
+			switch strings.ToLower(act.Type) {
+			case "move":
+				pathEntry := newEditorCommitEntry(
+					act.PathD,
+					func(s string) {
+						objCfg.Actions[actIdx].PathD = s
+						saveStageObj()
+					},
+					nil,
+					mw.doUndo,
+					mw.doRedo,
+				)
+				paramRow = container.NewBorder(nil, nil, widget.NewLabel("Path (d):"), nil, pathEntry)
+			case "rot":
+				degEntry := newEditorCommitEntry(
+					fmt.Sprintf("%g", act.RotationAngle),
+					func(s string) {
+						if v, err := strconv.ParseFloat(s, 64); err == nil {
+							objCfg.Actions[actIdx].RotationAngle = v
+							saveStageObj()
+						}
+					},
+					nil,
+					mw.doUndo,
+					mw.doRedo,
+				)
+				paramRow = container.NewHBox(widget.NewLabel("Degrees:"), degEntry)
+			case "scale":
+				sStart := newEditorCommitEntry(
+					fmt.Sprintf("%g", act.ScaleFromX),
+					func(s string) {
+						if v, err := strconv.ParseFloat(s, 64); err == nil {
+							objCfg.Actions[actIdx].ScaleFromX = v
+							objCfg.Actions[actIdx].ScaleFromY = v
+							saveStageObj()
+						}
+					},
+					nil,
+					mw.doUndo,
+					mw.doRedo,
+				)
+				sEnd := newEditorCommitEntry(
+					fmt.Sprintf("%g", act.ScaleToX),
+					func(s string) {
+						if v, err := strconv.ParseFloat(s, 64); err == nil {
+							objCfg.Actions[actIdx].ScaleToX = v
+							objCfg.Actions[actIdx].ScaleToY = v
+							saveStageObj()
+						}
+					},
+					nil,
+					mw.doUndo,
+					mw.doRedo,
+				)
+				paramRow = container.NewHBox(widget.NewLabel("From:"), sStart, widget.NewLabel("To:"), sEnd)
+			case "fade":
+				aStart := newEditorCommitEntry(
+					fmt.Sprintf("%g", act.OpacityFrom),
+					func(s string) {
+						if v, err := strconv.ParseFloat(s, 64); err == nil {
+							objCfg.Actions[actIdx].OpacityFrom = v
+							objCfg.Actions[actIdx].HasOpacity = true
+							saveStageObj()
+						}
+					},
+					nil,
+					mw.doUndo,
+					mw.doRedo,
+				)
+				aEnd := newEditorCommitEntry(
+					fmt.Sprintf("%g", act.OpacityTo),
+					func(s string) {
+						if v, err := strconv.ParseFloat(s, 64); err == nil {
+							objCfg.Actions[actIdx].OpacityTo = v
+							objCfg.Actions[actIdx].HasOpacity = true
+							saveStageObj()
+						}
+					},
+					nil,
+					mw.doUndo,
+					mw.doRedo,
+				)
+				paramRow = container.NewHBox(widget.NewLabel("Alpha From:"), aStart, widget.NewLabel("To:"), aEnd)
+			case "color":
+				colEntry := newEditorCommitEntry(
+					act.ColorTarget,
+					func(s string) {
+						objCfg.Actions[actIdx].ColorTarget = s
+						saveStageObj()
+					},
+					nil,
+					mw.doUndo,
+					mw.doRedo,
+				)
+				paramRow = container.NewHBox(widget.NewLabel("Color:"), colEntry)
+			case "depth":
+				depthEntry := newEditorCommitEntry(
+					strconv.Itoa(act.DepthOffset),
+					func(s string) {
+						if v, err := strconv.Atoi(s); err == nil {
+							objCfg.Actions[actIdx].DepthOffset = v
+							saveStageObj()
+						}
+					},
+					nil,
+					mw.doUndo,
+					mw.doRedo,
+				)
+				paramRow = container.NewHBox(widget.NewLabel("Depth Offset:"), depthEntry)
+			}
+
+			cardRows := []fyne.CanvasObject{
+				container.NewBorder(nil, nil, widget.NewLabelWithStyle(actTitle, fyne.TextAlignLeading, fyne.TextStyle{Bold: true}), delActBtn),
+				timingRow,
+			}
+			if paramRow != nil {
+				cardRows = append(cardRows, paramRow)
+			}
+			items = append(items, container.NewVBox(cardRows...))
+		}
+	}
 
 	return container.NewVBox(items...)
 }

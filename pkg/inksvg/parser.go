@@ -422,8 +422,6 @@ func ParseSVG(data []byte) (*SVGDocument, error) {
 		}
 	}
 
-	doc.DrawingRect = ComputeDrawingRect(processedData)
-
 	if tpl, err := parseTimelineTemplate(processedData); err == nil {
 		doc.timelineTpl = tpl
 	}

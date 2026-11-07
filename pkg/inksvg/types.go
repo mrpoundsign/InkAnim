@@ -230,10 +230,11 @@ type SVGDocument struct {
 	Gradients        map[string]SVGGradient
 	DefaultMode      FrameMode
 	ElementRects     map[string]Rect
-	Migrations       []MigrationHit
-	ShowMotionLines  bool
-	timelineTpl      *timelineTemplate
-	mu               sync.RWMutex
+	Migrations          []MigrationHit
+	ShowMotionLines     bool
+	drawingRectComputed bool
+	timelineTpl         *timelineTemplate
+	mu                  sync.RWMutex
 }
 
 // FrameCount returns the number of animation frames in the document.
@@ -270,9 +271,10 @@ func (d *SVGDocument) CloneWithoutMotionLines() *SVGDocument {
 		Gradients:        d.Gradients,
 		DefaultMode:      d.DefaultMode,
 		ElementRects:     d.ElementRects,
-		Migrations:       d.Migrations,
-		ShowMotionLines:  false,
-		timelineTpl:      d.timelineTpl,
+		Migrations:          d.Migrations,
+		ShowMotionLines:     false,
+		drawingRectComputed: d.drawingRectComputed,
+		timelineTpl:         d.timelineTpl,
 	}
 }
 
@@ -310,8 +312,23 @@ func (d *SVGDocument) GetDrawingRect() Rect {
 	if d == nil {
 		return Rect{X: 0, Y: 0, Width: 512, Height: 512}
 	}
-	if d.DrawingRect.Width > 0 && d.DrawingRect.Height > 0 {
-		return d.DrawingRect
+	d.mu.RLock()
+	rect := d.DrawingRect
+	computed := d.drawingRectComputed
+	raw := d.RawContent
+	d.mu.RUnlock()
+	if rect.Width > 0 && rect.Height > 0 {
+		return rect
+	}
+	if !computed && len(raw) > 0 {
+		rect = ComputeDrawingRect(raw)
+		d.mu.Lock()
+		d.DrawingRect = rect
+		d.drawingRectComputed = true
+		d.mu.Unlock()
+		if rect.Width > 0 && rect.Height > 0 {
+			return rect
+		}
 	}
 	return d.GetDocumentRect()
 }

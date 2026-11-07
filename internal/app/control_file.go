@@ -542,12 +542,11 @@ func ApplyObjectsToDocument(doc *inksvg.SVGDocument, objects map[string]ObjectCo
 
 	_, lookup := inksvg.ExtractGroupHierarchy(doc.RawContent)
 
-	existingMPIdx := make(map[string]int, len(doc.MotionPaths))
-	for idx, mp := range doc.MotionPaths {
-		if mp.ID != "" {
-			existingMPIdx[mp.ID] = idx
-		}
-	}
+	// When .inka objects are active, studio ObjectConfigs are authoritative for actions:
+	// rebuild doc.MotionPaths and doc.CameraPath exclusively from objects so deleting or
+	// reordering an action in the timeline takes effect even when legacy IAMS wasn't stripped from the SVG XML.
+	doc.MotionPaths = nil
+	doc.CameraPath = nil
 
 	var hasAnimatedStageObj bool
 	for _, key := range slices.Sorted(maps.Keys(objects)) {
@@ -589,13 +588,9 @@ func ApplyObjectsToDocument(doc *inksvg.SVGDocument, objects map[string]ObjectCo
 			mp := actionConfigToMotionPath(act, actID, resolvedID)
 			if mp.Config.IsCamera {
 				doc.CameraPath = &mp
+			} else {
+				doc.MotionPaths = append(doc.MotionPaths, mp)
 			}
-			if idx, exists := existingMPIdx[actID]; exists {
-				doc.MotionPaths[idx] = mp
-				continue
-			}
-			existingMPIdx[actID] = len(doc.MotionPaths)
-			doc.MotionPaths = append(doc.MotionPaths, mp)
 		}
 	}
 
@@ -792,16 +787,26 @@ func MigrateDocumentIAMSToControlFile(doc *inksvg.SVGDocument, sourceID string, 
 			}
 		}
 
-		startSec := 0.0
-		endSec := totalDurationSec
-		if !mp.Config.IsAll && mp.Config.EndFrame > 0 {
-			startSec = frameToSec(mp.Config.StartFrame)
-			endSec = frameToSec(mp.Config.EndFrame)
-		}
-
 		actID := mp.ID
 		if actID == "" {
 			actID = fmt.Sprintf("act_%d", i+1)
+		}
+
+		// Idempotency guard: if this action ID was already migrated onto obj, skip it.
+		if slices.ContainsFunc(obj.Actions, func(existing ActionConfig) bool {
+			return existing.ID == actID
+		}) {
+			continue
+		}
+
+		startSec := 0.0
+		endSec := totalDurationSec
+		if mp.Config.HasTimeRange && mp.Config.EndSec > 0 {
+			startSec = mp.Config.StartSec
+			endSec = mp.Config.EndSec
+		} else if !mp.Config.IsAll && mp.Config.EndFrame > 0 {
+			startSec = frameToSec(mp.Config.StartFrame)
+			endSec = frameToSec(mp.Config.EndFrame)
 		}
 
 		act := ActionConfig{

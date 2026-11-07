@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -31,6 +32,7 @@ type MainWindow struct {
 	session            *app.Session
 	centerPanel        *CenterPreviewPanel
 	rightPanel         *RightExportPanel
+	timelinePanel      *TimelinePanel
 	sidebarTabs        *container.AppTabs
 	fileLabel          *widget.Label
 	statusLabel        *widget.Label
@@ -45,11 +47,15 @@ type MainWindow struct {
 	fileWatcher        *fileWatcher
 
 	// Editor components
-	editorState        *EditorState
-	tree               *deletableTree
-	inspectorCard      *fyne.Container
-	undoBtn            *widget.Button
-	redoBtn            *widget.Button
+	editorState           *EditorState
+	selectedActionID      string
+	stripIAMSOnImport     bool
+	stripIAMSCheck        *widget.Check
+	tree                  *deletableTree
+	inspectorCard         *fyne.Container
+	topSplit              *container.Split
+	undoBtn               *widget.Button
+	redoBtn               *widget.Button
 	undoItem           *fyne.MenuItem
 	redoItem           *fyne.MenuItem
 	copyItem           *fyne.MenuItem
@@ -100,14 +106,42 @@ func NewMainWindow(appInstance fyne.App) *MainWindow {
 
 	// Construct panels with coordinated refresh hooks
 	mw.centerPanel = NewCenterPreviewPanel(sess)
+
+	// Layers & Motion tab (retained for extension mode and undo/redo shortcut initialization)
+	motionSplit := setupLayersAndMotionTab(mw)
+
+	mw.timelinePanel = NewTimelinePanel(mw)
+
 	mw.centerPanel.SetOnPingPongChange(func() {
 		if mw.rightPanel != nil {
 			mw.rightPanel.validateTwitch()
 		}
+		if mw.timelinePanel != nil {
+			mw.timelinePanel.Refresh()
+		}
+		mw.RecordStudioChange("Toggle Ping-Pong")
 	})
 	mw.centerPanel.SetOnTimingChange(func() {
 		if mw.rightPanel != nil {
 			mw.rightPanel.validateTwitch()
+		}
+		if mw.timelinePanel != nil {
+			mw.timelinePanel.Refresh()
+		}
+		mw.RecordStudioChange("Change timing settings")
+	})
+	mw.centerPanel.SetOnDurationChangeRequest(func(oldSec, newSec float64) bool {
+		origObjects := cloneObjectsMap(mw.session.Objects)
+		hasItems := mw.HasTimelineActionsOrWindows()
+		mw.ApplyDurationChangeWithObjects(oldSec, newSec, origObjects, DurationAdjustScale, true)
+		if hasItems && mw.window != nil {
+			mw.ShowDurationChangeModal(oldSec, newSec, origObjects)
+		}
+		return true
+	})
+	mw.centerPanel.SetOnFrameChange(func(frameIdx, totalFrames int, timeSec float64, frameDurMs int) {
+		if mw.timelinePanel != nil {
+			mw.timelinePanel.UpdatePlayhead(frameIdx, totalFrames, timeSec, frameDurMs)
 		}
 	})
 
@@ -139,24 +173,24 @@ func NewMainWindow(appInstance fyne.App) *MainWindow {
 		mw.statusLabel,
 	)
 
-	// Layers & Motion tab
-	motionSplit := setupLayersAndMotionTab(mw)
-
-	// Unified tabbed sidebar hosting Layers & Motion and Export panels
+	// Unified tabbed sidebar retained for extension mode
 	mw.sidebarTabs = container.NewAppTabs(
 		container.NewTabItemWithIcon("Layers & Motion", theme.VisibilityIcon(), motionSplit),
 		container.NewTabItemWithIcon("Export", theme.DownloadIcon(), mw.rightPanel.Container()),
 	)
 
-	mainSplit := container.NewHSplit(mw.sidebarTabs, mw.centerPanel.Container())
-	mainSplit.SetOffset(0.55)
+	mw.topSplit = container.NewHSplit(mw.centerPanel.Container(), mw.rightPanel.Container())
+	mw.topSplit.SetOffset(0.68)
+
+	workspaceSplit := container.NewVSplit(mw.topSplit, mw.timelinePanel.Container())
+	workspaceSplit.SetOffset(0.68)
 
 	root := container.NewBorder(
-		container.NewVBox(topToolbar, widget.NewSeparator()),
-		container.NewVBox(widget.NewSeparator(), mw.bottomBar),
+		container.NewVBox(container.New(&nonExpandingWidthLayout{}, topToolbar), widget.NewSeparator()),
+		container.NewVBox(widget.NewSeparator(), container.New(&nonExpandingWidthLayout{}, mw.bottomBar)),
 		nil,
 		nil,
-		mainSplit,
+		workspaceSplit,
 	)
 
 	win.SetContent(root)
@@ -372,6 +406,7 @@ func (mw *MainWindow) NewProject() {
 	mw.pendingSourcePaths = make(map[string]string)
 	mw.rawSourceBytes = make(map[string][]byte)
 	mw.editorState = nil
+	mw.selectedActionID = ""
 	if mw.session != nil {
 		mw.session.Reset()
 	}
@@ -395,6 +430,9 @@ func (mw *MainWindow) NewProject() {
 	if mw.rightPanel != nil {
 		mw.rightPanel.Refresh()
 	}
+	if mw.timelinePanel != nil {
+		mw.timelinePanel.Refresh()
+	}
 }
 
 // OpenProject opens a .inka project file from the specified file path.
@@ -405,14 +443,6 @@ func (mw *MainWindow) OpenProject(path string) {
 // OpenFile loads and displays an SVG or .inka project file from the specified file path.
 func (mw *MainWindow) OpenFile(path string) {
 	mw.loadFilePath(path)
-}
-
-func detectSVGHasIAMS(svgData []byte) bool {
-	doc, err := inksvg.ParseSVG(svgData)
-	if err != nil || doc == nil {
-		return false
-	}
-	return len(doc.MotionPaths) > 0 || doc.CameraPath != nil
 }
 
 // AddSVGFile links an SVG file into the active project, migrating any legacy IAMS directives into .inka Objects.
@@ -444,6 +474,7 @@ func (mw *MainWindow) AddSVGDataWithOptions(data []byte, filename string, stripI
 }
 
 func (mw *MainWindow) addSVGSourceInternal(rawBytes []byte, filename, diskPath string, stripIAMS bool) (bool, error) {
+	hadEditorState := mw.editorState != nil
 	if mw.session == nil {
 		mw.session = app.NewSession()
 	}
@@ -481,9 +512,14 @@ func (mw *MainWindow) addSVGSourceInternal(rawBytes []byte, filename, diskPath s
 		})
 	}
 
-	hasIAMS := detectSVGHasIAMS(rawBytes)
-	if hasIAMS {
-		if parsedDoc, pErr := inksvg.ParseSVG(rawBytes); pErr == nil && parsedDoc != nil {
+	if len(mw.session.LinkedSources) == 1 && !hadEditorState {
+		mw.session.ResetManualDuration()
+	}
+
+	var hasIAMS bool
+	if parsedDoc, pErr := inksvg.ParseSVG(rawBytes); pErr == nil && parsedDoc != nil {
+		hasIAMS = len(parsedDoc.MotionPaths) > 0 || parsedDoc.CameraPath != nil
+		if hasIAMS {
 			durSec := float64(max(mw.session.TotalDurationMs, 1000)) / 1000.0
 			if len(mw.session.LinkedSources) == 1 && !mw.session.HasManualDuration && parsedDoc.FrameCount() > 1 {
 				fps := max(mw.session.FPS, 10)
@@ -492,10 +528,10 @@ func (mw *MainWindow) addSVGSourceInternal(rawBytes []byte, filename, diskPath s
 			tmpCtrl := &app.ControlFile{Objects: mw.session.Objects}
 			app.MigrateDocumentIAMSToControlFile(parsedDoc, srcID, durSec, tmpCtrl)
 			mw.session.Objects = tmpCtrl.Objects
-		}
-		if stripIAMS {
-			if cleaned, sErr := inksvg.StripIAMSFromSVG(rawBytes); sErr == nil {
-				rawBytes = cleaned
+			if stripIAMS {
+				if cleaned, sErr := inksvg.StripIAMSFromSVG(rawBytes); sErr == nil {
+					rawBytes = cleaned
+				}
 			}
 		}
 	}
@@ -528,58 +564,28 @@ func (mw *MainWindow) addSVGSourceInternal(rawBytes []byte, filename, diskPath s
 	}
 	preserveDur := len(mw.session.LinkedSources) > 1 || mw.session.HasManualDuration
 	mw.loadDataWithOptions(composed, mw.projectDisplayName(), nil, preserveDur)
+	if hadEditorState {
+		mw.RecordStudioChange("Add SVG: " + baseName)
+	}
 	return hasIAMS, nil
 }
 
 func (mw *MainWindow) addSVGInteractive(svgPath string) {
-	hasIAMS, err := mw.AddSVGFileWithOptions(svgPath, false)
+	_, err := mw.AddSVGFileWithOptions(svgPath, mw.stripIAMSOnImport)
 	if err != nil {
 		dialog.ShowError(err, mw.window)
 		mw.statusLabel.SetText("Failed to add SVG file.")
 		return
 	}
-	baseName := filepath.Base(svgPath)
-	srcID := mw.findSourceIDByFile(baseName)
-	if hasIAMS && srcID != "" {
-		mw.promptStripIAMSDialog(srcID, baseName)
-	}
 }
 
 func (mw *MainWindow) addSVGDataInteractive(data []byte, filename string) {
-	hasIAMS, err := mw.AddSVGDataWithOptions(data, filename, false)
+	_, err := mw.AddSVGDataWithOptions(data, filename, mw.stripIAMSOnImport)
 	if err != nil {
 		dialog.ShowError(err, mw.window)
 		mw.statusLabel.SetText("Failed to add SVG data.")
 		return
 	}
-	baseName := filepath.Base(filename)
-	srcID := mw.findSourceIDByFile(baseName)
-	if hasIAMS && srcID != "" {
-		mw.promptStripIAMSDialog(srcID, baseName)
-	}
-}
-
-func (mw *MainWindow) findSourceIDByFile(baseName string) string {
-	if mw.session == nil {
-		return ""
-	}
-	for _, s := range mw.session.LinkedSources {
-		if strings.EqualFold(s.File, baseName) {
-			return s.ID
-		}
-	}
-	return ""
-}
-
-func (mw *MainWindow) promptStripIAMSDialog(sourceID, filename string) {
-	msg := fmt.Sprintf("Imported IAMS motion directives from %q into your .inka project.\n\nWould you also like to strip the legacy IAMS labels and helper paths from the SVG?", filename)
-	dialog.ShowConfirm("Legacy IAMS Directives Imported", msg, func(strip bool) {
-		if strip {
-			if err := mw.StripIAMSFromLinkedSVG(sourceID); err != nil {
-				dialog.ShowError(err, mw.window)
-			}
-		}
-	}, mw.window)
 }
 
 // StripIAMSFromLinkedSVG migrates any legacy IAMS directives from the specified linked SVG into .inka Objects
@@ -644,6 +650,7 @@ func (mw *MainWindow) StripIAMSFromLinkedSVG(sourceID string) error {
 		return err
 	}
 	mw.loadDataWithOptions(composed, mw.projectDisplayName(), nil, true)
+	mw.RecordStudioChange("Strip IAMS from " + src.File)
 	mw.statusLabel.SetText("Stripped legacy IAMS directives from " + src.File)
 	return nil
 }
@@ -663,13 +670,23 @@ func (mw *MainWindow) RemoveLinkedSVG(sourceID string) error {
 	if idx < 0 {
 		return fmt.Errorf("linked SVG %q not found", sourceID)
 	}
+	removedName := mw.session.LinkedSources[idx].File
 	mw.session.LinkedSources = append(mw.session.LinkedSources[:idx], mw.session.LinkedSources[idx+1:]...)
 	delete(mw.pendingSourcePaths, sourceID)
 	delete(mw.rawSourceBytes, sourceID)
+	for k, obj := range mw.session.Objects {
+		if obj.SourceID == sourceID || strings.HasPrefix(k, sourceID+"/") {
+			delete(mw.session.Objects, k)
+		}
+	}
 	mw.projectDirty = true
 
 	if len(mw.session.LinkedSources) == 0 {
 		mw.editorState = nil
+		mw.selectedActionID = ""
+		mw.session.Objects = make(map[string]app.ObjectConfig)
+		mw.session.ResetManualDuration()
+		mw.session.TotalDurationMs = 1000
 		mw.session.Document = nil
 		mw.session.Frames = nil
 		mw.session.RenderedFrames = nil
@@ -688,6 +705,9 @@ func (mw *MainWindow) RemoveLinkedSVG(sourceID string) error {
 		if mw.rightPanel != nil {
 			mw.rightPanel.Refresh()
 		}
+		if mw.timelinePanel != nil {
+			mw.timelinePanel.Refresh()
+		}
 		return nil
 	}
 
@@ -697,6 +717,7 @@ func (mw *MainWindow) RemoveLinkedSVG(sourceID string) error {
 	}
 	mw.fileWatcher.watchFiles(mw.linkedDiskPaths())
 	mw.loadDataWithOptions(composed, mw.projectDisplayName(), nil, true)
+	mw.RecordStudioChange("Unlink SVG: " + removedName)
 	return nil
 }
 
@@ -841,7 +862,7 @@ func (mw *MainWindow) buildControlFile() *app.ControlFile {
 	if mw.rightPanel != nil {
 		mw.rightPanel.PopulateControlFile(ctrl)
 	}
-	if mw.session.Document != nil {
+	if mw.session.Document != nil && len(ctrl.Objects) == 0 {
 		durSec := float64(max(mw.session.TotalDurationMs, 1000)) / 1000.0
 		app.MigrateDocumentIAMSToControlFile(mw.session.Document, "", durSec, ctrl)
 	}
@@ -921,6 +942,8 @@ func (mw *MainWindow) loadFilePath(path string) {
 		clear(mw.rawSourceBytes)
 	}
 	mw.projectDirty = false
+	mw.selectedActionID = ""
+	mw.session.Objects = make(map[string]app.ObjectConfig)
 	if strings.EqualFold(filepath.Ext(path), app.ControlFileExt) {
 		mw.projectPath = path
 	} else {
@@ -948,6 +971,10 @@ func (mw *MainWindow) loadFilePath(path string) {
 }
 
 func (mw *MainWindow) loadData(data []byte, filename string) {
+	if mw.session != nil {
+		mw.session.Objects = make(map[string]app.ObjectConfig)
+	}
+	mw.selectedActionID = ""
 	mw.loadDataWithOptions(data, filename, nil, false)
 }
 
@@ -971,7 +998,7 @@ func (mw *MainWindow) loadDataWithOptions(data []byte, filename string, ctrl *ap
 		}
 	}
 
-	if !mw.isExtMode || mw.editorState == nil {
+	if mw.editorState == nil || (!mw.isExtMode && !preserveSettings) {
 		var selectedIDs []string
 		state, err := NewEditorState(data, mw.currentPath, selectedIDs)
 		if err != nil {
@@ -981,6 +1008,12 @@ func (mw *MainWindow) loadDataWithOptions(data []byte, filename string, ctrl *ap
 			return
 		}
 		mw.editorState = state
+	} else if !mw.isExtMode {
+		activeID := ""
+		if mw.editorState.ActiveNode != nil {
+			activeID = mw.editorState.ActiveNode.ID
+		}
+		_ = mw.editorState.RestoreSnapshot(data, activeID)
 	}
 	state := mw.editorState
 
@@ -991,7 +1024,6 @@ func (mw *MainWindow) loadDataWithOptions(data []byte, filename string, ctrl *ap
 	case preserveSettings:
 		mw.session.HasManualDuration = true
 	default:
-		mw.session.Objects = make(map[string]app.ObjectConfig)
 		mw.session.ResetManualDuration()
 	}
 	if err := mw.session.LoadSVGData(data, filename); err != nil {
@@ -1000,6 +1032,14 @@ func (mw *MainWindow) loadDataWithOptions(data []byte, filename string, ctrl *ap
 		mw.statusLabel.SetText("Failed to load SVG.")
 		return
 	}
+	if !mw.isExtMode && mw.session.Document != nil && !preserveSettings && len(mw.session.Objects) == 0 {
+		mw.session.Objects = make(map[string]app.ObjectConfig)
+		durSec := float64(max(mw.session.TotalDurationMs, 1000)) / 1000.0
+		tmpCtrl := &app.ControlFile{Objects: mw.session.Objects}
+		app.MigrateDocumentIAMSToControlFile(mw.session.Document, "", durSec, tmpCtrl)
+		mw.session.Objects = tmpCtrl.Objects
+	}
+	mw.bindEditorStateStudioHooks(state, !preserveSettings || !state.HasStudioSnapshot)
 
 	mw.updateFileLabel()
 	mw.updateStatus()
@@ -1027,15 +1067,283 @@ func (mw *MainWindow) loadDataWithOptions(data []byte, filename string, ctrl *ap
 	}
 	mw.centerPanel.Refresh()
 	mw.rightPanel.Refresh()
+	if mw.timelinePanel != nil {
+		mw.timelinePanel.Refresh()
+	}
 
 	if len(mw.session.RenderedFrames) > 1 {
 		mw.centerPanel.Play()
 	}
 }
 
+func (mw *MainWindow) captureStudioSnapshot() StudioSnapshot {
+	snap := StudioSnapshot{
+		SelectedActionID: mw.selectedActionID,
+	}
+	if mw.session != nil {
+		snap.Objects = cloneObjectsMap(mw.session.Objects)
+		snap.LinkedSources = slices.Clone(mw.session.LinkedSources)
+		snap.TotalDurationMs = mw.session.TotalDurationMs
+		snap.FPS = mw.session.FPS
+		snap.PingPong = mw.session.ExportOptions.PingPong
+	}
+	if mw.rawSourceBytes != nil {
+		snap.RawSourceBytes = make(map[string][]byte, len(mw.rawSourceBytes))
+		for k, v := range mw.rawSourceBytes {
+			snap.RawSourceBytes[k] = bytes.Clone(v)
+		}
+	}
+	return snap
+}
+
+func (mw *MainWindow) applyStudioSnapshot(snap StudioSnapshot) {
+	if mw.session == nil {
+		return
+	}
+	cloned := snap.Clone()
+	mw.session.Objects = cloned.Objects
+	if mw.session.Objects == nil {
+		mw.session.Objects = make(map[string]app.ObjectConfig)
+	}
+	mw.session.LinkedSources = cloned.LinkedSources
+	mw.rawSourceBytes = cloned.RawSourceBytes
+	if mw.rawSourceBytes == nil {
+		mw.rawSourceBytes = make(map[string][]byte)
+	}
+	mw.selectedActionID = cloned.SelectedActionID
+	if cloned.TotalDurationMs > 0 {
+		mw.session.TotalDurationMs = cloned.TotalDurationMs
+		mw.session.HasManualDuration = true
+	}
+	if cloned.FPS > 0 {
+		mw.session.FPS = cloned.FPS
+	}
+	mw.session.ExportOptions.PingPong = cloned.PingPong
+	if mw.centerPanel != nil {
+		mw.centerPanel.isUpdatingTiming = true
+		mw.centerPanel.pingPongCheck.SetChecked(cloned.PingPong)
+		mw.centerPanel.isUpdatingTiming = false
+	}
+	mw.projectDirty = true
+}
+
+func (mw *MainWindow) bindEditorStateStudioHooks(state *EditorState, resetBaseline bool) {
+	if state == nil {
+		return
+	}
+	state.CaptureStudio = mw.captureStudioSnapshot
+	state.ApplyStudio = mw.applyStudioSnapshot
+	if resetBaseline || !state.HasStudioSnapshot {
+		state.OriginalStudio = mw.captureStudioSnapshot().Clone()
+		state.HasStudioSnapshot = true
+	}
+}
+
+// RecordStudioChange records a studio-level change (.inka objects, actions, timing, or track order) in the undo/redo history.
+func (mw *MainWindow) RecordStudioChange(description string) {
+	if mw.editorState == nil {
+		return
+	}
+	mw.bindEditorStateStudioHooks(mw.editorState, false)
+	mw.editorState.RecordChange(description)
+	mw.projectDirty = true
+	if mw.updateUndoRedo != nil {
+		mw.updateUndoRedo()
+	}
+	mw.updateStatus()
+	mw.updateFileLabel()
+}
+
+// DurationAdjustMode specifies how existing timeline actions and display windows adjust when project duration changes.
+type DurationAdjustMode int
+
+const (
+	// DurationAdjustScale scales existing action and display window times proportionally to the new duration.
+	DurationAdjustScale DurationAdjustMode = iota
+	// DurationAdjustPadEnd keeps existing start/end times and pads or clamps at the end of the timeline.
+	DurationAdjustPadEnd
+	// DurationAdjustPadStart shifts existing start/end times by the duration delta (adding/removing time at the beginning).
+	DurationAdjustPadStart
+)
+
+// HasTimelineActionsOrWindows reports whether the active project has any timeline actions or custom display windows.
+func (mw *MainWindow) HasTimelineActionsOrWindows() bool {
+	if mw.session == nil {
+		return false
+	}
+	for _, cfg := range mw.session.Objects {
+		if len(cfg.Actions) > 0 || cfg.HasDisplayWindow {
+			return true
+		}
+	}
+	return false
+}
+
+func roundMillis(v float64) float64 {
+	return math.Round(v*1000.0) / 1000.0
+}
+
+func clampFloat(v, lo, hi float64) float64 {
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
+}
+
+func adjustObjectsForDuration(objects map[string]app.ObjectConfig, oldSec, newSec float64, mode DurationAdjustMode) map[string]app.ObjectConfig {
+	out := cloneObjectsMap(objects)
+	if len(out) == 0 || oldSec <= 0 || newSec <= 0 {
+		return out
+	}
+	switch mode {
+	case DurationAdjustScale:
+		ratio := newSec / oldSec
+		for id, cfg := range out {
+			if cfg.HasDisplayWindow {
+				cfg.StartTimeSec = roundMillis(clampFloat(cfg.StartTimeSec*ratio, 0, newSec))
+				cfg.EndTimeSec = roundMillis(clampFloat(cfg.EndTimeSec*ratio, cfg.StartTimeSec, newSec))
+			}
+			for i := range cfg.Actions {
+				ns := roundMillis(clampFloat(cfg.Actions[i].StartSec*ratio, 0, max(0, newSec-0.05)))
+				ne := roundMillis(clampFloat(cfg.Actions[i].EndSec*ratio, ns+0.05, newSec))
+				cfg.Actions[i].StartSec = ns
+				cfg.Actions[i].EndSec = ne
+			}
+			out[id] = cfg
+		}
+	case DurationAdjustPadEnd:
+		for id, cfg := range out {
+			if cfg.HasDisplayWindow {
+				cfg.StartTimeSec = roundMillis(clampFloat(cfg.StartTimeSec, 0, newSec))
+				cfg.EndTimeSec = roundMillis(clampFloat(cfg.EndTimeSec, cfg.StartTimeSec, newSec))
+			}
+			for i := range cfg.Actions {
+				ns := roundMillis(clampFloat(cfg.Actions[i].StartSec, 0, max(0, newSec-0.05)))
+				ne := roundMillis(clampFloat(cfg.Actions[i].EndSec, ns+0.05, newSec))
+				cfg.Actions[i].StartSec = ns
+				cfg.Actions[i].EndSec = ne
+			}
+			out[id] = cfg
+		}
+	case DurationAdjustPadStart:
+		delta := newSec - oldSec
+		for id, cfg := range out {
+			if cfg.HasDisplayWindow {
+				cfg.StartTimeSec = roundMillis(clampFloat(cfg.StartTimeSec+delta, 0, newSec))
+				cfg.EndTimeSec = roundMillis(clampFloat(cfg.EndTimeSec+delta, cfg.StartTimeSec, newSec))
+			}
+			for i := range cfg.Actions {
+				dur := max(0.05, cfg.Actions[i].EndSec-cfg.Actions[i].StartSec)
+				ns := roundMillis(clampFloat(cfg.Actions[i].StartSec+delta, 0, max(0, newSec-0.05)))
+				ne := roundMillis(clampFloat(ns+dur, ns+0.05, newSec))
+				cfg.Actions[i].StartSec = ns
+				cfg.Actions[i].EndSec = ne
+			}
+			out[id] = cfg
+		}
+	}
+	return out
+}
+
+// ApplyDurationChange adjusts existing timeline items according to mode and updates the total project duration.
+func (mw *MainWindow) ApplyDurationChange(newSec float64, mode DurationAdjustMode) {
+	if mw.session == nil {
+		return
+	}
+	oldSec := float64(max(mw.session.TotalDurationMs, 100)) / 1000.0
+	mw.ApplyDurationChangeWithObjects(oldSec, newSec, mw.session.Objects, mode, true)
+}
+
+// ApplyDurationChangeWithObjects applies a duration change from a baseline objects snapshot.
+func (mw *MainWindow) ApplyDurationChangeWithObjects(oldSec, newSec float64, baseObjects map[string]app.ObjectConfig, mode DurationAdjustMode, recordHistory bool) {
+	if mw.session == nil {
+		return
+	}
+	mw.session.Objects = adjustObjectsForDuration(baseObjects, oldSec, newSec, mode)
+	_ = mw.session.SetTotalDurationSec(newSec)
+	mw.projectDirty = true
+	if recordHistory {
+		mw.RecordStudioChange(fmt.Sprintf("Change duration to %.2fs", newSec))
+	} else if mw.editorState != nil && mw.editorState.HistoryIndex >= 0 && mw.editorState.HistoryIndex < len(mw.editorState.History) {
+		mw.editorState.History[mw.editorState.HistoryIndex].Studio = mw.captureStudioSnapshot().Clone()
+		mw.editorState.History[mw.editorState.HistoryIndex].HasStudio = true
+	}
+	if mw.centerPanel != nil {
+		mw.centerPanel.Refresh()
+	}
+	if mw.rightPanel != nil {
+		mw.rightPanel.validateTwitch()
+	}
+	if mw.timelinePanel != nil {
+		mw.timelinePanel.Refresh()
+	}
+}
+
+// ShowDurationChangeModal prompts the user how existing timeline elements should adjust when total duration changes.
+func (mw *MainWindow) ShowDurationChangeModal(oldSec, newSec float64, origObjects map[string]app.ObjectConfig) {
+	if mw.window == nil {
+		return
+	}
+	const (
+		optScale    = "Scale existing timeline elements proportionally"
+		optPadEnd   = "Add / trim empty time at the end (keep current start/stop times)"
+		optPadStart = "Add / shift empty time at the beginning"
+	)
+	selectedMode := DurationAdjustScale
+	radio := widget.NewRadioGroup([]string{optScale, optPadEnd, optPadStart}, func(val string) {
+		switch val {
+		case optPadEnd:
+			selectedMode = DurationAdjustPadEnd
+		case optPadStart:
+			selectedMode = DurationAdjustPadStart
+		default:
+			selectedMode = DurationAdjustScale
+		}
+		mw.ApplyDurationChangeWithObjects(oldSec, newSec, origObjects, selectedMode, false)
+	})
+	radio.SetSelected(optScale)
+
+	info := widget.NewLabel(fmt.Sprintf("Timeline duration changed from %.2fs to %.2fs.\nHow should existing timeline actions and visibility windows be adjusted?", oldSec, newSec))
+	info.Wrapping = fyne.TextWrapWord
+
+	content := container.NewVBox(
+		info,
+		widget.NewSeparator(),
+		radio,
+	)
+
+	d := dialog.NewCustomConfirm(
+		"Adjust Timeline Duration",
+		"Apply",
+		"Cancel",
+		container.New(&fixedWidthLayout{width: 440}, content),
+		func(apply bool) {
+			if !apply {
+				if mw.editorState != nil && mw.editorState.CanUndo() {
+					_, _ = mw.editorState.Undo()
+					mw.rebuildAfterHistoryChange()
+				} else {
+					mw.ApplyDurationChangeWithObjects(newSec, oldSec, origObjects, DurationAdjustPadEnd, false)
+				}
+			}
+		},
+		mw.window,
+	)
+	d.Show()
+}
+
 // EnableExtensionMode configures the window for Inkscape extension mode with Apply and Cancel buttons.
 func (mw *MainWindow) EnableExtensionMode() {
 	mw.isExtMode = true
+	if mw.topSplit != nil && mw.sidebarTabs != nil && mw.centerPanel != nil {
+		mw.topSplit.Leading = mw.sidebarTabs
+		mw.topSplit.Trailing = mw.centerPanel.Container()
+		mw.topSplit.SetOffset(0.55)
+		mw.topSplit.Refresh()
+	}
 	applyBtn := widget.NewButtonWithIcon("Apply Changes", theme.ConfirmIcon(), func() {
 		if mw.centerPanel != nil {
 			mw.centerPanel.Pause()
