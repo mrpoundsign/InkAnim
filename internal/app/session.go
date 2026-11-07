@@ -44,13 +44,15 @@ type Session struct {
 
 // NewSession creates an empty session with default options.
 func NewSession() *Session {
+	opts := gif.DefaultOptions()
+	opts.SquareSize = 512
 	return &Session{
 		CurrentMode:      inksvg.ModeTimeline,
 		CropBoundaryMode: inksvg.BoundaryPage,
 		CropPageIndex:    0,
 		FPS:              10,
 		TotalDurationMs:  1000,
-		ExportOptions:    gif.DefaultOptions(),
+		ExportOptions:    opts,
 		Objects:          make(map[string]ObjectConfig),
 		frameCache:       make(map[string][]inksvg.RenderedFrame),
 	}
@@ -69,7 +71,9 @@ func (s *Session) Reset() {
 	s.FPS = 10
 	s.TotalDurationMs = 1000
 	s.HasManualDuration = false
-	s.ExportOptions = gif.DefaultOptions()
+	opts := gif.DefaultOptions()
+	opts.SquareSize = 512
+	s.ExportOptions = opts
 	s.LinkedSources = nil
 	s.Objects = make(map[string]ObjectConfig)
 	s.InvalidateCache()
@@ -127,13 +131,27 @@ func (s *Session) TargetFrameCount() int {
 	return count
 }
 
-func (s *Session) rebuildTimelineFrames() {
-	count := s.TargetFrameCount()
+func (s *Session) effectiveDefaultDurationMs() int {
 	dur := s.ExportOptions.DefaultDurationMs
 	if dur <= 0 {
 		dur = 100
 	}
+	if s.ExportOptions.PingPong && len(s.Frames) >= 3 && s.TotalDurationMs > 0 {
+		cycleFrames := len(s.Frames)*2 - 2
+		if cycleFrames > 0 {
+			dur = max(int(math.Round(float64(s.TotalDurationMs)/float64(cycleFrames))), 10)
+		}
+	}
+	return dur
+}
+
+func (s *Session) rebuildTimelineFrames() {
+	count := s.TargetFrameCount()
+	if s.ExportOptions.PingPong && count >= 3 {
+		count = max((count+2)/2, 3)
+	}
 	s.Frames = make([]inksvg.Frame, count)
+	dur := s.effectiveDefaultDurationMs()
 	for i := range count {
 		s.Frames[i] = inksvg.Frame{
 			ID:         fmt.Sprintf("frame_%d", i+1),
@@ -142,6 +160,20 @@ func (s *Session) rebuildTimelineFrames() {
 			IsActive:   true,
 		}
 	}
+}
+
+// SetPingPong toggles ping-pong bounce mode while preserving total animation duration (TotalDurationMs).
+func (s *Session) SetPingPong(enabled bool) error {
+	if s.ExportOptions.PingPong == enabled {
+		return nil
+	}
+	s.ExportOptions.PingPong = enabled
+	if s.Document == nil {
+		return nil
+	}
+	s.rebuildTimelineFrames()
+	s.InvalidateCache()
+	return s.RerenderAllFrames()
 }
 
 // SetFPS updates the target frame rate (1..60 FPS), updates per-frame delay,
@@ -263,31 +295,47 @@ func (s *Session) LoadSVGData(data []byte, filename string) error {
 	if s.FPS <= 0 {
 		s.FPS = 10
 	}
+	rawFrameCount := doc.FrameCount()
 	ApplyObjectsToDocument(doc, s.Objects, float64(max(s.TotalDurationMs, 1000))/1000.0)
 	if !s.HasManualDuration || s.TotalDurationMs <= 0 {
-		fc := doc.FrameCount()
-		if fc <= 1 && s.IsAnimated() {
-			var maxEndSec float64
-			for _, stObj := range doc.StageObjects {
-				if stObj.EndTimeSec > maxEndSec {
-					maxEndSec = stObj.EndTimeSec
+		var maxEndSec float64
+		for _, obj := range s.Objects {
+			if obj.HasDisplayWindow && obj.EndTimeSec > maxEndSec {
+				maxEndSec = obj.EndTimeSec
+			}
+			for _, act := range obj.Actions {
+				if act.EndSec > maxEndSec {
+					maxEndSec = act.EndSec
 				}
 			}
-			for _, mp := range doc.MotionPaths {
-				if mp.Config.EndSec > maxEndSec {
-					maxEndSec = mp.Config.EndSec
-				}
+		}
+		for _, stObj := range doc.StageObjects {
+			if stObj.EndTimeSec > maxEndSec {
+				maxEndSec = stObj.EndTimeSec
 			}
-			if maxEndSec > 0 {
-				s.TotalDurationMs = max(int(math.Round(maxEndSec*1000.0)), 100)
-			} else {
-				s.TotalDurationMs = 1000
+		}
+		for _, mp := range doc.MotionPaths {
+			if mp.Config.EndSec > maxEndSec {
+				maxEndSec = mp.Config.EndSec
 			}
-		} else {
+		}
+		var rawDurSec float64
+		if rawFrameCount > 1 {
+			rawDurSec = float64(rawFrameCount) / float64(s.FPS)
+		}
+		naturalSec := max(rawDurSec, maxEndSec)
+		switch {
+		case naturalSec > 0:
+			s.TotalDurationMs = max(int(math.Round(naturalSec*1000.0)), 100)
+		case s.IsAnimated():
+			fc := doc.FrameCount()
 			s.TotalDurationMs = max(int(math.Round(float64(fc)*1000.0/float64(s.FPS))), 100)
+		default:
+			s.TotalDurationMs = max(int(math.Round(float64(max(rawFrameCount, 1))*1000.0/float64(s.FPS))), 100)
 		}
 	}
 	doc.TotalDurationSec = float64(s.TotalDurationMs) / 1000.0
+	ApplyObjectsToDocument(doc, s.Objects, doc.TotalDurationSec)
 	s.rebuildTimelineFrames()
 
 	s.Pages = make([]inksvg.Page, len(doc.Pages))
@@ -451,6 +499,7 @@ func (s *Session) UpdateFrameDurations() {
 	s.cacheMu.Lock()
 	defer s.cacheMu.Unlock()
 
+	defaultDur := s.effectiveDefaultDurationMs()
 	updateList := func(frames []inksvg.RenderedFrame) {
 		frameIdx := 0
 		for _, frame := range s.Frames {
@@ -458,7 +507,7 @@ func (s *Session) UpdateFrameDurations() {
 				continue
 			}
 			if frameIdx < len(frames) {
-				eff := frame.EffectiveDuration(s.ExportOptions.DefaultDurationMs)
+				eff := frame.EffectiveDuration(defaultDur)
 				frames[frameIdx].DurationMs = eff
 				frameIdx++
 			}
@@ -535,8 +584,9 @@ func (s *Session) renderFramesForBoundary(boundaryRect inksvg.Rect) ([]inksvg.Re
 		prof.Since(tRaster, "L4 CustomBatchRasterizer call (%d frames)", len(jobs))
 		if err == nil && len(images) == len(jobs) {
 			frames := make([]inksvg.RenderedFrame, len(jobs))
+			defaultDur := s.effectiveDefaultDurationMs()
 			for i, j := range jobs {
-				dur := j.frame.EffectiveDuration(s.ExportOptions.DefaultDurationMs)
+				dur := j.frame.EffectiveDuration(defaultDur)
 				frames[j.frameIdx] = inksvg.RenderedFrame{
 					Index:      j.docFrameIdx,
 					Label:      j.frame.Label,
@@ -552,6 +602,7 @@ func (s *Session) renderFramesForBoundary(boundaryRect inksvg.Rect) ([]inksvg.Re
 	}
 
 	frames := make([]inksvg.RenderedFrame, len(jobs))
+	defaultDur := s.effectiveDefaultDurationMs()
 	err := parallel.Run(len(jobs), func(idx int) error {
 		j := jobs[idx]
 
@@ -566,7 +617,7 @@ func (s *Session) renderFramesForBoundary(boundaryRect inksvg.Rect) ([]inksvg.Re
 			return fmt.Errorf("failed to render frame %s: %w", j.frame.Label, err)
 		}
 
-		dur := j.frame.EffectiveDuration(s.ExportOptions.DefaultDurationMs)
+		dur := j.frame.EffectiveDuration(defaultDur)
 		frames[j.frameIdx] = inksvg.RenderedFrame{
 			Index:      j.docFrameIdx,
 			Label:      j.frame.Label,
@@ -827,6 +878,7 @@ func (s *Session) RenderExportFrames() ([]gif.FrameInput, error) {
 	keyframeCount := s.KeyframeCount()
 
 	frameInputs := make([]gif.FrameInput, len(jobs))
+	defaultDur := s.effectiveDefaultDurationMs()
 	err := parallel.Run(len(jobs), func(idx int) error {
 		j := jobs[idx]
 
@@ -853,7 +905,7 @@ func (s *Session) RenderExportFrames() ([]gif.FrameInput, error) {
 			finalImg = rawImg
 		}
 
-		dur := j.frame.EffectiveDuration(s.ExportOptions.DefaultDurationMs)
+		dur := j.frame.EffectiveDuration(defaultDur)
 		frameInputs[j.frameIdx] = gif.FrameInput{
 			Index:      j.docFrameIdx,
 			Label:      j.frame.Label,

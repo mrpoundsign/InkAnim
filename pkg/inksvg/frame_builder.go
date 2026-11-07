@@ -448,7 +448,7 @@ func evalMotionTiming(cfg MotionConfig, kfPos float64, maxF int, curTimeSec, tot
 	if cfg.HasTimeRange && totalDurSec > 0 {
 		startS := cfg.StartSec
 		endS := cfg.EndSec
-		if cfg.IsAll || endS <= 0 {
+		if endS <= 0 {
 			startS = 0.0
 			endS = totalDurSec
 		}

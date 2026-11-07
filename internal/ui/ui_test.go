@@ -371,9 +371,9 @@ func TestPingPongPlaybackAndExportUI(t *testing.T) {
 		t.Errorf("expected session ExportOptions.PingPong to be true")
 	}
 
-	// 3. Verify Twitch status and export button reflect 18 frames (10*2 - 2)
-	if !strings.Contains(mw.rightPanel.twitchStatusLabel.Text, "18 frames") {
-		t.Errorf("expected twitchStatusLabel to reflect 18 bounced frames, got '%s'", mw.rightPanel.twitchStatusLabel.Text)
+	// 3. Verify Twitch status and export button preserve the 10-frame (1.0s) total cycle duration
+	if !strings.Contains(mw.rightPanel.twitchStatusLabel.Text, "10 frames - 1.0s") {
+		t.Errorf("expected twitchStatusLabel to preserve 10 bounced frames (1.0s), got '%s'", mw.rightPanel.twitchStatusLabel.Text)
 	}
 
 	// 4. Test bounce playback sequence
@@ -1321,8 +1321,8 @@ func TestSidecarControlFileUI(t *testing.T) {
 	if mw2.currentPath != tmpSVG {
 		t.Errorf("expected currentPath to resolve to %q, got %q", tmpSVG, mw2.currentPath)
 	}
-	if len(mw2.session.RenderedFrames) != 30 {
-		t.Errorf("expected 30 restored frames (1.5s @ 20 FPS), got %d", len(mw2.session.RenderedFrames))
+	if len(mw2.session.RenderedFrames)*2-2 != 30 {
+		t.Errorf("expected 30 restored bounced frames (1.5s @ 20 FPS), got %d (rendered=%d)", len(mw2.session.RenderedFrames)*2-2, len(mw2.session.RenderedFrames))
 	}
 	if mw2.centerPanel.fpsSelect.Selected != "20 FPS (50ms)" {
 		t.Errorf("expected fpsSelect '20 FPS (50ms)', got %q", mw2.centerPanel.fpsSelect.Selected)
@@ -1499,6 +1499,398 @@ func TestProjectWorkflowAndLinkedSVGTree(t *testing.T) {
 	}
 	if len(mw.session.RenderedFrames) < 2 {
 		t.Errorf("expected animated frames restored from my_scene.inka, got %d", len(mw.session.RenderedFrames))
+	}
+}
+
+func TestTimelinePanelRulerScrubAndActionBars(t *testing.T) {
+	testApp := test.NewApp()
+	defer testApp.Quit()
+
+	mw := NewMainWindow(testApp)
+	defer waitForPreview(mw)
+
+	if mw.timelinePanel == nil {
+		t.Fatalf("expected mw.timelinePanel to be initialized")
+	}
+
+	testSVGPath, err := filepath.Abs("../../testdata/pendulum.svg")
+	if err != nil {
+		t.Fatalf("failed to resolve test SVG path: %v", err)
+	}
+	loadAndWait(mw, testSVGPath)
+	mw.centerPanel.Pause()
+	waitForPreview(mw)
+
+	tp := mw.timelinePanel
+
+	// 1. Verify hover timestamp & frame readout on ruler
+	tp.UpdateHover(200, 400)
+	if !strings.Contains(tp.HoverLabel.Text, "0.50s") || !strings.Contains(tp.HoverLabel.Text, "/ 10") {
+		t.Errorf("expected HoverLabel to show frame & 0.50s timestamp, got %q", tp.HoverLabel.Text)
+	}
+	rulerImg := tp.ruler.draw(400, 30)
+	if rulerImg.Bounds().Dx() != 400 || rulerImg.Bounds().Dy() != 30 {
+		t.Errorf("unexpected ruler image bounds: %v", rulerImg.Bounds())
+	}
+	tp.ClearHover()
+	if tp.HoverLabel.Text != "" {
+		t.Errorf("expected HoverLabel cleared on ClearHover(), got %q", tp.HoverLabel.Text)
+	}
+
+	// 2. Verify scrubbing via ScrubAtX updates playhead frame & timestamp readout
+	tp.ScrubAtX(280, 400) // 70% of 1.0s (10 frames) -> frame index 7 (Frame 08 / 10 • 0.70s)
+	if mw.centerPanel.CurrentFrameIndex() != 7 {
+		t.Errorf("expected ScrubAtX(280, 400) to jump to frame index 7, got %d", mw.centerPanel.CurrentFrameIndex())
+	}
+	if !strings.Contains(tp.PlayheadLabel.Text, "0.70s") {
+		t.Errorf("expected PlayheadLabel to contain '0.70s', got %q", tp.PlayheadLabel.Text)
+	}
+	if !strings.Contains(mw.centerPanel.frameLabel.Text, "0.70s") {
+		t.Errorf("expected centerPanel.frameLabel to contain '0.70s', got %q", mw.centerPanel.frameLabel.Text)
+	}
+
+	// 3. Select a group node, add a .inka time-based action, and test dragging/resizing its action bar
+	tracks := tp.CollectTracks()
+	if len(tracks) == 0 {
+		t.Fatalf("expected non-empty timeline tracks after loading pendulum.svg")
+	}
+	targetNodeID := tracks[0].NodeID
+	mw.tree.Select(targetNodeID)
+	tp.AddActionToActiveNode("rot")
+	waitForPreview(mw)
+
+	if len(tp.lanes) == 0 {
+		t.Fatalf("expected timeline track lanes to be built")
+	}
+	lane := tp.lanes[0]
+	lane.Resize(fyne.NewSize(400, timelineTrackRowHeight))
+	if len(lane.track.Config.Actions) == 0 {
+		t.Fatalf("expected action to be added to track %q", lane.track.NodeID)
+	}
+
+	// Resize right edge of the action from 1.0s (x=400) to 0.6s (x=240)
+	lane.Dragged(&fyne.DragEvent{
+		PointEvent: fyne.PointEvent{Position: fyne.NewPos(240, 16)},
+		Dragged:    fyne.Delta{DX: -158, DY: 0}, // start at x=398 (right edge grip)
+	})
+	lane.DragEnd()
+	waitForPreview(mw)
+
+	_, updatedCfg, ok := mw.resolveNodeObjectConfig(mw.editorState.NodeMap[targetNodeID])
+	if !ok || len(updatedCfg.Actions) == 0 {
+		t.Fatalf("expected updated ObjectConfig with actions in session.Objects")
+	}
+	if updatedCfg.Actions[len(updatedCfg.Actions)-1].EndSec != 0.6 {
+		t.Errorf("expected resized action EndSec == 0.6, got %g", updatedCfg.Actions[len(updatedCfg.Actions)-1].EndSec)
+	}
+
+	// Drag body of the action (0.0s..0.6s) right by +0.2s (+80px out of 400px) -> (0.2s..0.8s)
+	lane = tp.lanes[0]
+	lane.Resize(fyne.NewSize(400, timelineTrackRowHeight))
+	lane.Dragged(&fyne.DragEvent{
+		PointEvent: fyne.PointEvent{Position: fyne.NewPos(200, 16)},
+		Dragged:    fyne.Delta{DX: 80, DY: 0}, // start at x=120 (middle of 0..240 bar)
+	})
+	lane.DragEnd()
+	waitForPreview(mw)
+
+	_, movedCfg, _ := mw.resolveNodeObjectConfig(mw.editorState.NodeMap[targetNodeID])
+	lastAct := movedCfg.Actions[len(movedCfg.Actions)-1]
+	if lastAct.StartSec != 0.2 || lastAct.EndSec != 0.8 {
+		t.Errorf("expected moved action range 0.2s..0.8s, got %gs..%gs", lastAct.StartSec, lastAct.EndSec)
+	}
+
+	// Render track lane image to ensure no panics
+	laneImg := lane.draw(400, 34)
+	if laneImg.Bounds().Dx() != 400 || laneImg.Bounds().Dy() != 34 {
+		t.Errorf("unexpected lane image bounds: %v", laneImg.Bounds())
+	}
+
+	// 4. Add a second action ("scale") onto the same Stage Object and verify vertical sub-row stacking + idempotent migration
+	tp.AddActionToActiveNode("scale")
+	waitForPreview(mw)
+	lane = tp.lanes[0]
+	if len(lane.track.Config.Actions) < 2 {
+		t.Fatalf("expected at least 2 actions on track %q, got %d", lane.track.NodeID, len(lane.track.Config.Actions))
+	}
+	minSz := lane.MinSize()
+	if minSz.Height <= timelineTrackRowHeight {
+		t.Errorf("expected multi-action track MinSize().Height > %g, got %g", timelineTrackRowHeight, minSz.Height)
+	}
+	lane.Resize(fyne.NewSize(400, minSz.Height))
+	hitTop, _ := lane.hitTestAction(160, 8, 400, minSz.Height)
+	hitBottom, _ := lane.hitTestAction(160, minSz.Height-8, 400, minSz.Height)
+	if hitTop == hitBottom || hitTop < 0 || hitBottom < 0 {
+		t.Errorf("expected distinct vertical hit-test indices for stacked actions, got top=%d bottom=%d", hitTop, hitBottom)
+	}
+
+	// Verify MigrateDocumentIAMSToControlFile is idempotent and does not duplicate actions
+	countBefore := len(lane.track.Config.Actions)
+	tmpCtrl := &appkg.ControlFile{Objects: mw.session.Objects}
+	added := appkg.MigrateDocumentIAMSToControlFile(mw.session.Document, "", tp.TotalDurationSec(), tmpCtrl)
+	if added != 0 {
+		t.Errorf("expected 0 duplicate actions migrated on repeat call, got %d", added)
+	}
+	_, afterCfg, _ := mw.resolveNodeObjectConfig(mw.editorState.NodeMap[targetNodeID])
+	if len(afterCfg.Actions) != countBefore {
+		t.Errorf("expected action count to remain %d after repeat migration, got %d", countBefore, len(afterCfg.Actions))
+	}
+
+	// 5. Verify collapsible parent track rows, layer/group renaming, preset actions, and double-click modals
+	tracksBefore := tp.CollectTracks()
+	var parentID string
+	for _, tr := range tracksBefore {
+		if tr.HasChildren {
+			parentID = tr.NodeID
+			break
+		}
+	}
+	if parentID != "" {
+		tp.collapsedNodes[parentID] = true
+		tp.Refresh()
+		tracksCollapsed := tp.CollectTracks()
+		if len(tracksCollapsed) >= len(tracksBefore) {
+			t.Errorf("expected collapsing parent %q to hide child tracks: before=%d, after=%d", parentID, len(tracksBefore), len(tracksCollapsed))
+		}
+		tp.collapsedNodes[parentID] = false
+		tp.Refresh()
+	}
+
+	// Test RenameTrackNode on a non-linked-SVG layer/group track
+	var renameTargetID string
+	for _, tr := range tp.CollectTracks() {
+		if n := mw.editorState.NodeMap[tr.NodeID]; n != nil && !n.IsLinkedFile {
+			renameTargetID = tr.NodeID
+			break
+		}
+	}
+	if renameTargetID != "" {
+		if err := mw.RenameTrackNode(renameTargetID, "HeroPendulum"); err != nil {
+			t.Fatalf("RenameTrackNode(%q) failed: %v", renameTargetID, err)
+		}
+		if mw.editorState.NodeMap[renameTargetID].DisplayTitle() != "HeroPendulum" {
+			t.Errorf("expected renamed node DisplayTitle 'HeroPendulum', got %q", mw.editorState.NodeMap[renameTargetID].DisplayTitle())
+		}
+		waitForPreview(mw)
+	}
+
+	// Test adding a Preset action ("Preset: Pulse") and opening Track/Action modals via DoubleTapped
+	tp.SelectTrack(targetNodeID)
+	tp.AddActionToActiveNode("Preset: Pulse")
+	waitForPreview(mw)
+	if len(tp.lanes) > 0 {
+		tp.lanes[0].DoubleTapped(&fyne.PointEvent{Position: fyne.NewPos(160, 10)})
+	}
+	tp.ShowTrackPropertiesModal(targetNodeID)
+	tp.ShowActionEditModal(targetNodeID, 0)
+}
+
+func TestTimelinePingPongDurationReorderAndUndoRedo(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	mw := NewMainWindow(app)
+	defer waitForPreview(mw)
+
+	// 1. Verify default 512x512 preview scaling before and after NewProject()
+	if mw.session.ExportOptions.SquareSize != 512 {
+		t.Errorf("expected initial SquareSize == 512, got %d", mw.session.ExportOptions.SquareSize)
+	}
+	mw.NewProject()
+	if mw.session.ExportOptions.SquareSize != 512 {
+		t.Errorf("expected SquareSize == 512 after NewProject(), got %d", mw.session.ExportOptions.SquareSize)
+	}
+
+	testSVGPath, err := filepath.Abs("../../testdata/pendulum.svg")
+	if err != nil {
+		t.Fatalf("failed to resolve test SVG path: %v", err)
+	}
+	loadAndWait(mw, testSVGPath)
+	mw.centerPanel.Pause()
+	tp := mw.timelinePanel
+
+	// 2. Verify Ping-Pong keeps the same total duration and target cycle frame count
+	durBeforeMs := mw.session.TotalDurationMs
+	cycleBefore := tp.FrameCount()
+	mw.centerPanel.pingPongCheck.SetChecked(true)
+	waitForPreview(mw)
+	if mw.session.TotalDurationMs != durBeforeMs {
+		t.Errorf("expected Ping-Pong to preserve TotalDurationMs (%d), got %d", durBeforeMs, mw.session.TotalDurationMs)
+	}
+	if tp.FrameCount() != cycleBefore {
+		t.Errorf("expected Ping-Pong to preserve total cycle frames (%d), got %d", cycleBefore, tp.FrameCount())
+	}
+	mw.centerPanel.pingPongCheck.SetChecked(false)
+	waitForPreview(mw)
+
+	// 3. Test Studio Undo / Redo across timeline action addition
+	tracks := tp.CollectTracks()
+	if len(tracks) == 0 {
+		t.Fatalf("expected non-empty tracks")
+	}
+	targetID := tracks[0].NodeID
+	tp.SelectTrack(targetID)
+	_, cfgInit, _ := mw.resolveNodeObjectConfig(mw.editorState.NodeMap[targetID])
+	initActs := len(cfgInit.Actions)
+
+	tp.AddActionToActiveNode("fade")
+	waitForPreview(mw)
+	_, cfgAfterAdd, _ := mw.resolveNodeObjectConfig(mw.editorState.NodeMap[targetID])
+	if len(cfgAfterAdd.Actions) != initActs+1 {
+		t.Fatalf("expected %d actions after AddActionToActiveNode, got %d", initActs+1, len(cfgAfterAdd.Actions))
+	}
+
+	// Undo action addition
+	if !mw.editorState.CanUndo() {
+		t.Fatal("expected CanUndo() == true after adding timeline action")
+	}
+	_, _ = mw.editorState.Undo()
+	mw.rebuildAfterHistoryChange()
+	waitForPreview(mw)
+	_, cfgAfterUndo, _ := mw.resolveNodeObjectConfig(mw.editorState.NodeMap[targetID])
+	if len(cfgAfterUndo.Actions) != initActs {
+		t.Errorf("expected Undo to restore %d actions, got %d", initActs, len(cfgAfterUndo.Actions))
+	}
+
+	// Redo action addition
+	_, _ = mw.editorState.Redo()
+	mw.rebuildAfterHistoryChange()
+	waitForPreview(mw)
+	_, cfgAfterRedo, _ := mw.resolveNodeObjectConfig(mw.editorState.NodeMap[targetID])
+	if len(cfgAfterRedo.Actions) != initActs+1 {
+		t.Errorf("expected Redo to restore %d actions, got %d", initActs+1, len(cfgAfterRedo.Actions))
+	}
+
+	// 4. Test MoveAction reordering within a track
+	if len(cfgAfterRedo.Actions) >= 2 {
+		firstID := cfgAfterRedo.Actions[0].ID
+		secondID := cfgAfterRedo.Actions[1].ID
+		if !tp.MoveAction(targetID, 0, 1) {
+			t.Errorf("expected MoveAction(0, +1) to succeed")
+		}
+		waitForPreview(mw)
+		_, cfgReordered, _ := mw.resolveNodeObjectConfig(mw.editorState.NodeMap[targetID])
+		if cfgReordered.Actions[0].ID != secondID || cfgReordered.Actions[1].ID != firstID {
+			t.Errorf("expected actions to swap order: got [%s, %s], want [%s, %s]",
+				cfgReordered.Actions[0].ID, cfgReordered.Actions[1].ID, secondID, firstID)
+		}
+	}
+
+	// 5. Test ApplyDurationChange modes (Scale, PadEnd, PadStart)
+	baseObjects := cloneObjectsMap(mw.session.Objects)
+	oldSec := tp.TotalDurationSec()
+	newSec := oldSec * 2.0
+
+	mw.ApplyDurationChangeWithObjects(oldSec, newSec, baseObjects, DurationAdjustPadEnd, false)
+	_, cfgPadEnd, _ := mw.resolveNodeObjectConfig(mw.editorState.NodeMap[targetID])
+	if len(cfgPadEnd.Actions) > 0 && cfgPadEnd.Actions[0].EndSec != oldSec {
+		t.Errorf("expected DurationAdjustPadEnd to keep EndSec=%g, got %g", oldSec, cfgPadEnd.Actions[0].EndSec)
+	}
+
+	mw.ApplyDurationChangeWithObjects(oldSec, newSec, baseObjects, DurationAdjustPadStart, false)
+	_, cfgPadStart, _ := mw.resolveNodeObjectConfig(mw.editorState.NodeMap[targetID])
+	if len(cfgPadStart.Actions) > 0 && cfgPadStart.Actions[0].StartSec != (newSec-oldSec) {
+		t.Errorf("expected DurationAdjustPadStart to shift StartSec by %g, got %g", newSec-oldSec, cfgPadStart.Actions[0].StartSec)
+	}
+
+	mw.ApplyDurationChangeWithObjects(oldSec, newSec, baseObjects, DurationAdjustScale, true)
+	_, cfgScaled, _ := mw.resolveNodeObjectConfig(mw.editorState.NodeMap[targetID])
+	if len(cfgScaled.Actions) > 0 && cfgScaled.Actions[0].EndSec != newSec {
+		t.Errorf("expected DurationAdjustScale to scale EndSec to %g, got %g", newSec, cfgScaled.Actions[0].EndSec)
+	}
+
+	// 6. Test Track Reordering (MoveTrackNode) when a second SVG is linked
+	secondSVGPath, err := filepath.Abs("../../testdata/bouncing_walker.svg")
+	if err == nil {
+		_ = mw.AddSVGFile(secondSVGPath)
+		waitForPreview(mw)
+		rootsBefore := mw.editorState.Roots
+		if len(rootsBefore) >= 2 {
+			firstRootID := rootsBefore[0].ID
+			secondRootID := rootsBefore[1].ID
+			canUp, canDown := mw.CanMoveTrackNode(firstRootID)
+			if canUp || !canDown {
+				t.Errorf("expected first root CanMoveTrackNode == (false, true), got (%v, %v)", canUp, canDown)
+			}
+			if err := mw.MoveTrackNode(firstRootID, 1); err != nil {
+				t.Fatalf("MoveTrackNode(%q, +1) failed: %v", firstRootID, err)
+			}
+			waitForPreview(mw)
+			if mw.editorState.Roots[0].ID != secondRootID || mw.editorState.Roots[1].ID != firstRootID {
+				t.Errorf("expected roots to swap order after MoveTrackNode")
+			}
+		}
+	}
+
+	// 7. Verify importing a 30-frame (3.0s) SVG with stripIAMS=true preserves 3.0s duration and keeps right-edge grips reachable
+	mw.NewProject()
+	svg30 := []byte(`<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" viewBox="0 0 512 512">
+  <g id="layer1" inkscape:groupmode="layer" inkscape:label="Layer 1">
+    <path id="p1" d="M 10 10 L 100 10" inkscape:label="Move {f: all; r: 5}"/>
+    <circle id="c1" cx="50" cy="50" r="2" inkscape:label="Shake: Rot {f: 1-30; deg: 8; pingpong; r: 6}"/>
+  </g>
+</svg>`)
+	if _, err := mw.AddSVGDataWithOptions(svg30, "GloriousTest.svg", true); err != nil {
+		t.Fatalf("AddSVGDataWithOptions(stripIAMS=true) failed: %v", err)
+	}
+	waitForPreview(mw)
+	if tp.TotalDurationSec() != 3.0 {
+		t.Errorf("expected TotalDurationSec() == 3.0 after importing 30-frame SVG with stripIAMS=true, got %g", tp.TotalDurationSec())
+	}
+	tp.UpdateHover(400, 800)
+	if tp.Container().MinSize().Width > 800 {
+		t.Errorf("expected compact timeline MinSize().Width (<= 800) during hover, got %g", tp.Container().MinSize().Width)
+	}
+	for _, lane := range tp.lanes {
+		if len(lane.track.Config.Actions) > 0 {
+			idx, mode := lane.hitTestAction(798, 10, 800, 32)
+			if idx < 0 || mode != dragActionResizeEnd {
+				t.Errorf("expected right edge hitTestAction to return dragActionResizeEnd, got idx=%d mode=%v", idx, mode)
+			}
+		}
+	}
+
+	// 8. Verify deleting an action removes it from Document.MotionPaths (and Paths guide overlay)
+	// even when legacy IAMS was NOT stripped from the source SVG XML (stripIAMS=false).
+	mw.NewProject()
+	if _, err := mw.AddSVGDataWithOptions(svg30, "GloriousUnstripped.svg", false); err != nil {
+		t.Fatalf("AddSVGDataWithOptions(stripIAMS=false) failed: %v", err)
+	}
+	waitForPreview(mw)
+	initialMPCount := len(mw.session.Document.MotionPaths)
+	if initialMPCount != 2 {
+		t.Fatalf("expected 2 initial MotionPaths, got %d", initialMPCount)
+	}
+	var targetActID string
+	for _, cfg := range mw.session.Objects {
+		for _, act := range cfg.Actions {
+			if act.Type == "move" && act.PathD != "" {
+				targetActID = act.ID
+				break
+			}
+		}
+		if targetActID != "" {
+			break
+		}
+	}
+	if targetActID == "" {
+		t.Fatalf("expected to find a move action to delete")
+	}
+	mw.selectedActionID = targetActID
+	if !tp.DeleteSelectedAction() {
+		t.Fatalf("expected DeleteSelectedAction to return true")
+	}
+	patched := mw.editorState.ComputePatchedSVG()
+	if err := mw.session.LoadSVGData(patched, mw.currentFilename); err != nil {
+		t.Fatalf("LoadSVGData after DeleteSelectedAction failed: %v", err)
+	}
+	if len(mw.session.Document.MotionPaths) != initialMPCount-1 {
+		t.Errorf("expected %d MotionPaths after deleting action, got %d", initialMPCount-1, len(mw.session.Document.MotionPaths))
+	}
+	for _, mp := range mw.session.Document.MotionPaths {
+		if mp.ID == targetActID {
+			t.Errorf("expected deleted action %q to be absent from Document.MotionPaths", targetActID)
+		}
 	}
 }
 

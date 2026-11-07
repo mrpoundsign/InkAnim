@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
+	"math"
 	"strconv"
 	"strings"
 	"sync"
@@ -115,8 +116,10 @@ type CenterPreviewPanel struct {
 	buttonText       string
 	buttonImportance widget.Importance
 
-	onPingPongChange func()
-	onTimingChange   func()
+	onPingPongChange        func()
+	onTimingChange          func()
+	onDurationChangeRequest func(oldSec, newSec float64) bool
+	onFrameChange           func(frameIdx, totalFrames int, timeSec float64, frameDurMs int)
 
 	// Async preview build state (guarded by mu)
 	rebuildGen       int          // bumped per requested build; stale results are dropped
@@ -351,14 +354,19 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 	p.loopCheck.Checked = true
 
 	p.pingPongCheck = widget.NewCheck("Ping-Pong", func(checked bool) {
+		if p.isUpdatingTiming {
+			return
+		}
 		p.mu.Lock()
 		p.pingPong = checked
-		if p.session != nil {
-			p.session.ExportOptions.PingPong = checked
-		}
-		p.updateTimingSummaryLocked()
-		p.renderCurrentFrameLocked()
+		p.pingPongDir = 1
+		sess := p.session
 		p.mu.Unlock()
+		if sess != nil {
+			_ = sess.SetPingPong(checked)
+			p.Refresh()
+			sess.PrerenderPages()
+		}
 		if p.onPingPongChange != nil {
 			p.onPingPongChange()
 		}
@@ -424,6 +432,13 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 
 	p.durationInput = NewFloatCommitInput(1.0, 0.1, 60.0, "Duration (s):", func(sec float64) {
 		if p.isUpdatingTiming || p.session == nil {
+			return
+		}
+		oldSec := float64(max(p.session.TotalDurationMs, 100)) / 1000.0
+		if math.Abs(sec-oldSec) < 1e-4 {
+			return
+		}
+		if p.onDurationChangeRequest != nil && p.onDurationChangeRequest(oldSec, sec) {
 			return
 		}
 		_ = p.session.SetTotalDurationSec(sec)
@@ -596,6 +611,91 @@ func (p *CenterPreviewPanel) SetOnPingPongChange(fn func()) {
 // SetOnTimingChange registers a callback when animation duration or FPS changes.
 func (p *CenterPreviewPanel) SetOnTimingChange(fn func()) {
 	p.onTimingChange = fn
+}
+
+// SetOnDurationChangeRequest registers an optional interceptor invoked when the user edits Duration (s).
+// If fn returns true, the caller handles applying or canceling the duration change (e.g. via a modal).
+func (p *CenterPreviewPanel) SetOnDurationChangeRequest(fn func(oldSec, newSec float64) bool) {
+	p.onDurationChangeRequest = fn
+}
+
+// SetOnFrameChange registers a callback invoked whenever the active frame or playhead changes.
+func (p *CenterPreviewPanel) SetOnFrameChange(fn func(frameIdx, totalFrames int, timeSec float64, frameDurMs int)) {
+	p.onFrameChange = fn
+}
+
+// CurrentFrameIndex returns the currently displayed 0-based frame index.
+func (p *CenterPreviewPanel) CurrentFrameIndex() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.currentIdx
+}
+
+// ScrubToFrame pauses playback and jumps directly to the specified 0-based frame index.
+func (p *CenterPreviewPanel) ScrubToFrame(frameIdx int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	frames := p.session.RenderedFrames
+	if len(frames) == 0 {
+		return
+	}
+	p.pauseLocked()
+	if frameIdx < 0 {
+		frameIdx = 0
+	}
+	if frameIdx >= len(frames) {
+		frameIdx = len(frames) - 1
+	}
+	p.currentIdx = frameIdx
+	p.pingPongDir = 1
+	p.playStartOffset = p.timelineOffsetOfFrameLocked(p.currentIdx, 1)
+	p.renderCurrentFrameLocked()
+}
+
+// ScrubToTime pauses playback and jumps to the frame corresponding to the given timestamp in seconds.
+func (p *CenterPreviewPanel) ScrubToTime(sec float64) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	frames := p.session.RenderedFrames
+	if len(frames) == 0 {
+		return
+	}
+	p.pauseLocked()
+	totalDurSec := 1.0
+	if p.session != nil && p.session.TotalDurationMs > 0 {
+		totalDurSec = float64(p.session.TotalDurationMs) / 1000.0
+	}
+	if sec < 0 {
+		sec = 0
+	}
+	if sec > totalDurSec {
+		sec = totalDurSec
+	}
+	if p.pingPong && len(frames) >= 3 {
+		forwardTotal, cycleTotal := p.timelineDurationsLocked()
+		if cycleTotal > 0 {
+			offset := max(min(time.Duration(math.Round((sec/totalDurSec)*float64(cycleTotal))), cycleTotal-time.Millisecond), 0)
+			idx, dir, _ := p.frameAtTimelineOffsetLocked(offset, forwardTotal, cycleTotal)
+			p.currentIdx = idx
+			p.pingPongDir = dir
+			p.playStartOffset = offset
+			p.renderCurrentFrameLocked()
+			return
+		}
+	}
+	frameIdx := int((sec / totalDurSec) * float64(len(frames)))
+	if frameIdx >= len(frames) {
+		frameIdx = len(frames) - 1
+	}
+	if frameIdx < 0 {
+		frameIdx = 0
+	}
+	p.currentIdx = frameIdx
+	p.pingPongDir = 1
+	p.playStartOffset = p.timelineOffsetOfFrameLocked(p.currentIdx, 1)
+	p.renderCurrentFrameLocked()
 }
 
 // PopulateControlFile writes the preview panel's playback and viewport settings into ctrl.
@@ -779,9 +879,12 @@ func (p *CenterPreviewPanel) Refresh() {
 		p.rebuilding = false
 		p.hideProgressLocked()
 		p.clearCanvasImagesLocked()
-		p.frameLabel.SetText("Frame: 0 / 0")
+		p.frameLabel.SetText("Frame: 0 / 0 • 0.00s")
 		p.resetFPSMonitorLocked()
 		p.pauseLocked()
+		if p.onFrameChange != nil {
+			p.onFrameChange(0, 0, 0, 0)
+		}
 		return
 	}
 
@@ -1491,13 +1594,16 @@ func (p *CenterPreviewPanel) renderCurrentFrameLocked() {
 		labelPart = fmt.Sprintf(" (%s)", curr.Label)
 	}
 
+	offset := p.timelineOffsetOfFrameLocked(p.currentIdx, p.pingPongDir)
+	frameTimeSec := offset.Seconds()
+
 	kfCount := 1
 	if p.session != nil {
 		kfCount = p.session.KeyframeCount()
 	}
 	digits := len(strconv.Itoa(displayTotal))
-	p.frameLabel.SetText(fmt.Sprintf("Frame %0*d / %d (%d keyframes)%s%s",
-		digits, displayIdx+1, displayTotal, kfCount, labelPart, p.fpsWarningText))
+	p.frameLabel.SetText(fmt.Sprintf("Frame %0*d / %d • %.2fs (%d keyframes)%s%s",
+		digits, displayIdx+1, displayTotal, frameTimeSec, kfCount, labelPart, p.fpsWarningText))
 
 	cached := p.cachedFrames[p.currentIdx]
 
@@ -1544,6 +1650,9 @@ func (p *CenterPreviewPanel) renderCurrentFrameLocked() {
 	}
 
 	p.activeFrameIdx = newIdx
+	if p.onFrameChange != nil {
+		p.onFrameChange(displayIdx, displayTotal, frameTimeSec, max(curr.DurationMs, 10))
+	}
 }
 
 func scaleRGBA(src *image.RGBA, w, h int) *image.RGBA {
