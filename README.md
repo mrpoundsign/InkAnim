@@ -2,7 +2,7 @@
 
 **Multi-Platform Inkscape SVG to Animated GIF Studio**
 
-[![Web Demo](https://img.shields.io/badge/Web_Demo-WebAssembly-9146ff?style=for-the-badge&logo=webassembly&logoColor=white)](https://mrpoundsign.github.io/InkAnim/demo/)
+[![Web Demo](https://img.shields.io/badge/Web_Demo-WebAssembly-9146ff?style=for-the-badge&logo=webassembly&logoColor=white)](https://mrpoundsign.com/InkAnim/demo/)
 [![GitHub Release](https://img.shields.io/github/v/release/mrpoundsign/InkAnim?style=for-the-badge&color=22c55e)](https://github.com/mrpoundsign/InkAnim/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](LICENSE)
 
@@ -13,7 +13,7 @@ InkAnim is a cross-platform desktop studio, WebAssembly web demo, and command-li
 ## 🌐 Interactive Web Demo
 
 Test-drive InkAnim right now in your web browser with zero installation:  
-👉 **[Try InkAnim Web Demo (In-Browser)](https://mrpoundsign.github.io/InkAnim/demo/)**
+👉 **[Try InkAnim Web Demo (In-Browser)](https://mrpoundsign.com/InkAnim/demo/)**
 
 - **100% Client-Side Privacy**: Vector parsing and GIF quantization execute entirely inside your browser sandbox via WebAssembly. Your artwork never leaves your machine.
 - **In-Browser Interactive Preview**: Test sample animations, configure Twitch emote specs, inspect real-time chat scaling, and download exported GIFs directly.
