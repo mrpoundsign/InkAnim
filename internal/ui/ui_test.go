@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/test"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -2077,6 +2079,250 @@ func TestCanvasGizmoOverlayPathAndStagePlacement(t *testing.T) {
 			t.Errorf("expected PivotType=='custom' after dragging pivot crosshair, got %q", pivCfg.PivotType)
 		}
 	}
+}
+
+func TestSnapPointTo15Deg(t *testing.T) {
+	// Zero-distance check: target == origin returns target without panic or NaN
+	zx, zy := snapPointTo15Deg(50.0, 50.0, 50.0, 50.0)
+	if zx != 50.0 || zy != 50.0 {
+		t.Errorf("expected (50, 50) for zero-distance, got (%f, %f)", zx, zy)
+	}
+
+	testCases := []struct {
+		name        string
+		inputAngle  float64 // degrees
+		expectedDeg float64 // degrees
+	}{
+		{"0 deg", 0.0, 0.0},
+		{"15 deg from 21 deg", 21.0, 15.0},
+		{"30 deg from 24 deg", 24.0, 30.0},
+		{"45 deg from 39 deg", 39.0, 45.0},
+		{"90 deg from 84 deg", 84.0, 90.0},
+		{"180 deg", 180.0, 180.0},
+		{"-45 deg", -45.0, -45.0},
+		{"-90 deg", -90.0, -90.0},
+	}
+
+	const dist = 100.0
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			inRad := tc.inputAngle * math.Pi / 180.0
+			tx := dist * math.Cos(inRad)
+			ty := dist * math.Sin(inRad)
+
+			sx, sy := snapPointTo15Deg(0, 0, tx, ty)
+
+			// 1. Verify snapped angle
+			gotDeg := math.Atan2(sy, sx) * 180.0 / math.Pi
+			if math.Abs(gotDeg-tc.expectedDeg) > 1e-6 {
+				t.Errorf("angle mismatch: expected %.2f deg, got %.2f deg", tc.expectedDeg, gotDeg)
+			}
+
+			// 2. Verify Euclidean distance preservation
+			gotDist := math.Hypot(sx, sy)
+			if math.Abs(gotDist-dist) > 1e-6 {
+				t.Errorf("distance mismatch: expected %.4f, got %.4f", dist, gotDist)
+			}
+
+			// 3. Verify FormatGizmoPath does not emit -0.0
+			segs := []GizmoSegment{
+				{
+					StartX: 0.0,
+					StartY: 0.0,
+					EndX:   sx,
+					EndY:   sy,
+				},
+			}
+			pathStr := FormatGizmoPath(segs)
+			if strings.Contains(pathStr, "-0.0") {
+				t.Errorf("FormatGizmoPath emitted -0.0: %s", pathStr)
+			}
+		})
+	}
+}
+
+func TestCanvasGizmoCtrlAngleSnapping(t *testing.T) {
+	fyneApp := test.NewApp()
+	defer fyneApp.Quit()
+
+	mw := NewMainWindow(fyneApp)
+	defer func() {
+		waitForPreview(mw)
+		mw.centerPanel.Pause()
+	}()
+
+	svgPath, err := filepath.Abs(filepath.Join("..", "..", "testdata", "pendulum.svg"))
+	if err != nil {
+		t.Fatalf("failed to resolve pendulum.svg: %v", err)
+	}
+	if err := mw.AddSVGFile(svgPath); err != nil {
+		t.Fatalf("AddSVGFile failed: %v", err)
+	}
+	waitForPreview(mw)
+	mw.centerPanel.Pause()
+
+	tracks := mw.timelinePanel.CollectTracks()
+	var targetNodeID string
+	for _, tr := range tracks {
+		if n := mw.editorState.NodeMap[tr.NodeID]; n != nil && !n.IsLinkedFile {
+			targetNodeID = tr.NodeID
+			break
+		}
+	}
+	if targetNodeID == "" {
+		t.Fatalf("expected a non-linked track node")
+	}
+	mw.timelinePanel.SelectTrack(targetNodeID)
+	mw.timelinePanel.AddActionToActiveNode("Move")
+
+	gizmo := mw.centerPanel.gizmoOverlay
+	if gizmo == nil {
+		t.Fatalf("expected CenterPreviewPanel to have a gizmoOverlay")
+	}
+	gizmo.Resize(fyne.NewSize(400, 400))
+
+	svgToView, _, ok := gizmo.viewportTransform(400, 400)
+	if !ok {
+		t.Fatalf("expected viewportTransform to succeed")
+	}
+
+	_, objKey, _, _, moveIdx, moveSegs := gizmo.activeSelection()
+	if moveIdx < 0 || len(moveSegs) == 0 {
+		t.Fatalf("expected active Move action with segments")
+	}
+
+	// 1. MouseDown with Ctrl + drag End anchor (anchorIdx == 1) at ~22° offset.
+	// Snaps segment angle to 15° (within 0.5° tolerance) and preserves segment length.
+	origStart := [2]float64{moveSegs[0].StartX, moveSegs[0].StartY}
+	const targetLen = 50.0
+	const targetDeg = 22.0
+	targetRad := targetDeg * math.Pi / 180.0
+	targetEndSVGX := origStart[0] + targetLen*math.Cos(targetRad)
+	targetEndSVGY := origStart[1] + targetLen*math.Sin(targetRad)
+
+	ex, ey := svgToView(moveSegs[0].EndX, moveSegs[0].EndY)
+	tvx, tvy := svgToView(targetEndSVGX, targetEndSVGY)
+
+	gizmo.MouseDown(&desktop.MouseEvent{
+		Modifier: fyne.KeyModifierControl,
+	})
+	if !gizmo.ctrlHeld {
+		t.Errorf("expected ctrlHeld to be true after MouseDown with KeyModifierControl")
+	}
+
+	gizmo.Dragged(&fyne.DragEvent{
+		PointEvent: fyne.PointEvent{Position: fyne.NewPos(float32(tvx), float32(tvy))},
+		Dragged:    fyne.NewDelta(float32(tvx-ex), float32(tvy-ey)),
+	})
+
+	if len(gizmo.dragSegs) == 0 {
+		t.Fatalf("expected dragSegs to be populated during drag")
+	}
+	dx := gizmo.dragSegs[0].EndX - gizmo.dragSegs[0].StartX
+	dy := gizmo.dragSegs[0].EndY - gizmo.dragSegs[0].StartY
+	snappedAngle := math.Atan2(dy, dx) * 180.0 / math.Pi
+	if math.Abs(snappedAngle-15.0) > 0.5 {
+		t.Errorf("expected live drag angle snapped to 15° (within 0.5°), got %.2f°", snappedAngle)
+	}
+	snappedLen := math.Hypot(dx, dy)
+	if math.Abs(snappedLen-targetLen) > 1.0 {
+		t.Errorf("expected segment length ~%.1f preserved, got %.2f", targetLen, snappedLen)
+	}
+
+	// 2. Toggling gizmo.SetCtrlHeld(false) mid-drag unsnaps live dragSegs[0]
+	// back to ~22°, and toggling SetCtrlHeld(true) re-snaps to 15° without mouse move.
+	// DragEnd() persists the snapped 15° path.
+	gizmo.SetCtrlHeld(false)
+	dx = gizmo.dragSegs[0].EndX - gizmo.dragSegs[0].StartX
+	dy = gizmo.dragSegs[0].EndY - gizmo.dragSegs[0].StartY
+	unsnappedAngle := math.Atan2(dy, dx) * 180.0 / math.Pi
+	if math.Abs(unsnappedAngle-22.0) > 1.0 {
+		t.Errorf("expected live drag angle unsnapped to ~22° when Ctrl released, got %.2f°", unsnappedAngle)
+	}
+
+	gizmo.SetCtrlHeld(true)
+	dx = gizmo.dragSegs[0].EndX - gizmo.dragSegs[0].StartX
+	dy = gizmo.dragSegs[0].EndY - gizmo.dragSegs[0].StartY
+	reSnappedAngle := math.Atan2(dy, dx) * 180.0 / math.Pi
+	if math.Abs(reSnappedAngle-15.0) > 0.5 {
+		t.Errorf("expected live drag angle re-snapped to 15° when Ctrl re-pressed, got %.2f°", reSnappedAngle)
+	}
+
+	gizmo.DragEnd()
+	persistedCfg := mw.session.Objects[objKey]
+	persistedSegs := ParseGizmoPath(persistedCfg.Actions[moveIdx].PathD)
+	if len(persistedSegs) == 0 {
+		t.Fatalf("expected persisted segments after DragEnd")
+	}
+	pdx := persistedSegs[0].EndX - persistedSegs[0].StartX
+	pdy := persistedSegs[0].EndY - persistedSegs[0].StartY
+	persistedAngle := math.Atan2(pdy, pdx) * 180.0 / math.Pi
+	if math.Abs(persistedAngle-15.0) > 0.5 {
+		t.Errorf("expected persisted path angle ~15°, got %.2f°", persistedAngle)
+	}
+
+	// 3. Dragging Start anchor (anchorIdx == 0) with SetCtrlHeld(true)
+	// snaps relative to (segs[0].EndX, segs[0].EndY) (e.g. 38° -> 45°).
+	_, _, _, _, _, curSegs := gizmo.activeSelection()
+	refEndX, refEndY := curSegs[0].EndX, curSegs[0].EndY
+	currStartX, currStartY := curSegs[0].StartX, curSegs[0].StartY
+	const startTestLen = 60.0
+	const startTargetDeg = 38.0
+	startTargetRad := startTargetDeg * math.Pi / 180.0
+	targetStartSVGX := refEndX + startTestLen*math.Cos(startTargetRad)
+	targetStartSVGY := refEndY + startTestLen*math.Sin(startTargetRad)
+
+	startVX, startVY := svgToView(currStartX, currStartY)
+	tstartVX, tstartVY := svgToView(targetStartSVGX, targetStartSVGY)
+
+	gizmo.MouseDown(&desktop.MouseEvent{Modifier: fyne.KeyModifierControl})
+	gizmo.Dragged(&fyne.DragEvent{
+		PointEvent: fyne.PointEvent{Position: fyne.NewPos(float32(tstartVX), float32(tstartVY))},
+		Dragged:    fyne.NewDelta(float32(tstartVX-startVX), float32(tstartVY-startVY)),
+	})
+	if gizmo.dragMode != gizmoDragPathAnchor || gizmo.dragSegIdx != 0 {
+		t.Fatalf("expected dragMode == gizmoDragPathAnchor, segIdx == 0, got mode=%v, idx=%d", gizmo.dragMode, gizmo.dragSegIdx)
+	}
+
+	sDX := gizmo.dragSegs[0].StartX - refEndX
+	sDY := gizmo.dragSegs[0].StartY - refEndY
+	startSnappedAngle := math.Atan2(sDY, sDX) * 180.0 / math.Pi
+	if math.Abs(startSnappedAngle-45.0) > 0.5 {
+		t.Errorf("expected Start anchor snapped relative to End vertex at 45° (from 38°), got %.2f°", startSnappedAngle)
+	}
+	gizmo.DragEnd()
+
+	// 4. Dragging Ctrl1 Bézier handle with SetCtrlHeld(true) does NOT snap to 15°
+	// (remains at non-multiple angle like ~22°).
+	_, _, _, _, _, handleSegs := gizmo.activeSelection()
+	c1StartX, c1StartY := handleSegs[0].StartX, handleSegs[0].StartY
+	c1OrigX, c1OrigY := handleSegs[0].Ctrl1X, handleSegs[0].Ctrl1Y
+
+	const c1Dist = 40.0
+	const c1AngleDeg = 22.0
+	c1Rad := c1AngleDeg * math.Pi / 180.0
+	targetC1SVGX := c1StartX + c1Dist*math.Cos(c1Rad)
+	targetC1SVGY := c1StartY + c1Dist*math.Sin(c1Rad)
+
+	c1VX, c1VY := svgToView(c1OrigX, c1OrigY)
+	tc1VX, tc1VY := svgToView(targetC1SVGX, targetC1SVGY)
+
+	gizmo.MouseDown(&desktop.MouseEvent{Modifier: fyne.KeyModifierControl})
+	gizmo.Dragged(&fyne.DragEvent{
+		PointEvent: fyne.PointEvent{Position: fyne.NewPos(float32(tc1VX), float32(tc1VY))},
+		Dragged:    fyne.NewDelta(float32(tc1VX-c1VX), float32(tc1VY-c1VY)),
+	})
+	if gizmo.dragMode != gizmoDragPathCtrl1 {
+		t.Fatalf("expected dragMode == gizmoDragPathCtrl1, got %v", gizmo.dragMode)
+	}
+
+	c1DX := gizmo.dragSegs[0].Ctrl1X - c1StartX
+	c1DY := gizmo.dragSegs[0].Ctrl1Y - c1StartY
+	c1GotAngle := math.Atan2(c1DY, c1DX) * 180.0 / math.Pi
+	if math.Abs(c1GotAngle-c1AngleDeg) > 1.0 {
+		t.Errorf("expected Ctrl1 handle to NOT angle snap (remain ~%.1f°), got %.2f°", c1AngleDeg, c1GotAngle)
+	}
+	gizmo.DragEnd()
 }
 
 func TestMultiTrackMoveGizmoAnimatesElements(t *testing.T) {

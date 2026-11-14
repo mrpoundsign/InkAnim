@@ -272,14 +272,21 @@ func FormatGizmoPath(segs []GizmoSegment) string {
 	if len(segs) == 0 {
 		return ""
 	}
+	clean := func(v float64) float64 {
+		r := math.Round(v*10) / 10
+		if math.Abs(r) < 1e-9 {
+			return 0
+		}
+		return r
+	}
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "M %.1f %.1f", segs[0].StartX, segs[0].StartY)
+	fmt.Fprintf(&sb, "M %.1f %.1f", clean(segs[0].StartX), clean(segs[0].StartY))
 	for _, seg := range segs {
 		if seg.IsCurve {
 			fmt.Fprintf(&sb, " C %.1f %.1f %.1f %.1f %.1f %.1f",
-				seg.Ctrl1X, seg.Ctrl1Y, seg.Ctrl2X, seg.Ctrl2Y, seg.EndX, seg.EndY)
+				clean(seg.Ctrl1X), clean(seg.Ctrl1Y), clean(seg.Ctrl2X), clean(seg.Ctrl2Y), clean(seg.EndX), clean(seg.EndY))
 		} else {
-			fmt.Fprintf(&sb, " L %.1f %.1f", seg.EndX, seg.EndY)
+			fmt.Fprintf(&sb, " L %.1f %.1f", clean(seg.EndX), clean(seg.EndY))
 		}
 	}
 	return sb.String()
@@ -324,6 +331,35 @@ func tokenizeSVGPath(d string) []string {
 	return tokens
 }
 
+// snapPointTo15Deg constrains (targetX, targetY) to the nearest 15-degree ray originating
+// from (originX, originY), preserving the Euclidean distance between origin and target.
+func snapPointTo15Deg(originX, originY, targetX, targetY float64) (float64, float64) {
+	dx := targetX - originX
+	dy := targetY - originY
+	dist := math.Hypot(dx, dy)
+	if dist < 1e-6 {
+		return targetX, targetY
+	}
+	snappedDeg := math.Round((math.Atan2(dy, dx)*180.0/math.Pi)/15.0) * 15.0
+	rad := snappedDeg * math.Pi / 180.0
+	c, s := math.Cos(rad), math.Sin(rad)
+	if math.Abs(c) < 1e-12 {
+		c = 0
+	}
+	if math.Abs(s) < 1e-12 {
+		s = 0
+	}
+	resX := originX + dist*c
+	resY := originY + dist*s
+	if math.Abs(resX) < 1e-12 {
+		resX = 0
+	}
+	if math.Abs(resY) < 1e-12 {
+		resY = 0
+	}
+	return resX, resY
+}
+
 type gizmoDragMode int
 
 const (
@@ -350,7 +386,38 @@ type CanvasGizmoOverlay struct {
 	dragStartSVG [2]float64
 	dragInitPos  [2]float64
 	dragSegs     []GizmoSegment
+	dragOrigSegs []GizmoSegment
+	lastDragPos  fyne.Position
+	hasLastDrag  bool
+	ctrlHeld     bool
 	dragDirty    bool
+}
+
+var _ desktop.Mouseable = (*CanvasGizmoOverlay)(nil)
+
+// MouseDown syncs the Ctrl modifier state at click/drag start (also self-healing if key-up occurred unfocused).
+func (g *CanvasGizmoOverlay) MouseDown(ev *desktop.MouseEvent) {
+	if ev != nil {
+		g.ctrlHeld = (ev.Modifier & fyne.KeyModifierControl) != 0
+	}
+}
+
+// MouseUp syncs the Ctrl modifier state on button release.
+func (g *CanvasGizmoOverlay) MouseUp(ev *desktop.MouseEvent) {
+	if ev != nil {
+		g.ctrlHeld = (ev.Modifier & fyne.KeyModifierControl) != 0
+	}
+}
+
+// SetCtrlHeld updates live Ctrl angle-snapping state and immediately re-evaluates an active path-anchor drag.
+func (g *CanvasGizmoOverlay) SetCtrlHeld(held bool) {
+	if g.ctrlHeld == held {
+		return
+	}
+	g.ctrlHeld = held
+	if g.dragMode == gizmoDragPathAnchor && g.hasLastDrag {
+		g.applyDragAtPosition(g.lastDragPos)
+	}
 }
 
 // NewCanvasGizmoOverlay creates an interactive canvas gizmo overlay bound to mw.
@@ -768,7 +835,6 @@ func (g *CanvasGizmoOverlay) Dragged(ev *fyne.DragEvent) {
 	if !ok {
 		return
 	}
-	curSVGX, curSVGY := viewToSVG(float64(ev.Position.X), float64(ev.Position.Y))
 
 	if g.dragMode == gizmoDragNone {
 		startPos := fyne.NewPos(ev.Position.X-ev.Dragged.DX, ev.Position.Y-ev.Dragged.DY)
@@ -793,10 +859,23 @@ func (g *CanvasGizmoOverlay) Dragged(ev *fyne.DragEvent) {
 			_, pivX, pivY, _ := g.resolveObjectBoundsAndPivot(nodeID, objCfg)
 			g.dragInitPos = [2]float64{pivX, pivY}
 		case gizmoDragPathAnchor, gizmoDragPathCtrl1, gizmoDragPathCtrl2:
-			g.dragSegs = make([]GizmoSegment, len(moveSegs))
-			copy(g.dragSegs, moveSegs)
+			g.dragSegs = slices.Clone(moveSegs)
+			g.dragOrigSegs = slices.Clone(moveSegs)
 		}
 	}
+
+	g.lastDragPos = ev.Position
+	g.hasLastDrag = true
+	g.applyDragAtPosition(ev.Position)
+}
+
+func (g *CanvasGizmoOverlay) applyDragAtPosition(pos fyne.Position) {
+	sz := g.Size()
+	_, viewToSVG, ok := g.viewportTransform(float64(sz.Width), float64(sz.Height))
+	if !ok {
+		return
+	}
+	curSVGX, curSVGY := viewToSVG(float64(pos.X), float64(pos.Y))
 
 	switch g.dragMode {
 	case gizmoDragStagePos:
@@ -814,30 +893,52 @@ func (g *CanvasGizmoOverlay) Dragged(ev *fyne.DragEvent) {
 		g.raster.Refresh()
 
 	case gizmoDragPathAnchor:
-		if len(g.dragSegs) == 0 {
+		if len(g.dragSegs) == 0 || len(g.dragOrigSegs) == 0 {
 			return
 		}
 		anchorIdx := g.dragSegIdx
 		if anchorIdx == 0 {
-			dx := curSVGX - g.dragSegs[0].StartX
-			dy := curSVGY - g.dragSegs[0].StartY
+			if g.ctrlHeld {
+				curSVGX, curSVGY = snapPointTo15Deg(g.dragSegs[0].EndX, g.dragSegs[0].EndY, curSVGX, curSVGY)
+				curSVGX = math.Round(curSVGX*10) / 10
+				curSVGY = math.Round(curSVGY*10) / 10
+				if math.Abs(curSVGX) < 1e-9 {
+					curSVGX = 0
+				}
+				if math.Abs(curSVGY) < 1e-9 {
+					curSVGY = 0
+				}
+			}
+			totalDX := curSVGX - g.dragOrigSegs[0].StartX
+			totalDY := curSVGY - g.dragOrigSegs[0].StartY
 			g.dragSegs[0].StartX = curSVGX
 			g.dragSegs[0].StartY = curSVGY
 			if g.dragSegs[0].IsCurve {
-				g.dragSegs[0].Ctrl1X = math.Round((g.dragSegs[0].Ctrl1X+dx)*10) / 10
-				g.dragSegs[0].Ctrl1Y = math.Round((g.dragSegs[0].Ctrl1Y+dy)*10) / 10
+				g.dragSegs[0].Ctrl1X = math.Round((g.dragOrigSegs[0].Ctrl1X+totalDX)*10) / 10
+				g.dragSegs[0].Ctrl1Y = math.Round((g.dragOrigSegs[0].Ctrl1Y+totalDY)*10) / 10
 			} else {
 				syncStraightLineControls(&g.dragSegs[0])
 			}
 		} else if anchorIdx >= 1 && anchorIdx <= len(g.dragSegs) {
 			prevSeg := &g.dragSegs[anchorIdx-1]
-			dx := curSVGX - prevSeg.EndX
-			dy := curSVGY - prevSeg.EndY
+			if g.ctrlHeld {
+				curSVGX, curSVGY = snapPointTo15Deg(prevSeg.StartX, prevSeg.StartY, curSVGX, curSVGY)
+				curSVGX = math.Round(curSVGX*10) / 10
+				curSVGY = math.Round(curSVGY*10) / 10
+				if math.Abs(curSVGX) < 1e-9 {
+					curSVGX = 0
+				}
+				if math.Abs(curSVGY) < 1e-9 {
+					curSVGY = 0
+				}
+			}
+			totalDX := curSVGX - g.dragOrigSegs[anchorIdx-1].EndX
+			totalDY := curSVGY - g.dragOrigSegs[anchorIdx-1].EndY
 			prevSeg.EndX = curSVGX
 			prevSeg.EndY = curSVGY
 			if prevSeg.IsCurve {
-				prevSeg.Ctrl2X = math.Round((prevSeg.Ctrl2X+dx)*10) / 10
-				prevSeg.Ctrl2Y = math.Round((prevSeg.Ctrl2Y+dy)*10) / 10
+				prevSeg.Ctrl2X = math.Round((g.dragOrigSegs[anchorIdx-1].Ctrl2X+totalDX)*10) / 10
+				prevSeg.Ctrl2Y = math.Round((g.dragOrigSegs[anchorIdx-1].Ctrl2Y+totalDY)*10) / 10
 			} else {
 				syncStraightLineControls(prevSeg)
 			}
@@ -846,8 +947,8 @@ func (g *CanvasGizmoOverlay) Dragged(ev *fyne.DragEvent) {
 				nextSeg.StartX = curSVGX
 				nextSeg.StartY = curSVGY
 				if nextSeg.IsCurve {
-					nextSeg.Ctrl1X = math.Round((nextSeg.Ctrl1X+dx)*10) / 10
-					nextSeg.Ctrl1Y = math.Round((nextSeg.Ctrl1Y+dy)*10) / 10
+					nextSeg.Ctrl1X = math.Round((g.dragOrigSegs[anchorIdx].Ctrl1X+totalDX)*10) / 10
+					nextSeg.Ctrl1Y = math.Round((g.dragOrigSegs[anchorIdx].Ctrl1Y+totalDY)*10) / 10
 				} else {
 					syncStraightLineControls(nextSeg)
 				}
@@ -894,6 +995,8 @@ func (g *CanvasGizmoOverlay) DragEnd() {
 	g.dragMode = gizmoDragNone
 	g.dragSegIdx = -1
 	g.dragSegs = nil
+	g.dragOrigSegs = nil
+	g.hasLastDrag = false
 	g.dragDirty = false
 
 	if !dirty || g.mw == nil || g.mw.session == nil || g.mw.timelinePanel == nil {
