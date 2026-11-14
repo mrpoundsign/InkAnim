@@ -1,11 +1,8 @@
-//go:build !wasm && !js
-
 package ui
 
 import (
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -16,35 +13,11 @@ import (
 	"inkanim/internal/app"
 )
 
-func (mw *MainWindow) initPlatform() {}
-
 func (mw *MainWindow) promptSaveSVG() {
 	mw.promptSaveSVGWithCallback(nil)
 }
 
 func (mw *MainWindow) promptSaveSVGWithCallback(onSaved func()) {
-	if mw.isExtMode {
-		if mw.editorState == nil {
-			return
-		}
-		if mw.currentPath != "" {
-			data := mw.editorState.ComputePatchedSVG()
-			if err := os.WriteFile(mw.currentPath, data, 0644); err != nil {
-				dialog.ShowError(err, mw.window)
-				return
-			}
-			mw.editorState.MarkClean()
-			mw.updateStatus()
-			mw.updateFileLabel()
-			if onSaved != nil {
-				onSaved()
-			}
-			return
-		}
-		mw.promptSaveSVGAsWithCallback(onSaved)
-		return
-	}
-
 	targetInka := mw.projectPath
 	if targetInka == "" && mw.currentPath != "" {
 		targetInka = app.SidecarPathForSVG(mw.currentPath)
@@ -67,60 +40,6 @@ func (mw *MainWindow) promptSaveSVGAs() {
 }
 
 func (mw *MainWindow) promptSaveSVGAsWithCallback(onSaved func()) {
-	if mw.isExtMode {
-		if mw.editorState == nil {
-			return
-		}
-		go func() {
-			defaultName := mw.currentFilename
-			if defaultName == "" {
-				defaultName = "animated.svg"
-			}
-			filename, err := zenity.SelectFileSave(
-				zenity.Title("Save Inkscape SVG"),
-				zenity.Filename(defaultName),
-				zenity.FileFilter{
-					Name:     "Inkscape SVG (*.svg)",
-					Patterns: []string{"*.svg"},
-				},
-				zenity.ConfirmOverwrite(),
-			)
-			if err != nil {
-				if errors.Is(err, zenity.ErrCanceled) {
-					return
-				}
-				fyne.Do(func() {
-					dialog.ShowError(err, mw.window)
-				})
-				return
-			}
-			if filename == "" {
-				return
-			}
-			data := mw.editorState.ComputePatchedSVG()
-			if err := os.WriteFile(filename, data, 0644); err != nil {
-				fyne.Do(func() {
-					dialog.ShowError(err, mw.window)
-				})
-				return
-			}
-			fyne.Do(func() {
-				mw.currentPath = filename
-				mw.currentFilename = filepath.Base(filename)
-				mw.editorState.InputPath = filename
-				mw.editorState.MarkClean()
-				mw.fileWatcher.watchFile(filename)
-				mw.showReloadButton(mw.reloadBtn)
-				mw.updateStatus()
-				mw.updateFileLabel()
-				if onSaved != nil {
-					onSaved()
-				}
-			})
-		}()
-		return
-	}
-
 	go func() {
 		defaultName := "project.inka"
 		if mw.projectPath != "" {

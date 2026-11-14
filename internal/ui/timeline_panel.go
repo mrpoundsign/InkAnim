@@ -103,9 +103,6 @@ func NewTimelinePanel(mw *MainWindow) *TimelinePanel {
 	tp.StripIAMSCheck = widget.NewCheck("Strip IAMS", func(checked bool) {
 		if tp.mw != nil {
 			tp.mw.stripIAMSOnImport = checked
-			if tp.mw.stripIAMSCheck != nil && tp.mw.stripIAMSCheck.Checked != checked {
-				tp.mw.stripIAMSCheck.SetChecked(checked)
-			}
 		}
 	})
 
@@ -455,12 +452,10 @@ func (tp *TimelinePanel) SelectTrack(nodeID string) {
 	}
 	if node, ok := tp.mw.editorState.NodeMap[nodeID]; ok {
 		tp.mw.editorState.ActiveNode = node
-		if tp.mw.tree != nil {
-			tp.mw.tree.Select(nodeID)
+		if tp.mw.updateUndoRedo != nil {
+			tp.mw.updateUndoRedo()
 		}
-		if tp.mw.refreshInspectorFn != nil {
-			tp.mw.refreshInspectorFn()
-		}
+		tp.mw.updateStatus()
 		if tp.mw.centerPanel != nil {
 			tp.mw.centerPanel.RefreshGizmos()
 		}
@@ -940,12 +935,6 @@ func (tp *TimelinePanel) AddActionToActiveNode(actionType string) {
 		tp.mw.selectedActionID = newActs[len(newActs)-1].ID
 	}
 	tp.mw.RecordStudioChange("Add timeline action: " + actionType)
-	if tp.mw.refreshTreeFn != nil {
-		tp.mw.refreshTreeFn()
-	}
-	if tp.mw.refreshInspectorFn != nil {
-		tp.mw.refreshInspectorFn()
-	}
 	tp.Refresh()
 	if tp.mw.centerPanel != nil {
 		tp.mw.centerPanel.RefreshGizmos()
@@ -1163,12 +1152,6 @@ func (tp *TimelinePanel) ShowTrackPropertiesModal(nodeID string) {
 				app.ApplyObjectsToDocument(tp.mw.session.Document, tp.mw.session.Objects, durSec)
 			}
 		}
-		if tp.mw.refreshTreeFn != nil {
-			tp.mw.refreshTreeFn()
-		}
-		if tp.mw.refreshInspectorFn != nil {
-			tp.mw.refreshInspectorFn()
-		}
 		tp.Refresh()
 		if tp.mw.centerPanel != nil {
 			tp.mw.centerPanel.RefreshGizmos()
@@ -1287,12 +1270,6 @@ func (tp *TimelinePanel) ShowTrackPropertiesModal(nodeID string) {
 			tp.mw.RecordStudioChange("Update track properties: " + node.DisplayTitle())
 		}
 
-		if tp.mw.refreshTreeFn != nil {
-			tp.mw.refreshTreeFn()
-		}
-		if tp.mw.refreshInspectorFn != nil {
-			tp.mw.refreshInspectorFn()
-		}
 		tp.Refresh()
 		if tp.mw.centerPanel != nil {
 			tp.mw.centerPanel.RefreshGizmos()
@@ -1561,12 +1538,6 @@ func (tp *TimelinePanel) ShowActionEditModal(nodeID string, actionIdx int) {
 		}
 		liveModified = false
 		tp.mw.consolidateNodeObjectConfig(node.ID, objKey, origObjCfg)
-		if tp.mw.refreshTreeFn != nil {
-			tp.mw.refreshTreeFn()
-		}
-		if tp.mw.refreshInspectorFn != nil {
-			tp.mw.refreshInspectorFn()
-		}
 		tp.Refresh()
 		if tp.mw.centerPanel != nil {
 			tp.mw.centerPanel.RefreshGizmos()
@@ -1845,12 +1816,6 @@ func (tp *TimelinePanel) CommitTrackConfig(nodeID, objKey string, cfg app.Object
 	cfg.Actions = slices.Clone(cfg.Actions)
 	tp.mw.consolidateNodeObjectConfig(nodeID, objKey, cfg)
 	tp.mw.RecordStudioChange("Update timeline track")
-	if tp.mw.refreshTreeFn != nil {
-		tp.mw.refreshTreeFn()
-	}
-	if tp.mw.refreshInspectorFn != nil {
-		tp.mw.refreshInspectorFn()
-	}
 	if tp.mw.centerPanel != nil {
 		tp.mw.centerPanel.RefreshGizmos()
 	}

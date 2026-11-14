@@ -1,6 +1,12 @@
-name: Deploy GitHub Pages Redirect
+name: Deploy GitHub Pages
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'web/**'
+      - '.github/workflows/pages.yml'
   workflow_dispatch:
 
 permissions:
@@ -10,41 +16,28 @@ permissions:
 
 concurrency:
   group: "pages"
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   build:
-    name: Build Redirect Artifact
+    name: Assemble Static Site
     runs-on: ubuntu-latest
     steps:
-      - name: Create Redirect Page
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Build Static Site Artifact
         run: |
-          mkdir -p build/redirect
-          cat << 'EOF' > build/redirect/index.html
-          <!DOCTYPE html>
-          <html>
-          <head>
-              <meta charset="UTF-8">
-              <meta http-equiv="refresh" content="0; url=https://inkanim.poundsigndesign.com/" />
-              <title>InkAnim is moving...</title>
-              <style>
-                  body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background-color: #0d1117; color: #c9d1d9; margin: 0; }
-                  a { color: #58a6ff; text-decoration: none; }
-                  a:hover { text-decoration: underline; }
-              </style>
-          </head>
-          <body>
-              <h1>InkAnim is moving!</h1>
-              <p>We've migrated to a new high-performance WebAssembly host.</p>
-              <p>If you are not redirected automatically, <a href="https://inkanim.poundsigndesign.com/">click here</a>.</p>
-          </body>
-          </html>
-          EOF
+          mkdir -p build/web/samples
+          cp -r web/landing/* build/web/
+          if [ -d web/samples ] && [ -n "$(ls -A web/samples)" ]; then
+            cp -r web/samples/* build/web/samples/
+          fi
 
       - name: Upload Pages Artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: build/redirect
+          path: build/web
 
   deploy:
     name: Deploy to GitHub Pages

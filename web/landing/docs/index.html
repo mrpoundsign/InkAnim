@@ -36,8 +36,8 @@
           <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
           GitHub
         </a>
-        <a href="../demo/" class="btn btn-primary">
-          <span>⚡ Try Web Demo</span>
+        <a href="../#downloads" class="btn btn-primary">
+          <span>Download Studio</span>
         </a>
       </div>
     </div>
@@ -473,7 +473,7 @@ Color {f:1-60 angle:-45 r:4 target:stroke}</code></pre>
       <section id="sample" class="docs-section">
         <h2>🌟 Live Example: The Star Swirl</h2>
         <p>
-          Below is a complete, working example built in Inkscape and exported directly via <code>inkanim-cli</code>:
+          Below is a complete, working example built in Inkscape and exported directly in InkAnim Desktop Studio:
         </p>
 
         <div class="sample-showcase">
@@ -484,12 +484,8 @@ Color {f:1-60 angle:-45 r:4 target:stroke}</code></pre>
           <div class="sample-details">
             <h3 style="color: #fff; font-size: 1.25rem;">Star Swirl (Twitch Emote Ready)</h3>
             <p style="font-size: 0.95rem; color: var(--text-muted); margin-bottom: 12px;">
-              Authored in Inkscape using a single 5-pointed star and an inward spiral path labeled <code>Move {f:1-20}</code>. Exported in seconds with <code>inkanim-cli</code>:
+              Authored in Inkscape using a single 5-pointed star and an inward spiral path labeled <code>Move {f:1-20}</code>. Open or link the SVG in InkAnim Studio to scrub the timeline, inspect Twitch chat scales, and export in one click.
             </p>
-            <div class="code-card" style="margin: 12px 0;">
-              <div class="code-header"><span>CLI Export Command</span><span>PowerShell / Bash</span></div>
-              <pre class="code-content" style="padding: 10px 14px; font-size: 0.88rem;"><code>inkanim-cli -i star_swirl.svg -o star_swirl.gif</code></pre>
-            </div>
             <div class="sample-actions">
               <a href="../samples/star_swirl.svg" download="star_swirl.svg" class="btn btn-secondary" style="font-size: 0.85rem; padding: 8px 14px;">
                 📥 Download star_swirl.svg
@@ -497,8 +493,8 @@ Color {f:1-60 angle:-45 r:4 target:stroke}</code></pre>
               <a href="img/star_swirl.gif" download="star_swirl.gif" class="btn btn-secondary" style="font-size: 0.85rem; padding: 8px 14px;">
                 📥 Download star_swirl.gif
               </a>
-              <a href="../demo/" class="btn btn-primary" style="font-size: 0.85rem; padding: 8px 14px;">
-                ⚡ Open in Web Demo
+              <a href="../#downloads" class="btn btn-primary" style="font-size: 0.85rem; padding: 8px 14px;">
+                ⬇ Download Studio
               </a>
             </div>
           </div>
@@ -530,84 +526,6 @@ Color {f:1-60 angle:-45 r:4 target:stroke}</code></pre>
           <li><strong>Color Quantization & Dithering</strong>: Select your palette depth (2 to 256 colors) and toggle Bayer 8×8 dithering for smooth color gradients.</li>
           <li><strong>Size Validator</strong>: InkAnim automatically verifies that the output GIF complies with Twitch's 1.0 MB file size limit.</li>
         </ul>
-
-        <h3>3. Batch Export via CLI</h3>
-        <p>
-          If you have multiple SVGs or prefer headless automation, you can also use the standalone <code>inkanim-cli</code> executable:
-        </p>
-        <div class="code-card">
-          <div class="code-header"><span>Headless Export Command</span><span>Terminal</span></div>
-          <pre class="code-content"><code>inkanim-cli -i character.svg -o emote.gif -square -size 512 -fps 10</code></pre>
-        </div>
-
-        <div class="docs-table-wrapper" style="margin-top: 16px;">
-          <table class="docs-table">
-            <thead>
-              <tr>
-                <th>Flag</th>
-                <th>Default</th>
-                <th>Description</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td><code>-i &lt;file&gt;</code></td>
-                <td><em>(required)</em></td>
-                <td>Input Inkscape SVG file path.</td>
-              </tr>
-              <tr>
-                <td><code>-o &lt;file&gt;</code></td>
-                <td><code>&lt;input&gt;.gif</code></td>
-                <td>Output animated GIF file path.</td>
-              </tr>
-              <tr>
-                <td><code>-square</code></td>
-                <td><code>true</code></td>
-                <td>Pad graphic with transparent margin to guarantee a 1:1 square canvas (Twitch standard).</td>
-              </tr>
-              <tr>
-                <td><code>-size &lt;px&gt;</code></td>
-                <td><code>0</code> (auto)</td>
-                <td>Target square dimension (e.g. <code>512</code> for Twitch, <code>128</code> for Discord, max <code>4096</code>).</td>
-              </tr>
-              <tr>
-                <td><code>-width &lt;px&gt;</code>, <code>-height &lt;px&gt;</code></td>
-                <td><code>0</code></td>
-                <td>Custom target dimensions when <code>-square=false</code>.</td>
-              </tr>
-              <tr>
-                <td><code>-fps &lt;num&gt;</code></td>
-                <td><code>10</code></td>
-                <td>Playback frame rate / speed in frames per second.</td>
-              </tr>
-              <tr>
-                <td><code>-colors &lt;2-256&gt;</code></td>
-                <td><code>256</code></td>
-                <td>Maximum palette colors for quantization (2 to 256).</td>
-              </tr>
-              <tr>
-                <td><code>-dither</code></td>
-                <td><code>false</code></td>
-                <td>Apply ordered Bayer 8×8 dithering for smooth color gradients.</td>
-              </tr>
-              <tr>
-                <td><code>-pingpong</code></td>
-                <td><code>false</code></td>
-                <td>Enable ping-pong loop (forward then reverse bounce).</td>
-              </tr>
-              <tr>
-                <td><code>-check-twitch</code></td>
-                <td><code>true</code></td>
-                <td>Validate output against Twitch animated emote specifications (&lt; 1 MB).</td>
-              </tr>
-              <tr>
-                <td><code>-v</code></td>
-                <td><code>false</code></td>
-                <td>Print version and build information.</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
       </section>
     </article>
   </main>

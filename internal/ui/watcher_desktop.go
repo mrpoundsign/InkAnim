@@ -1,11 +1,8 @@
-//go:build !wasm && !js
-
 package ui
 
 import (
 	"log"
 
-	"fyne.io/fyne/v2/widget"
 	"github.com/fsnotify/fsnotify"
 )
 
@@ -50,14 +47,6 @@ func (fw *fileWatcher) watch() {
 	}
 }
 
-func (fw *fileWatcher) watchFile(path string) {
-	if path == "" {
-		fw.watchFiles(nil)
-		return
-	}
-	fw.watchFiles([]string{path})
-}
-
 func (fw *fileWatcher) watchFiles(paths []string) {
 	if fw.watcher == nil {
 		return
@@ -79,8 +68,4 @@ func (fw *fileWatcher) close() {
 	if fw != nil && fw.watcher != nil {
 		_ = fw.watcher.Close()
 	}
-}
-
-func (mw *MainWindow) showReloadButton(btn *widget.Button) {
-	btn.Show()
 }

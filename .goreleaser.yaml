@@ -7,38 +7,7 @@ before:
     - go mod tidy
 
 builds:
-  - id: inkanim-cli
-    main: ./cmd/inkanim-cli
-    binary: inkanim-cli
-    env:
-      - CGO_ENABLED=0
-    goos:
-      - linux
-      - windows
-      - darwin
-    goarch:
-      - amd64
-      - arm64
-    ldflags:
-      - -s -w
-      - -X main.version={{.Version}}
-      - -X main.commit={{.Commit}}
-      - -X main.date={{.Date}}
-
-archives:
-  - id: inkanim-cli
-    name_template: "inkanim-cli_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    formats:
-      - tar.gz
-    format_overrides:
-      - goos: windows
-        formats:
-          - zip
-    files:
-      - README.md
-      - DESIGN.md
-      - LICENSE
-      - testdata/pendulum.svg
+  - skip: true
 
 checksum:
   name_template: "checksums.txt"

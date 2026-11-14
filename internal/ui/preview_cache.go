@@ -26,24 +26,6 @@ type previewSnapshot struct {
 // progressFunc reports build progress. total == 0 means the stage is indeterminate.
 type progressFunc func(stage string, done, total int)
 
-// yieldInterval bounds how long the build runs between yields to the browser.
-const yieldInterval = 16 * time.Millisecond
-
-// yielder lets a long CPU-bound build hand control back to the host event loop.
-// On js/wasm this is what lets progress repaint and input stay responsive.
-type yielder struct{ last time.Time }
-
-func (y *yielder) maybe() {
-	if time.Since(y.last) >= yieldInterval {
-		y.force()
-	}
-}
-
-func (y *yielder) force() {
-	yieldToHost()
-	y.last = time.Now()
-}
-
 func (p *CenterPreviewPanel) snapshotLocked() previewSnapshot {
 	frames := p.session.RenderedFrames
 	s := previewSnapshot{
@@ -73,7 +55,6 @@ func buildPreviewCache(s previewSnapshot, progress progressFunc) []cachedPreview
 	if n == 0 {
 		return out
 	}
-	y := &yielder{last: time.Now()}
 
 	displayImgs := make([]*image.RGBA, n)
 	for i, img := range s.images {
@@ -83,7 +64,6 @@ func buildPreviewCache(s previewSnapshot, progress progressFunc) []cachedPreview
 		if s.exportSquare {
 			displayImgs[i] = gif.MakeSquare(img, 0)
 			progress("Preparing frames", i+1, n)
-			y.maybe()
 		} else {
 			displayImgs[i] = img
 		}
@@ -101,13 +81,11 @@ func buildPreviewCache(s previewSnapshot, progress progressFunc) []cachedPreview
 		}
 
 		progress("Building palette…", 0, 0)
-		y.force()
 		tPal := time.Now()
 		palette := gif.GeneratePalette(displayImgs, numColors, alphaThreshold)
 		prof.Since(tPal, "L6a GeneratePalette (%d frames)", n)
 
 		progress("Quantizing colors…", 0, 0)
-		y.force()
 		tQuant := time.Now()
 		palettedList, _ := gif.QuantizeFrames(displayImgs, palette, alphaThreshold, s.dither)
 		prof.Since(tQuant, "L6b QuantizeFrames (%d frames, dither=%v)", n, s.dither)
@@ -118,7 +96,6 @@ func buildPreviewCache(s previewSnapshot, progress progressFunc) []cachedPreview
 				displayImgs[i] = gif.PalettedToRGBA(pal)
 			}
 			progress("Applying palette", i+1, len(palettedList))
-			y.maybe()
 		}
 		prof.Since(tPalToRGBA, "L6c PalettedToRGBA (%d frames)", len(palettedList))
 	}
@@ -168,7 +145,6 @@ func buildPreviewCache(s previewSnapshot, progress progressFunc) []cachedPreview
 			twitch28:      scaleRGBA(twitchDisplayImg, 28, 28),
 		}
 		progress("Building previews", i+1, n)
-		y.maybe()
 	}
 	prof.Since(tPreviews, "L6d crop, guides & Twitch thumbnails (%d frames)", n)
 	prof.Since(tTotal, "L6 buildPreviewCache total (%d frames)", n)
