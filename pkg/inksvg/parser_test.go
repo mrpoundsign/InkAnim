@@ -478,7 +478,7 @@ func TestFrameEffectiveDurationAndDocumentHelpers(t *testing.T) {
 	if nilDoc.CloneWithoutMotionLines() != nil {
 		t.Errorf("expected nilDoc.CloneWithoutMotionLines() == nil")
 	}
-	if r := nilDoc.GetElementRect("any"); r.Width != 512 || r.Height != 512 {
+	if r := nilDoc.GetElementRect("any"); r.Width != 0 || r.Height != 0 {
 		t.Errorf("unexpected nilDoc.GetElementRect: %+v", r)
 	}
 	if r := nilDoc.GetDrawingRect(); r.Width != 512 || r.Height != 512 {

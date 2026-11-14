@@ -240,20 +240,11 @@ func (s *EditorState) CanDeleteElement(nodeID string) (bool, string) {
 	if node == nil {
 		return false, "Element not found"
 	}
+	if node.IsLinkedFile {
+		return false, "Use Unlink SVG to remove a linked artwork file"
+	}
 	if node.SyntheticID {
 		return false, "Cannot delete element without an SVG id attribute"
-	}
-	if node.IsGroup || node.IsLayer {
-		childCount, err := svgpatch.ChildElementCount(s.SVGData, node.ID)
-		if err != nil {
-			return false, err.Error()
-		}
-		if childCount > 0 {
-			if childCount == 1 {
-				return false, "Group contains 1 element — empty it in Inkscape first"
-			}
-			return false, fmt.Sprintf("Group contains %d elements — empty it in Inkscape first", childCount)
-		}
 	}
 	return true, ""
 }

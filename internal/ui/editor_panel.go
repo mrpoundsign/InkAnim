@@ -3,6 +3,7 @@ package ui
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -212,17 +213,9 @@ func setupLayersAndMotionTab(mw *MainWindow) fyne.CanvasObject {
 		if state == nil || state.ActiveNode == nil {
 			return
 		}
-		nodeID := state.ActiveNode.ID
-		canDelete, _ := state.CanDeleteElement(nodeID)
-		if !canDelete {
-			return
-		}
-		if err := state.DeleteElement(nodeID); err != nil {
+		if err := mw.DeleteTrackNode(state.ActiveNode.ID); err != nil {
 			mw.statusLabel.SetText("Delete error: " + err.Error())
-			return
 		}
-		mw.lastHistoryMsg = ""
-		mw.rebuildAfterHistoryChange()
 	}
 
 	// 2. Keyboard Shortcuts on Window Canvas
@@ -291,7 +284,11 @@ func setupLayersAndMotionTab(mw *MainWindow) fyne.CanvasObject {
 		tagLabel := widget.NewLabel(fmt.Sprintf("ID: %s • Tag: <%s>", node.ID, node.Tag))
 
 		canDelete, deleteReason := state.CanDeleteElement(node.ID)
-		deleteBtn := widget.NewButtonWithIcon("Delete", theme.DeleteIcon(), mw.doDeleteActiveElement)
+		deleteBtn := widget.NewButtonWithIcon("Delete", theme.DeleteIcon(), func() {
+			if err := mw.DeleteTrackNode(node.ID); err != nil {
+				mw.statusLabel.SetText("Delete error: " + err.Error())
+			}
+		})
 		deleteBtn.Importance = widget.DangerImportance
 		if !canDelete {
 			deleteBtn.Disable()
@@ -535,7 +532,7 @@ func setupLayersAndMotionTab(mw *MainWindow) fyne.CanvasObject {
 		)
 
 		inspectorItems := []fyne.CanvasObject{headerBox}
-		if !mw.isExtMode && (node.IsLinkedFile || node.IsLayer || node.IsGroup) {
+		if !mw.isExtMode && (node.IsLinkedFile || node.IsLayer || node.IsGroup || doctree.IsDrawableLeafTag(node.Tag)) {
 			inspectorItems = append(inspectorItems,
 				mw.buildStagePropertiesCard(node),
 				widget.NewSeparator(),
@@ -653,8 +650,18 @@ func setupLayersAndMotionTab(mw *MainWindow) fyne.CanvasObject {
 				displayText = "Layer: " + displayText
 			case node.IsGroup:
 				displayText = "Group: " + displayText
+			case !mw.isExtMode && node.Tag == "text":
+				displayText = "Text: " + displayText
+			case !mw.isExtMode && node.Tag == "image":
+				displayText = "Image: " + displayText
+			case !mw.isExtMode:
+				displayText = "Shape: " + displayText
 			default:
 				displayText = "<" + node.Tag + "> " + displayText
+			}
+			isEmptyLayer := !mw.isExtMode && node.IsLayer && !node.HasDrawableContent
+			if isEmptyLayer {
+				displayText += " (empty)"
 			}
 
 			_, objCfg, hasObjCfg := mw.resolveNodeObjectConfig(node)
@@ -683,7 +690,7 @@ func setupLayersAndMotionTab(mw *MainWindow) fyne.CanvasObject {
 
 			txt.TextStyle = fyne.TextStyle{
 				Bold:   hasDirectives,
-				Italic: isModified,
+				Italic: isModified || (!mw.isExtMode && !node.HasDrawableContent && !hasDirectives),
 			}
 
 			txt.Text = displayText
@@ -692,6 +699,8 @@ func setupLayersAndMotionTab(mw *MainWindow) fyne.CanvasObject {
 				txt.Color = theme.Color(theme.ColorNameWarning)
 			case hasDirectives:
 				txt.Color = theme.Color(theme.ColorNamePrimary)
+			case !mw.isExtMode && !node.HasDrawableContent:
+				txt.Color = theme.Color(theme.ColorNameDisabled)
 			default:
 				txt.Color = theme.Color(theme.ColorNameForeground)
 			}
@@ -787,6 +796,9 @@ func (mw *MainWindow) rebuildAfterHistoryChange() {
 	if mw.timelinePanel != nil {
 		mw.timelinePanel.Refresh()
 	}
+	if mw.centerPanel != nil {
+		mw.centerPanel.RefreshGizmos()
+	}
 	mw.schedulePreviewUpdate()
 	mw.updateStatus()
 	mw.updateFileLabel()
@@ -805,41 +817,62 @@ func (mw *MainWindow) schedulePreviewUpdate() {
 	mw.previewGen++
 	gen := mw.previewGen
 	mw.previewTimer = time.AfterFunc(200*time.Millisecond, func() {
-		mw.previewMu.Lock()
-		if mw.closed || mw.editorState == nil || mw.session == nil || mw.previewGen != gen {
-			mw.previewMu.Unlock()
-			return
-		}
-		state := mw.editorState
-		sess := mw.session
-		filename := mw.currentFilename
-		mw.previewMu.Unlock()
-
-		patched := state.ComputePatchedSVG()
-		if err := sess.LoadSVGData(patched, filename); err != nil {
-			return
-		}
-
-		dispatchUI(func() {
-			mw.previewMu.Lock()
-			if mw.closed || mw.previewGen != gen {
-				mw.previewMu.Unlock()
-				return
-			}
-			mw.previewMu.Unlock()
-
-			if mw.centerPanel != nil {
-				mw.centerPanel.Refresh()
-				if len(sess.RenderedFrames) > 1 && !mw.centerPanel.IsPlaying() {
-					mw.centerPanel.Play()
-				}
-			}
-			if mw.rightPanel != nil {
-				mw.rightPanel.Refresh()
-			}
-		})
+		mw.runPreviewUpdateForGen(gen)
 	})
 	mw.previewMu.Unlock()
+}
+
+func (mw *MainWindow) flushPreviewUpdate() {
+	mw.previewMu.Lock()
+	if mw.closed || mw.previewTimer == nil {
+		mw.previewMu.Unlock()
+		return
+	}
+	mw.previewTimer.Stop()
+	mw.previewTimer = nil
+	gen := mw.previewGen
+	mw.previewMu.Unlock()
+	mw.runPreviewUpdateForGen(gen)
+}
+
+func (mw *MainWindow) runPreviewUpdateForGen(gen int) {
+	mw.previewMu.Lock()
+	if mw.closed || mw.editorState == nil || mw.session == nil || mw.previewGen != gen {
+		mw.previewMu.Unlock()
+		return
+	}
+	mw.previewTimer = nil
+	state := mw.editorState
+	sess := mw.session
+	filename := mw.currentFilename
+	mw.previewMu.Unlock()
+
+	patched := state.ComputePatchedSVG()
+	if err := sess.LoadSVGData(patched, filename); err != nil {
+		return
+	}
+
+	dispatchUI(func() {
+		mw.previewMu.Lock()
+		if mw.closed || mw.previewGen != gen {
+			mw.previewMu.Unlock()
+			return
+		}
+		mw.previewMu.Unlock()
+
+		if mw.centerPanel != nil {
+			mw.centerPanel.Refresh()
+			if len(sess.RenderedFrames) > 1 && !mw.centerPanel.IsPlaying() {
+				mw.centerPanel.Play()
+			}
+		}
+		if mw.timelinePanel != nil {
+			mw.timelinePanel.refreshGuidesOnly()
+		}
+		if mw.rightPanel != nil {
+			mw.rightPanel.Refresh()
+		}
+	})
 }
 
 func (mw *MainWindow) isVisibleTreeNode(n *doctree.DocNode) bool {
@@ -849,7 +882,19 @@ func (mw *MainWindow) isVisibleTreeNode(n *doctree.DocNode) bool {
 	if mw.isExtMode {
 		return true
 	}
-	return n.IsLinkedFile || n.IsLayer || n.IsGroup
+	if _, cfg, ok := mw.resolveNodeObjectConfig(n); ok && (len(cfg.Actions) > 0 || cfg.HasDisplayWindow || cfg.OverrideStartPos) {
+		return true
+	}
+	if n.IsHidden {
+		return false
+	}
+	if n.IsLinkedFile || n.IsLayer {
+		return true
+	}
+	if !n.HasDrawableContent {
+		return false
+	}
+	return n.IsGroup || doctree.IsDrawableLeafTag(n.Tag)
 }
 
 func (mw *MainWindow) resolveNodeObjectConfig(n *doctree.DocNode) (string, app.ObjectConfig, bool) {
@@ -859,15 +904,52 @@ func (mw *MainWindow) resolveNodeObjectConfig(n *doctree.DocNode) (string, app.O
 	if cfg, ok := mw.session.Objects[n.ID]; ok {
 		return n.ID, cfg, true
 	}
-	for k, cfg := range mw.session.Objects {
+	keys := slices.Sorted(maps.Keys(mw.session.Objects))
+	for _, k := range keys {
+		cfg := mw.session.Objects[k]
 		if cfg.FallbackXMLID == n.ID {
 			return k, cfg, true
+		}
+	}
+	if n.Label != "" {
+		if n.SourceID != "" {
+			cand := n.SourceID + "/" + n.Label
+			if cfg, ok := mw.session.Objects[cand]; ok && (cfg.FallbackXMLID == "" || cfg.FallbackXMLID == n.ID) {
+				return cand, cfg, true
+			}
+		}
+		if cfg, ok := mw.session.Objects[n.Label]; ok && (cfg.FallbackXMLID == "" || cfg.FallbackXMLID == n.ID) {
+			return n.Label, cfg, true
 		}
 	}
 	return n.ID, app.ObjectConfig{
 		SourceID:      n.SourceID,
 		FallbackXMLID: n.ID,
 	}, false
+}
+
+func (mw *MainWindow) consolidateNodeObjectConfig(nodeID, keepKey string, cfg app.ObjectConfig) {
+	if mw.session == nil {
+		return
+	}
+	if mw.session.Objects == nil {
+		mw.session.Objects = make(map[string]app.ObjectConfig)
+	}
+	if keepKey == "" {
+		keepKey = nodeID
+	}
+	cfg.FallbackXMLID = nodeID
+	for k, existing := range mw.session.Objects {
+		if k != keepKey && existing.FallbackXMLID == nodeID {
+			delete(mw.session.Objects, k)
+		}
+	}
+	mw.session.Objects[keepKey] = cfg
+	if mw.session.Document != nil {
+		durSec := float64(max(mw.session.TotalDurationMs, 100)) / 1000.0
+		mw.session.Document.TotalDurationSec = durSec
+		app.ApplyObjectsToDocument(mw.session.Document, mw.session.Objects, durSec)
+	}
 }
 
 // RenameTrackNode renames a Layer or Group in the document tree, updates its inkscape:label
@@ -1047,6 +1129,89 @@ func (mw *MainWindow) MoveTrackNode(nodeID string, delta int) error {
 	return nil
 }
 
+// DeleteTrackNode removes the specified Layer, Group, or SVG element and all of its
+// descendants from EditorState, rawSourceBytes, and .inka session.Objects with Undo/Redo support.
+func (mw *MainWindow) DeleteTrackNode(nodeID string) error {
+	if mw.editorState == nil {
+		return errors.New("no active document")
+	}
+	canDelete, reason := mw.editorState.CanDeleteElement(nodeID)
+	if !canDelete {
+		return errors.New(reason)
+	}
+	node := mw.editorState.NodeMap[nodeID]
+	if node == nil {
+		return fmt.Errorf("object %q not found", nodeID)
+	}
+
+	if !mw.isExtMode {
+		var deletedNodes []*doctree.DocNode
+		deletedIDs := make(map[string]bool)
+		var collectSubtree func(n *doctree.DocNode)
+		collectSubtree = func(n *doctree.DocNode) {
+			if n == nil || deletedIDs[n.ID] {
+				return
+			}
+			deletedIDs[n.ID] = true
+			deletedNodes = append(deletedNodes, n)
+			for _, child := range n.Children {
+				collectSubtree(child)
+			}
+		}
+		collectSubtree(node)
+
+		if mw.session != nil && mw.session.Objects != nil {
+			for _, delNode := range deletedNodes {
+				if objKey, objCfg, hasCfg := mw.resolveNodeObjectConfig(delNode); hasCfg {
+					for _, act := range objCfg.Actions {
+						if mw.selectedActionID == act.ID {
+							mw.selectedActionID = ""
+						}
+					}
+					delete(mw.session.Objects, objKey)
+				}
+			}
+			for _, k := range slices.Sorted(maps.Keys(mw.session.Objects)) {
+				cfg := mw.session.Objects[k]
+				if deletedIDs[k] || deletedIDs[cfg.FallbackXMLID] {
+					for _, act := range cfg.Actions {
+						if mw.selectedActionID == act.ID {
+							mw.selectedActionID = ""
+						}
+					}
+					delete(mw.session.Objects, k)
+				}
+			}
+		}
+
+		if !node.IsLinkedFile && node.SourceID != "" && mw.rawSourceBytes != nil {
+			if raw, ok := mw.rawSourceBytes[node.SourceID]; ok && len(raw) > 0 {
+				origID := strings.TrimPrefix(node.ID, node.SourceID+"__")
+				if patchedRaw, rawErr := svgpatch.RemoveElement(raw, origID); rawErr == nil {
+					mw.rawSourceBytes[node.SourceID] = patchedRaw
+				}
+			}
+		}
+
+		mw.projectDirty = true
+		mw.bindEditorStateStudioHooks(mw.editorState, false)
+	}
+
+	if err := mw.editorState.DeleteElement(nodeID); err != nil {
+		return err
+	}
+
+	if !mw.isExtMode && mw.session != nil && mw.session.Document != nil {
+		durSec := float64(max(mw.session.TotalDurationMs, 100)) / 1000.0
+		mw.session.Document.TotalDurationSec = durSec
+		app.ApplyObjectsToDocument(mw.session.Document, mw.session.Objects, durSec)
+	}
+
+	mw.lastHistoryMsg = ""
+	mw.rebuildAfterHistoryChange()
+	return nil
+}
+
 func (mw *MainWindow) buildStagePropertiesCard(node *doctree.DocNode) fyne.CanvasObject {
 	if mw.session.Objects == nil {
 		mw.session.Objects = make(map[string]app.ObjectConfig)
@@ -1059,7 +1224,7 @@ func (mw *MainWindow) buildStagePropertiesCard(node *doctree.DocNode) fyne.Canva
 	saveStageObj := func() {
 		objCfg.SourceID = node.SourceID
 		objCfg.FallbackXMLID = node.ID
-		mw.session.Objects[objKey] = objCfg
+		mw.consolidateNodeObjectConfig(node.ID, objKey, objCfg)
 		mw.projectDirty = true
 		mw.updateStatus()
 		mw.updateFileLabel()
@@ -1068,6 +1233,9 @@ func (mw *MainWindow) buildStagePropertiesCard(node *doctree.DocNode) fyne.Canva
 		}
 		if mw.timelinePanel != nil {
 			mw.timelinePanel.Refresh()
+		}
+		if mw.centerPanel != nil {
+			mw.centerPanel.RefreshGizmos()
 		}
 		mw.schedulePreviewUpdate()
 	}
@@ -1097,6 +1265,17 @@ func (mw *MainWindow) buildStagePropertiesCard(node *doctree.DocNode) fyne.Canva
 	}
 
 	items = append(items, widget.NewLabelWithStyle("Stage Placement & Display Timing", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}))
+
+	isEmptyNode := !node.HasDrawableContent
+	if isEmptyNode {
+		emptyHint := widget.NewLabelWithStyle(
+			"Note: This layer currently has no drawable artwork in the SVG; actions and placement configured here will take effect once shapes are added to it.",
+			fyne.TextAlignLeading,
+			fyne.TextStyle{Italic: true},
+		)
+		emptyHint.Wrapping = fyne.TextWrapWord
+		items = append(items, emptyHint)
+	}
 
 	// 1. Start Position Override
 	startXEntry := newEditorCommitEntry(

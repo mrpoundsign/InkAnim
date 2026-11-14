@@ -279,10 +279,10 @@ func (d *SVGDocument) CloneWithoutMotionLines() *SVGDocument {
 }
 
 // GetElementRect returns the bounding rectangle of the specified element by ID,
-// falling back to GetDrawingRect if the element is not found or has empty bounds.
+// or an empty Rect{} if the element is not found or has no drawable geometry.
 func (d *SVGDocument) GetElementRect(id string) Rect {
-	if d == nil {
-		return Rect{X: 0, Y: 0, Width: 512, Height: 512}
+	if d == nil || id == "" {
+		return Rect{}
 	}
 	d.mu.RLock()
 	if d.ElementRects != nil {
@@ -293,17 +293,14 @@ func (d *SVGDocument) GetElementRect(id string) Rect {
 	}
 	d.mu.RUnlock()
 
-	r, ok := ComputeElementRect(d.RawContent, id)
-	if ok && (r.Width > 0 || r.Height > 0) {
-		d.mu.Lock()
-		if d.ElementRects == nil {
-			d.ElementRects = make(map[string]Rect)
-		}
-		d.ElementRects[id] = r
-		d.mu.Unlock()
-		return r
+	r, _ := ComputeElementRect(d.RawContent, id)
+	d.mu.Lock()
+	if d.ElementRects == nil {
+		d.ElementRects = make(map[string]Rect)
 	}
-	return d.GetDrawingRect()
+	d.ElementRects[id] = r
+	d.mu.Unlock()
+	return r
 }
 
 // GetDrawingRect returns the bounding rectangle of all rendered paths/elements in the SVG,

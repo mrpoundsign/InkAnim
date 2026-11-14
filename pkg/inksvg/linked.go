@@ -146,9 +146,18 @@ func isMotionShapeElement(localName string) bool {
 	}
 }
 
+func isDrawableLeafElement(localName string) bool {
+	switch localName {
+	case "path", "circle", "rect", "ellipse", "line", "polygon", "polyline", "text", "image", "use":
+		return true
+	default:
+		return false
+	}
+}
+
 // ExtractGroupHierarchy scans an SVG document and returns metadata for all <g> groups and layers,
 // along with a lookup table mapping object keys ("src_1/Hero/LeftArm", "Hero/LeftArm", or XML ID)
-// to the target <g>'s XML ID in the document.
+// to the target element's XML ID in the document (including both <g> groups and drawable leaf shapes).
 func ExtractGroupHierarchy(svgData []byte) ([]GroupMetadata, map[string]string) {
 	var groups []GroupMetadata
 	lookup := make(map[string]string)
@@ -166,6 +175,34 @@ func ExtractGroupHierarchy(svgData []byte) ([]GroupMetadata, map[string]string) 
 	decoder := xml.NewDecoder(bytes.NewReader(svgData))
 	var stack []stackEntry
 
+	registerLookup := func(id, objectKey, labelPath, cleanLabel, activeSourceID string) {
+		if id == "" {
+			return
+		}
+		lookup[id] = id
+		if objectKey != "" {
+			if _, exists := lookup[objectKey]; !exists {
+				lookup[objectKey] = id
+			}
+		}
+		if labelPath != "" {
+			if _, exists := lookup[labelPath]; !exists {
+				lookup[labelPath] = id
+			}
+		}
+		if cleanLabel != "" {
+			if _, exists := lookup[cleanLabel]; !exists {
+				lookup[cleanLabel] = id
+			}
+			if activeSourceID != "" {
+				shortKey := activeSourceID + "/" + cleanLabel
+				if _, exists := lookup[shortKey]; !exists {
+					lookup[shortKey] = id
+				}
+			}
+		}
+	}
+
 	for {
 		tok, err := decoder.Token()
 		if err != nil {
@@ -174,9 +211,18 @@ func ExtractGroupHierarchy(svgData []byte) ([]GroupMetadata, map[string]string) 
 
 		switch elem := tok.(type) {
 		case xml.StartElement:
-			if elem.Name.Local != "g" {
+			switch elem.Name.Local {
+			case "defs", "clipPath", "mask", "marker", "pattern", "filter", "linearGradient", "radialGradient", "namedview", "metadata", "style", "script":
+				_ = decoder.Skip()
 				continue
 			}
+
+			isGroup := elem.Name.Local == "g"
+			isLeaf := isDrawableLeafElement(elem.Name.Local)
+			if !isGroup && !isLeaf {
+				continue
+			}
+
 			var id, rawLabel, groupMode, sourceIDAttr string
 			for _, attr := range elem.Attr {
 				switch attr.Name.Local {
@@ -188,6 +234,17 @@ func ExtractGroupHierarchy(svgData []byte) ([]GroupMetadata, map[string]string) 
 					groupMode = attr.Value
 				case "data-inka-source":
 					sourceIDAttr = attr.Value
+				}
+			}
+
+			if isLeaf {
+				if id == "" || id == "inkanim_page_background" || strings.HasSuffix(id, "_stroke") {
+					continue
+				}
+				if strings.Contains(rawLabel, "{") {
+					if _, ok := parseMotionConfig(rawLabel); ok {
+						continue
+					}
 				}
 			}
 
@@ -207,12 +264,14 @@ func ExtractGroupHierarchy(svgData []byte) ([]GroupMetadata, map[string]string) 
 				parentID = stack[len(stack)-1].xmlID
 			}
 
-			stack = append(stack, stackEntry{
-				xmlID:      id,
-				cleanLabel: cleanLabel,
-				isSource:   isSourceRoot,
-				sourceID:   activeSourceID,
-			})
+			if isGroup {
+				stack = append(stack, stackEntry{
+					xmlID:      id,
+					cleanLabel: cleanLabel,
+					isSource:   isSourceRoot,
+					sourceID:   activeSourceID,
+				})
+			}
 
 			var pathParts []string
 			for _, s := range stack {
@@ -222,6 +281,9 @@ func ExtractGroupHierarchy(svgData []byte) ([]GroupMetadata, map[string]string) 
 				if s.cleanLabel != "" {
 					pathParts = append(pathParts, s.cleanLabel)
 				}
+			}
+			if isLeaf && cleanLabel != "" {
+				pathParts = append(pathParts, cleanLabel)
 			}
 			labelPath := strings.Join(pathParts, "/")
 			objectKey := labelPath
@@ -233,42 +295,21 @@ func ExtractGroupHierarchy(svgData []byte) ([]GroupMetadata, map[string]string) 
 				}
 			}
 
-			meta := GroupMetadata{
-				XMLID:      id,
-				SourceID:   activeSourceID,
-				CleanLabel: cleanLabel,
-				RawLabel:   rawLabel,
-				LabelPath:  labelPath,
-				ObjectKey:  objectKey,
-				IsLayer:    groupMode == "layer",
-				ParentID:   parentID,
+			if isGroup {
+				meta := GroupMetadata{
+					XMLID:      id,
+					SourceID:   activeSourceID,
+					CleanLabel: cleanLabel,
+					RawLabel:   rawLabel,
+					LabelPath:  labelPath,
+					ObjectKey:  objectKey,
+					IsLayer:    groupMode == "layer",
+					ParentID:   parentID,
+				}
+				groups = append(groups, meta)
 			}
-			groups = append(groups, meta)
 
-			if id != "" {
-				lookup[id] = id
-				if objectKey != "" {
-					if _, exists := lookup[objectKey]; !exists {
-						lookup[objectKey] = id
-					}
-				}
-				if labelPath != "" {
-					if _, exists := lookup[labelPath]; !exists {
-						lookup[labelPath] = id
-					}
-				}
-				if cleanLabel != "" {
-					if _, exists := lookup[cleanLabel]; !exists {
-						lookup[cleanLabel] = id
-					}
-					if activeSourceID != "" {
-						shortKey := activeSourceID + "/" + cleanLabel
-						if _, exists := lookup[shortKey]; !exists {
-							lookup[shortKey] = id
-						}
-					}
-				}
-			}
+			registerLookup(id, objectKey, labelPath, cleanLabel, activeSourceID)
 
 		case xml.EndElement:
 			if elem.Name.Local == "g" && len(stack) > 0 {
@@ -289,21 +330,14 @@ func ComposeLinkedSVGs(sources []LinkedSource) ([]byte, error) {
 		return nil, errors.New("no linked SVG sources provided")
 	}
 
-	// Preprocess all sources first
-	preprocessed := make([][]byte, len(sources))
-	for i, src := range sources {
+	for _, src := range sources {
 		if len(src.RawSVG) == 0 {
 			return nil, fmt.Errorf("linked SVG source %q is empty", src.Name)
 		}
-		p, err := PreprocessSVG(src.RawSVG)
-		if err != nil {
-			p = src.RawSVG
-		}
-		preprocessed[i] = p
 	}
 
 	// Parse first source to extract root <svg> attributes and namedview/pages
-	firstTpl, err := parseTimelineTemplate(preprocessed[0])
+	firstTpl, err := parseTimelineTemplate(sources[0].RawSVG)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse primary linked SVG %q: %w", sources[0].Name, err)
 	}
@@ -354,7 +388,7 @@ func ComposeLinkedSVGs(sources []LinkedSource) ([]byte, error) {
 			prefix = srcID + "__"
 		}
 
-		defs, body, extractErr := splitAndPrefixSourceTokens(preprocessed[i], prefix, i == 0)
+		defs, body, extractErr := splitAndPrefixSourceTokens(src.RawSVG, prefix, i == 0)
 		if extractErr != nil {
 			return nil, fmt.Errorf("failed to process linked SVG %q: %w", name, extractErr)
 		}
