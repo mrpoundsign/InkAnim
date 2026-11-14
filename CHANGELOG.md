@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2026-11-13
+
+### Added
+- **Windows Guided Setup Installer** (`InkAnim_v0.6.1_windows_amd64_setup.exe`): Native setup wizard with custom install path, Start Menu/Desktop shortcuts, Windows Add/Remove Programs uninstaller, and an optional Starter Sample SVG (`pendulum.svg`) (#11).
+- **SHA-256 Verified In-App Self-Updater**: Startup and Help → About update checks powered by `appinstaller` with cryptographic SHA-256 verification and one-click updates for both installed and portable builds.
+- **Windows Executable Icons & Metadata**: Embedded InkAnim icon, GUI manifest, and version metadata on both `inkanim.exe` and `InkAnim-Setup.exe`.
+
+### Packaging
+- **macOS App Bundle**: `InkAnim.app` packaged cleanly inside `InkAnim_v0.6.1_darwin_all.zip`.
+
 ## [0.6.0] - 2026-11-13
 
 ### Added
