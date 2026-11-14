@@ -1,15 +1,18 @@
 package ui
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"strings"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
+	"github.com/mrpoundsign/appinstaller/pkg/updater"
 
 	"inkanim/assets"
 	"inkanim/internal/app"
@@ -115,17 +118,22 @@ func ShowAboutDialog(parent fyne.Window, currentVersion string, onClosed ...func
 	updateStatus := widget.NewLabel("")
 	updateStatus.Wrapping = fyne.TextWrapWord
 
-	viewReleaseBtn := widget.NewButton("View Release on GitHub", nil)
-	viewReleaseBtn.Importance = widget.HighImportance
-	viewReleaseBtn.Hide()
+	updateNowBtn := widget.NewButton("Update Now...", nil)
+	updateNowBtn.Importance = widget.HighImportance
+	updateNowBtn.Hide()
 
 	var checkBtn *widget.Button
 	checkBtn = widget.NewButton("Check for Updates", func() {
 		checkBtn.Disable()
 		updateStatus.SetText("Checking for updates...")
-		viewReleaseBtn.Hide()
+		updateNowBtn.Hide()
 
-		app.CheckForUpdateAsync(currentVersion, nil, func(res *app.UpdateResult, err error) {
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
+			checker := updater.NewChecker("mrpoundsign", "InkAnim")
+			rel, isNewer, err := checker.CheckLatest(ctx, currentVersion)
 			fyne.Do(func() {
 				if err != nil {
 					updateStatus.SetText(fmt.Sprintf("Update check failed: %v", err))
@@ -133,25 +141,23 @@ func ShowAboutDialog(parent fyne.Window, currentVersion string, onClosed ...func
 					return
 				}
 
-				if res.IsOutdated {
-					updateStatus.SetText(fmt.Sprintf("New version %s is available!", res.LatestVersion))
-					releaseURL := res.ReleaseURL
-					viewReleaseBtn.OnTapped = func() {
-						if parsed, err := url.Parse(releaseURL); err == nil {
-							_ = fyne.CurrentApp().OpenURL(parsed)
-						}
+				if isNewer && rel != nil {
+					updateStatus.SetText(fmt.Sprintf("New version v%s is available!", rel.Version))
+					updateNowBtn.SetText(fmt.Sprintf("Update to v%s...", rel.Version))
+					updateNowBtn.OnTapped = func() {
+						showSelfUpdateDialog(parent, currentVersion, rel, checker)
 					}
-					viewReleaseBtn.Show()
+					updateNowBtn.Show()
 				} else {
-					updateStatus.SetText(fmt.Sprintf("InkAnim is up to date (%s).", res.LatestVersion))
+					updateStatus.SetText(fmt.Sprintf("InkAnim is up to date (v%s).", updater.NormalizeVersion(currentVersion)))
 				}
 				checkBtn.Enable()
 			})
-		})
+		}()
 	})
 
 	updateSection := container.NewVBox(
-		container.NewHBox(checkBtn, viewReleaseBtn),
+		container.NewHBox(checkBtn, updateNowBtn),
 		updateStatus,
 	)
 

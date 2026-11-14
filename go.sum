@@ -1,5 +1,5 @@
-fyne.io/fyne/v2 v2.8.1 h1:EztGuE2W3Qhd0cWVmU+h5rkzNezUD1To6UqsoLQYUIM=
-fyne.io/fyne/v2 v2.8.1/go.mod h1:kpeuFrClm0fiAgJYr2soTfwKMT5rzNcSKzmgGjxvHOY=
+fyne.io/fyne/v2 v2.8.2 h1:gYNJj+ZEPd2wF3M8SlF5iL6febpZkZ1csheRFkuEfHU=
+fyne.io/fyne/v2 v2.8.2/go.mod h1:eXHJ/D9Y58UcDw7SkguadCRI64M4flXyjoMn827Q5SI=
 fyne.io/systray v1.12.3-0.20260810170012-af4e8e793ec4 h1:149/+Wa5EsLLXfyj2pdTmvnQf2VIlgCIwSjcCTHYhIo=
 fyne.io/systray v1.12.3-0.20260810170012-af4e8e793ec4/go.mod h1:RVwqP9nYMo7h5zViCBHri2FgjXF7H2cub7MAq4NSoLs=
 github.com/BurntSushi/toml v1.6.0 h1:dRaEfpa2VI55EwlIW72hMRHdWouJeRF7TPYhI+AUQjk=
@@ -12,6 +12,8 @@ github.com/anthonynsimon/bild v0.17.1 h1:CVcoR+jxUx++UBXpVJHTjt7RmfEbsnhtlqPR5ut
 github.com/anthonynsimon/bild v0.17.1/go.mod h1:eUfWJXV5GGXA2Gobz4osvpJdkdEVZpXwDSJi/PAXnpA=
 github.com/clipperhouse/uax29/v2 v2.7.0 h1:+gs4oBZ2gPfVrKPthwbMzWZDaAFPGYK72F0NJv2v7Vk=
 github.com/clipperhouse/uax29/v2 v2.7.0/go.mod h1:EFJ2TJMRUaplDxHKj1qAEhCtQPW2tJSwu5BF98AuoVM=
+github.com/cpuguy83/go-md2man/v2 v2.0.7 h1:zbFlGlXEAKlwXpmvle3d8Oe3YnkKIK4xSRTd3sHPnBo=
+github.com/cpuguy83/go-md2man/v2 v2.0.7/go.mod h1:oOW0eioCTA6cOiMLiUPZOpcVxMig6NIQQ7OS05n1F4g=
 github.com/dchest/jsmin v1.0.0 h1:Y2hWXmGZiRxtl+VcTksyucgTlYxnhPzTozCwx9gy9zI=
 github.com/dchest/jsmin v1.0.0/go.mod h1:AVBIund7Mr7lKXT70hKT2YgL3XEXUaUk5iw9DZ8b0Uc=
 github.com/fsnotify/fsnotify v1.10.1 h1:b0/UzAf9yR5rhf3RPm9gf3ehBPpf0oZKIjtpKrx59Ho=
@@ -22,8 +24,8 @@ github.com/fyne-io/glfw-js v0.4.0 h1:I9hREBeFyI10cNIqbMKYb1PRidyPDgwob8o2la9SfQo
 github.com/fyne-io/glfw-js v0.4.0/go.mod h1:SDchsFZh4n7nVuBoiowOhOgIBdz+qUQVeC1w9fe2yVU=
 github.com/fyne-io/image v0.1.1 h1:WH0z4H7qfvNUw5l4p3bC1q70sa5+YWVt6HCj7y4VNyA=
 github.com/fyne-io/image v0.1.1/go.mod h1:xrfYBh6yspc+KjkgdZU/ifUC9sPA5Iv7WYUBzQKK7JM=
-github.com/fyne-io/oksvg v0.2.0 h1:mxcGU2dx6nwjJsSA9PCYZDuoAcsZ/OuJlvg/Q9Njfo8=
-github.com/fyne-io/oksvg v0.2.0/go.mod h1:dJ9oEkPiWhnTFNCmRgEze+YNprJF7YRbpjgpWS4kzoI=
+github.com/fyne-io/oksvg v0.2.1-0.20260918172519-a9af55fa95d9 h1:owsdpq6a2KhaAA/hoHGQmFM7kOgKo3srXZVGnbEUzr0=
+github.com/fyne-io/oksvg v0.2.1-0.20260918172519-a9af55fa95d9/go.mod h1:dJ9oEkPiWhnTFNCmRgEze+YNprJF7YRbpjgpWS4kzoI=
 github.com/go-gl/gl v0.0.0-20260331235117-4566fea9a276 h1:IO5P06Pcj9K04d+l4nrf3c2U56+dAotIFG6u4P1wAHI=
 github.com/go-gl/gl v0.0.0-20260331235117-4566fea9a276/go.mod h1:9YTyiznxEY1fVinfM7RvRcjRHbw2xLBJ3AAGIT0I4Nw=
 github.com/go-gl/glfw/v3.4/glfw v0.1.0-pre.2 h1:ez76TQInhkDIMobWbOFcPJw6FeB7coXRAVZpKwF8NBg=
@@ -48,6 +50,8 @@ github.com/jsummers/gobmp v0.0.0-20230614200233-a9de23ed2e25 h1:YLvr1eE6cdCqjOe9
 github.com/jsummers/gobmp v0.0.0-20230614200233-a9de23ed2e25/go.mod h1:kLgvv7o6UM+0QSf0QjAse3wReFDsb9qbZJdfexWlrQw=
 github.com/mattn/go-runewidth v0.0.30 h1:+KUuiDA4fF0R1p5FeueHefjDm+GIM+kWfFnDjybOPgk=
 github.com/mattn/go-runewidth v0.0.30/go.mod h1:3qAiGCV4Koz/yuveO58qUefmUTRm8r0IGEXZ9jeHp/8=
+github.com/mrpoundsign/appinstaller v0.0.1 h1:p9gg/3lnKHkrTf3M9/GPNa06/9EF0VamUB+WzXT/5WM=
+github.com/mrpoundsign/appinstaller v0.0.1/go.mod h1:1ejz+IPFwPW3whyRe0bw1wvXMNy+z865p+kZXh8vUl4=
 github.com/ncruces/zenity v0.10.15 h1:UaHekkxwt7QjoZmMWtzhqSEtQT97/Cux6FDBWwfyuqk=
 github.com/ncruces/zenity v0.10.15/go.mod h1:45d81tt+vF/UjBjlWE/vvE0oD0hWuHUQld4vPbA4VxE=
 github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646 h1:zYyBkD/k9seD2A7fsi6Oo2LfFZAehjjQMERAvZLEDnQ=
@@ -56,6 +60,8 @@ github.com/nicksnyder/go-i18n/v2 v2.6.1 h1:JDEJraFsQE17Dut9HFDHzCoAWGEQJom5s0TRd
 github.com/nicksnyder/go-i18n/v2 v2.6.1/go.mod h1:Vee0/9RD3Quc/NmwEjzzD7VTZ+Ir7QbXocrkhOzmUKA=
 github.com/randall77/makefat v0.0.0-20260406194835-1b91746796b7 h1:m1yKMZwDSXkT5o2MKhd6ihdzb2dYb6eElNE04xjOSEY=
 github.com/randall77/makefat v0.0.0-20260406194835-1b91746796b7/go.mod h1:T1TLSfyWVBRXVGzWd0o9BI4kfoO9InEgfQe4NV3mLz8=
+github.com/russross/blackfriday/v2 v2.1.0 h1:JIOH55/0cWyOuilr9/qlrm0BSXldqnqwMsf35Ld67mk=
+github.com/russross/blackfriday/v2 v2.1.0/go.mod h1:+Rmxgy9KzJVeS9/2gXHxylqXiyQDYRxCVz55jmeOWTM=
 github.com/rymdport/portal v0.4.2 h1:7jKRSemwlTyVHHrTGgQg7gmNPJs88xkbKcIL3NlcmSU=
 github.com/rymdport/portal v0.4.2/go.mod h1:kFF4jslnJ8pD5uCi17brj/ODlfIidOxlgUDTO5ncnC4=
 github.com/srwiley/oksvg v0.0.0-20221011165216-be6e8873101c h1:km8GpoQut05eY3GiYWEedbTT0qnSxrCjsVbb7yKY1KE=
@@ -64,6 +70,14 @@ github.com/srwiley/rasterx v0.0.0-20220730225603-2ab79fcdd4ef h1:Ch6Q+AZUxDBCVqd
 github.com/srwiley/rasterx v0.0.0-20220730225603-2ab79fcdd4ef/go.mod h1:nXTWP6+gD5+LUJ8krVhhoeHjvHTutPxMYl5SvkcnJNE=
 github.com/stretchr/testify v1.12.1 h1:EuwCh5fleGS7H32xRwO3wRGT7DxrDhLAT6FF8MpWDWE=
 github.com/stretchr/testify v1.12.1/go.mod h1:MDEgiDPPsNp5cuIrHPPCyornHKgEVbtFUmoNlxoYthg=
+github.com/tc-hib/go-winres v0.3.3 h1:DQ50qlvDVhqrDOY0svTxZFZWfKWtZtfnXXHPCw6lqh0=
+github.com/tc-hib/go-winres v0.3.3/go.mod h1:5NGzOtuvjSqnpIEi2o1h48MKZzP9olvrf+PeY2t1uoA=
+github.com/tc-hib/winres v0.2.1 h1:YDE0FiP0VmtRaDn7+aaChp1KiF4owBiJa5l964l5ujA=
+github.com/tc-hib/winres v0.2.1/go.mod h1:C/JaNhH3KBvhNKVbvdlDWkbMDO9H4fKKDaN7/07SSuk=
+github.com/urfave/cli/v2 v2.27.7 h1:bH59vdhbjLv3LAvIu6gd0usJHgoTTPhCFib8qqOwXYU=
+github.com/urfave/cli/v2 v2.27.7/go.mod h1:CyNAG/xg+iAOg0N4MPGZqVmv2rCoP267496AOXUZjA4=
+github.com/xrash/smetrics v0.0.0-20240521201337-686a1a2994c1 h1:gEOO8jv9F4OT7lGCjxCBTO/36wtF6j2nSip77qHd4x4=
+github.com/xrash/smetrics v0.0.0-20240521201337-686a1a2994c1/go.mod h1:Ohn+xnUBiLI6FVj/9LpzZWtj1/D6lUovWYBkxHVV3aM=
 github.com/yuin/goldmark v1.8.6 h1:d0VcaP1sx9GkFVkoW+KtggpGi2KZ965i14b0+bDQST4=
 github.com/yuin/goldmark v1.8.6/go.mod h1:ip/1k0VRfGynBgxOz0yCqHrbZXhcjxyuS66Brc7iBKg=
 go.uber.org/goleak v1.3.0 h1:2K3zAYmnTNqV73imy9J1T3WC+gmCePx2hEGkimedGto=

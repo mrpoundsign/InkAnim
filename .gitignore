@@ -16,3 +16,6 @@ testdata/scratch/
 *_diff.png
 *_actual.png
 planning/
+cmd/installer/payload/*
+!cmd/installer/payload/placeholder.txt
+*.syso

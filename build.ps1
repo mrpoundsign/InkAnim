@@ -1,15 +1,16 @@
 # InkAnim Build Script (PowerShell)
 # Usage:
 #   .\build.ps1                # Run lint, tests, and build Desktop Studio GUI
-#   .\build.ps1 -Target gui    # Build Desktop Studio GUI (with Zig CGo) -> build\bin\inkanim.exe
-#   .\build.ps1 -Target web    # Assemble static GitHub Pages site -> build\web\
-#   .\build.ps1 -Target test   # Run all unit tests
-#   .\build.ps1 -Target lint   # Run go fix -diff & golangci-lint-v2
-#   .\build.ps1 -Target check  # Run goreleaser check
-#   .\build.ps1 -Target clean  # Clean build artifacts
+#   .\build.ps1 -Target gui       # Build Desktop Studio GUI (with Zig CGo) -> build\bin\inkanim.exe
+#   .\build.ps1 -Target installer # Build Windows Guided Setup Installer -> build\bin\InkAnim-Setup.exe
+#   .\build.ps1 -Target web       # Assemble static GitHub Pages site -> build\web\
+#   .\build.ps1 -Target test      # Run all unit tests
+#   .\build.ps1 -Target lint      # Run go fix -diff & golangci-lint-v2
+#   .\build.ps1 -Target check     # Run goreleaser check
+#   .\build.ps1 -Target clean     # Clean build artifacts
 
 param(
-    [ValidateSet("all", "gui", "web", "test", "test-update-golden", "lint", "check", "clean")]
+    [ValidateSet("all", "gui", "installer", "web", "test", "test-update-golden", "lint", "check", "clean")]
     [string]$Target = "all"
 )
 
@@ -46,6 +47,36 @@ $ZigExe = Find-Tool "zig" @(
     "C:\Program Files\zig\zig.exe"
 )
 
+function New-WinResSyso {
+    param(
+        [string]$OutPrefix,
+        [string]$ProductName,
+        [string]$Description,
+        [string]$OriginalFilename
+    )
+    $iconPath = Join-Path $PSScriptRoot "assets\icon.png"
+    if (-not (Test-Path $iconPath)) { return }
+
+    $ver = "0.0.0"
+    if ($env:VERSION) {
+        $ver = $env:VERSION.TrimStart('v')
+    }
+
+    & $GoExe tool go-winres simply `
+        --arch amd64 `
+        --out $OutPrefix `
+        --icon $iconPath `
+        --manifest gui `
+        --product-name $ProductName `
+        --file-description $Description `
+        --product-version $ver `
+        --file-version $ver `
+        --original-filename $OriginalFilename
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Failed to generate Windows resource (.syso) for $OriginalFilename."
+    }
+}
+
 function Build-GUI {
     Write-Host "`n==> Building inkanim Desktop Studio GUI (with CGo)..." -ForegroundColor Cyan
     if (-not $ZigExe) {
@@ -59,11 +90,70 @@ function Build-GUI {
 
     if (-not (Test-Path $BinDir)) { New-Item -ItemType Directory -Path $BinDir | Out-Null }
     $outPath = Join-Path $BinDir "inkanim.exe"
-    & $GoExe build -trimpath -ldflags="-s -w -H=windowsgui -extldflags=-Wl,--subsystem,windows" -o $outPath ./cmd/inkanim
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "[OK] Successfully built $outPath" -ForegroundColor Green
+    $sysoPrefix = Join-Path $PSScriptRoot "cmd\inkanim\rsrc"
+    $sysoPath = "${sysoPrefix}_windows_amd64.syso"
+    try {
+        New-WinResSyso -OutPrefix $sysoPrefix -ProductName "InkAnim" -Description "InkAnim Desktop Studio" -OriginalFilename "inkanim.exe"
+        & $GoExe build -trimpath -ldflags="-s -w -H=windowsgui -extldflags=-Wl,--subsystem,windows" -o $outPath ./cmd/inkanim
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "[OK] Successfully built $outPath" -ForegroundColor Green
+        } else {
+            Write-Error "Failed to build inkanim.exe."
+        }
+    } finally {
+        Remove-Item $sysoPath -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Build-Installer {
+    $guiExe = Join-Path $BinDir "inkanim.exe"
+    if (-not (Test-Path $guiExe)) {
+        Build-GUI
+    }
+
+    Write-Host "`n==> Building InkAnim Windows Guided Setup Installer..." -ForegroundColor Cyan
+    if (-not $ZigExe) {
+        $env:CGO_ENABLED = "1"
     } else {
-        Write-Error "Failed to build inkanim.exe."
+        $env:CGO_ENABLED = "1"
+        $env:CC = "zig cc"
+    }
+
+    $payloadDir = Join-Path $PSScriptRoot "cmd\installer\payload"
+    if (-not (Test-Path $payloadDir)) { New-Item -ItemType Directory -Path $payloadDir | Out-Null }
+
+    $cleanupPayload = {
+        Get-ChildItem -Path $payloadDir -Force | Where-Object { $_.Name -ne "placeholder.txt" } | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    try {
+        & $cleanupPayload
+        Copy-Item $guiExe (Join-Path $payloadDir "inkanim.exe") -Force
+        if (Test-Path (Join-Path $PSScriptRoot "LICENSE")) { Copy-Item (Join-Path $PSScriptRoot "LICENSE") (Join-Path $payloadDir "LICENSE") -Force }
+        if (Test-Path (Join-Path $PSScriptRoot "README.md")) { Copy-Item (Join-Path $PSScriptRoot "README.md") (Join-Path $payloadDir "README.md") -Force }
+        $sampleSvg = Join-Path $PSScriptRoot "testdata\pendulum.svg"
+        if (Test-Path $sampleSvg) { Copy-Item $sampleSvg (Join-Path $payloadDir "pendulum.svg") -Force }
+
+        $ldflags = "-s -w -H=windowsgui -extldflags=-Wl,--subsystem,windows"
+        if ($env:VERSION) {
+            $ver = $env:VERSION.TrimStart('v')
+            $ldflags = "$ldflags -X main.AppVersion=$ver"
+        }
+
+        $sysoPrefix = Join-Path $PSScriptRoot "cmd\installer\rsrc"
+        $sysoPath = "${sysoPrefix}_windows_amd64.syso"
+        New-WinResSyso -OutPrefix $sysoPrefix -ProductName "InkAnim Setup" -Description "InkAnim Guided Setup Installer" -OriginalFilename "InkAnim-Setup.exe"
+
+        $setupOut = Join-Path $BinDir "InkAnim-Setup.exe"
+        & $GoExe build -trimpath -ldflags="$ldflags" -o $setupOut ./cmd/installer
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "[OK] Successfully built $setupOut" -ForegroundColor Green
+        } else {
+            Write-Error "Failed to build InkAnim-Setup.exe."
+        }
+    } finally {
+        & $cleanupPayload
+        Remove-Item (Join-Path $PSScriptRoot "cmd\installer\rsrc_windows_amd64.syso") -Force -ErrorAction SilentlyContinue
     }
 }
 
@@ -75,9 +165,9 @@ function Run-Tests {
         $env:CC = "zig cc"
     }
     if ($UpdateGolden) {
-        & $GoExe test -v ./internal/... ./pkg/... -update-golden
+        & $GoExe test -v ./cmd/... ./internal/... ./pkg/... -update-golden
     } else {
-        & $GoExe test -v ./internal/... ./pkg/...
+        & $GoExe test -v ./cmd/... ./internal/... ./pkg/...
     }
     if ($LASTEXITCODE -eq 0) {
         Write-Host "[OK] All tests passed!" -ForegroundColor Green
@@ -153,6 +243,7 @@ function Clean-Artifacts {
 switch ($Target) {
     "all"                 { Run-Lint; Run-Tests; Build-GUI }
     "gui"                 { Build-GUI }
+    "installer"           { Build-Installer }
     "web"                 { Build-Web }
     "test"                { Run-Tests }
     "test-update-golden"  { Run-Tests -UpdateGolden }
