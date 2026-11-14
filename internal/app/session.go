@@ -171,6 +171,8 @@ func (s *Session) SetPingPong(enabled bool) error {
 	if s.Document == nil {
 		return nil
 	}
+	s.Document.TotalDurationSec = float64(max(s.TotalDurationMs, 100)) / 1000.0
+	ApplyObjectsToDocument(s.Document, s.Objects, s.Document.TotalDurationSec)
 	s.rebuildTimelineFrames()
 	s.InvalidateCache()
 	return s.RerenderAllFrames()
@@ -191,6 +193,8 @@ func (s *Session) SetFPS(fps int) error {
 	if s.Document == nil {
 		return nil
 	}
+	s.Document.TotalDurationSec = float64(max(s.TotalDurationMs, 100)) / 1000.0
+	ApplyObjectsToDocument(s.Document, s.Objects, s.Document.TotalDurationSec)
 	s.rebuildTimelineFrames()
 	s.InvalidateCache()
 	return s.RerenderAllFrames()
@@ -211,6 +215,7 @@ func (s *Session) SetTotalDurationMs(ms int) error {
 		return nil
 	}
 	s.Document.TotalDurationSec = float64(s.TotalDurationMs) / 1000.0
+	ApplyObjectsToDocument(s.Document, s.Objects, s.Document.TotalDurationSec)
 	s.rebuildTimelineFrames()
 	s.InvalidateCache()
 	return s.RerenderAllFrames()
@@ -296,6 +301,7 @@ func (s *Session) LoadSVGData(data []byte, filename string) error {
 		s.FPS = 10
 	}
 	rawFrameCount := doc.FrameCount()
+	prevDurMs := s.TotalDurationMs
 	ApplyObjectsToDocument(doc, s.Objects, float64(max(s.TotalDurationMs, 1000))/1000.0)
 	if !s.HasManualDuration || s.TotalDurationMs <= 0 {
 		var maxEndSec float64
@@ -320,18 +326,24 @@ func (s *Session) LoadSVGData(data []byte, filename string) error {
 			}
 		}
 		var rawDurSec float64
-		if rawFrameCount > 1 {
+		if len(s.Objects) == 0 && rawFrameCount > 1 {
 			rawDurSec = float64(rawFrameCount) / float64(s.FPS)
 		}
 		naturalSec := max(rawDurSec, maxEndSec)
 		switch {
 		case naturalSec > 0:
 			s.TotalDurationMs = max(int(math.Round(naturalSec*1000.0)), 100)
+		case prevDurMs >= 500:
+			s.TotalDurationMs = prevDurMs
 		case s.IsAnimated():
 			fc := doc.FrameCount()
-			s.TotalDurationMs = max(int(math.Round(float64(fc)*1000.0/float64(s.FPS))), 100)
+			s.TotalDurationMs = max(int(math.Round(float64(fc)*1000.0/float64(s.FPS))), 1000)
 		default:
-			s.TotalDurationMs = max(int(math.Round(float64(max(rawFrameCount, 1))*1000.0/float64(s.FPS))), 100)
+			if rawFrameCount > 1 {
+				s.TotalDurationMs = max(int(math.Round(float64(rawFrameCount)*1000.0/float64(s.FPS))), 100)
+			} else {
+				s.TotalDurationMs = 1500
+			}
 		}
 	}
 	doc.TotalDurationSec = float64(s.TotalDurationMs) / 1000.0
@@ -435,14 +447,29 @@ func (s *Session) GetActiveBoundaryRect(frameIndex int) inksvg.Rect {
 	return s.resolvePageCropRect(s.CropPageIndex)
 }
 
+// PreviewBoundaryMarginRatio defines the 15% outer staging margin rendered around the active crop boundary
+// in the preview viewport so off-screen objects and motion path anchors remain visible outside crop guides.
+const PreviewBoundaryMarginRatio = 0.15
+
 // GetPreviewBoundaryRect returns the base canvas boundary for interactive preview rendering.
-// It returns the active crop boundary rectangle, ensuring the selected scene or artboard is
-// rendered at maximum resolution.
+// It expands the active crop boundary by 15% on each side so the preview viewport displays
+// the off-screen staging margin outside the purple crop guide brackets.
 func (s *Session) GetPreviewBoundaryRect() inksvg.Rect {
 	if s.Document == nil {
 		return inksvg.Rect{X: 0, Y: 0, Width: 512, Height: 512}
 	}
-	return s.GetActiveBoundaryRect(0)
+	r := s.GetActiveBoundaryRect(0)
+	if r.Width <= 0 || r.Height <= 0 {
+		return r
+	}
+	mx := r.Width * PreviewBoundaryMarginRatio
+	my := r.Height * PreviewBoundaryMarginRatio
+	return inksvg.Rect{
+		X:      r.X - mx,
+		Y:      r.Y - my,
+		Width:  r.Width + 2*mx,
+		Height: r.Height + 2*my,
+	}
 }
 
 // ToggleFrameActive toggles whether a frame is included in the animation.
@@ -652,7 +679,7 @@ func (s *Session) RerenderAllFrames() error {
 	}
 	s.cacheMu.RUnlock()
 
-	boundaryRect := s.GetActiveBoundaryRect(0)
+	boundaryRect := s.GetPreviewBoundaryRect()
 	frames, err := s.renderFramesForBoundary(boundaryRect)
 	if err != nil {
 		return err
@@ -667,6 +694,21 @@ func (s *Session) RerenderAllFrames() error {
 
 	s.RenderedFrames = frames
 	return nil
+}
+
+// expandPreviewBoundaryRect adds the 15% outer staging margin around a crop boundary rectangle.
+func expandPreviewBoundaryRect(r inksvg.Rect) inksvg.Rect {
+	if r.Width <= 0 || r.Height <= 0 {
+		return r
+	}
+	mx := r.Width * PreviewBoundaryMarginRatio
+	my := r.Height * PreviewBoundaryMarginRatio
+	return inksvg.Rect{
+		X:      r.X - mx,
+		Y:      r.Y - my,
+		Width:  r.Width + 2*mx,
+		Height: r.Height + 2*my,
+	}
 }
 
 // PrerenderPagesSync rasterizes and caches frames for drawing and all pages synchronously.
@@ -684,7 +726,7 @@ func (s *Session) PrerenderPagesSync() {
 	s.cacheMu.RUnlock()
 
 	if !hasDrawing {
-		drawingRect := s.Document.GetDrawingRect()
+		drawingRect := expandPreviewBoundaryRect(s.Document.GetDrawingRect())
 		frames, err := s.renderFramesForBoundary(drawingRect)
 		if err == nil {
 			s.cacheMu.Lock()
@@ -711,7 +753,7 @@ func (s *Session) PrerenderPagesSync() {
 			continue
 		}
 
-		pageRect := s.resolvePageCropRect(pIdx)
+		pageRect := expandPreviewBoundaryRect(s.resolvePageCropRect(pIdx))
 		frames, err := s.renderFramesForBoundary(pageRect)
 		if err != nil {
 			continue

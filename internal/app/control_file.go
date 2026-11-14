@@ -611,18 +611,19 @@ func ApplyObjectsToDocument(doc *inksvg.SVGDocument, objects map[string]ObjectCo
 }
 
 func resolveObjectXMLID(key string, obj ObjectConfig, lookup map[string]string) string {
-	candidates := []string{key}
-	if obj.SourceID != "" && obj.LabelPath != "" {
-		candidates = append(candidates, obj.SourceID+"/"+obj.LabelPath)
-	}
-	if obj.LabelPath != "" {
-		candidates = append(candidates, obj.LabelPath)
-	}
+	var candidates []string
 	if obj.SourceID != "" && obj.FallbackXMLID != "" {
 		candidates = append(candidates, obj.SourceID+"__"+obj.FallbackXMLID)
 	}
 	if obj.FallbackXMLID != "" {
 		candidates = append(candidates, obj.FallbackXMLID)
+	}
+	candidates = append(candidates, key)
+	if obj.SourceID != "" && obj.LabelPath != "" {
+		candidates = append(candidates, obj.SourceID+"/"+obj.LabelPath)
+	}
+	if obj.LabelPath != "" {
+		candidates = append(candidates, obj.LabelPath)
 	}
 	if obj.SourceID != "" && obj.LabelPath == "" {
 		candidates = append(candidates, obj.SourceID)
@@ -774,11 +775,21 @@ func MigrateDocumentIAMSToControlFile(doc *inksvg.SVGDocument, sourceID string, 
 		}
 
 		objKey := labelPath
-		if srcID != "" {
+		if srcID != "" && labelPath != srcID {
 			objKey = srcID + "/" + labelPath
 		}
 
 		obj, exists := ctrl.Objects[objKey]
+		if !exists {
+			for k, existingObj := range ctrl.Objects {
+				if k == groupID || existingObj.FallbackXMLID == groupID {
+					objKey = k
+					obj = existingObj
+					exists = true
+					break
+				}
+			}
+		}
 		if !exists {
 			obj = ObjectConfig{
 				SourceID:      srcID,
@@ -789,7 +800,23 @@ func MigrateDocumentIAMSToControlFile(doc *inksvg.SVGDocument, sourceID string, 
 
 		actID := mp.ID
 		if actID == "" {
-			actID = fmt.Sprintf("act_%d", i+1)
+			actID = fmt.Sprintf("%s_act_%d", groupID, i+1)
+		}
+
+		// Ensure globally unique action ID across all objects in ctrl before checking idempotency.
+		usedOnOther := func(id string) bool {
+			for otherKey, otherObj := range ctrl.Objects {
+				if otherKey == objKey {
+					continue
+				}
+				if slices.ContainsFunc(otherObj.Actions, func(a ActionConfig) bool { return a.ID == id }) {
+					return true
+				}
+			}
+			return false
+		}
+		if usedOnOther(actID) {
+			actID = fmt.Sprintf("%s_%s", groupID, actID)
 		}
 
 		// Idempotency guard: if this action ID was already migrated onto obj, skip it.

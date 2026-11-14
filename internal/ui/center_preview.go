@@ -67,6 +67,7 @@ type CenterPreviewPanel struct {
 	activeFrameIdx     int
 	bgContainer        *fyne.Container
 	stageStack         *fyne.Container
+	gizmoOverlay       *CanvasGizmoOverlay
 	currentBg          PreviewBackground
 	bgSelect           *widget.Select
 	frameLabel         *widget.Label
@@ -586,6 +587,28 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 	)
 
 	return p
+}
+
+// SetGizmoOverlay attaches an interactive CanvasGizmoOverlay on top of the preview canvas stack.
+func (p *CenterPreviewPanel) SetGizmoOverlay(gizmo *CanvasGizmoOverlay) {
+	if p == nil || gizmo == nil || p.stageStack == nil {
+		return
+	}
+	p.gizmoOverlay = gizmo
+	p.stageStack.Objects = []fyne.CanvasObject{
+		p.bgContainer,
+		p.mainCanvasStack,
+		p.gizmoOverlay,
+		p.progressOverlay,
+	}
+	p.stageStack.Refresh()
+}
+
+// RefreshGizmos redraws the interactive canvas gizmo overlay if attached.
+func (p *CenterPreviewPanel) RefreshGizmos() {
+	if p != nil && p.gizmoOverlay != nil {
+		p.gizmoOverlay.Refresh()
+	}
 }
 
 // SetInspectorVisible toggles visibility of the bottom chat-scale inspector dock.
@@ -1448,6 +1471,9 @@ func (p *CenterPreviewPanel) applyRebuildResult(gen int, frames []cachedPreviewF
 
 	p.hideProgressLocked()
 	p.renderCurrentFrameLocked()
+	if p.gizmoOverlay != nil {
+		p.gizmoOverlay.Refresh()
+	}
 	if !p.loadStart.IsZero() {
 		prof.Since(p.loadStart, "TOTAL load -> first paint")
 		p.loadStart = time.Time{}

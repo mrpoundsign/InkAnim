@@ -1336,6 +1336,33 @@ func (m Matrix2D) Transform(x, y float64) (float64, float64) {
 	return m.A*x + m.C*y + m.E, m.B*x + m.D*y + m.F
 }
 
+// IsIdentity returns true if the matrix is within epsilon of the 2D identity matrix.
+func (m Matrix2D) IsIdentity() bool {
+	return math.Abs(m.A-1) < 1e-6 &&
+		math.Abs(m.B) < 1e-6 &&
+		math.Abs(m.C) < 1e-6 &&
+		math.Abs(m.D-1) < 1e-6 &&
+		math.Abs(m.E) < 1e-6 &&
+		math.Abs(m.F) < 1e-6
+}
+
+// Inverse returns the inverse of the 2D affine matrix, or (IdentityMatrix(), false) if singular.
+func (m Matrix2D) Inverse() (Matrix2D, bool) {
+	det := m.A*m.D - m.B*m.C
+	if math.Abs(det) < 1e-12 {
+		return IdentityMatrix(), false
+	}
+	invDet := 1.0 / det
+	return Matrix2D{
+		A: m.D * invDet,
+		B: -m.B * invDet,
+		C: -m.C * invDet,
+		D: m.A * invDet,
+		E: (m.C*m.F - m.D*m.E) * invDet,
+		F: (m.B*m.E - m.A*m.F) * invDet,
+	}, true
+}
+
 // parseTransform parses an SVG transform attribute string into a cumulative Matrix2D.
 func parseTransform(s string) Matrix2D {
 	res := IdentityMatrix()

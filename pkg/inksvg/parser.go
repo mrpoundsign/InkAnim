@@ -497,6 +497,9 @@ func ComputeElementRect(data []byte, elementID string) (Rect, bool) {
 	var rootFound bool
 
 	var ancestorStack []xml.StartElement
+	var defsTokens []xml.Token
+	var inDefs bool
+	var defsDepth int
 	var targetTokens []xml.Token
 	var inTarget bool
 	var targetDepth int
@@ -514,6 +517,18 @@ func ComputeElementRect(data []byte, elementID string) (Rect, bool) {
 				rootElem = elem.Copy()
 			}
 
+			if inDefs {
+				defsDepth++
+				defsTokens = append(defsTokens, sanitizeElementForOutput(elem))
+				goto nextToken
+			}
+			if !inTarget && elem.Name.Local == "defs" {
+				inDefs = true
+				defsDepth = 1
+				defsTokens = append(defsTokens, sanitizeElementForOutput(elem))
+				goto nextToken
+			}
+
 			if inTarget {
 				targetDepth++
 				// Skip internal motion path guides so they don't expand the element's bounding box
@@ -528,7 +543,7 @@ func ComputeElementRect(data []byte, elementID string) (Rect, bool) {
 						}
 					}
 				}
-				targetTokens = append(targetTokens, xml.CopyToken(elem))
+				targetTokens = append(targetTokens, sanitizeElementForOutput(elem))
 			} else {
 				var id string
 				for _, attr := range elem.Attr {
@@ -540,24 +555,33 @@ func ComputeElementRect(data []byte, elementID string) (Rect, bool) {
 				if id == elementID {
 					inTarget = true
 					targetDepth = 1
-					targetTokens = append(targetTokens, xml.CopyToken(elem))
+					targetTokens = append(targetTokens, sanitizeElementForOutput(elem))
 				} else {
-					ancestorStack = append(ancestorStack, elem.Copy())
+					ancestorStack = append(ancestorStack, sanitizeElementForOutput(elem))
 				}
 			}
 
 		case xml.EndElement:
-			if inTarget {
-				targetTokens = append(targetTokens, xml.CopyToken(elem))
+			switch {
+			case inDefs:
+				defsTokens = append(defsTokens, xml.EndElement{Name: xml.Name{Local: elem.Name.Local}})
+				defsDepth--
+				if defsDepth == 0 {
+					inDefs = false
+				}
+			case inTarget:
+				targetTokens = append(targetTokens, xml.EndElement{Name: xml.Name{Local: elem.Name.Local}})
 				targetDepth--
 				if targetDepth == 0 {
 					goto finishScan
 				}
-			} else if len(ancestorStack) > 0 {
+			case len(ancestorStack) > 0:
 				ancestorStack = ancestorStack[:len(ancestorStack)-1]
 			}
-		case xml.CharData, xml.Comment, xml.ProcInst, xml.Directive:
-			if inTarget {
+		case xml.CharData:
+			if inDefs {
+				defsTokens = append(defsTokens, xml.CopyToken(tok))
+			} else if inTarget {
 				targetTokens = append(targetTokens, xml.CopyToken(tok))
 			}
 		}
@@ -579,9 +603,17 @@ finishScan:
 				{Name: xml.Name{Local: "xmlns"}, Value: "http://www.w3.org/2000/svg"},
 			},
 		}
+	} else {
+		rootElem = sanitizeRootElement(rootElem, Rect{})
 	}
 	if err := enc.EncodeToken(rootElem); err != nil {
 		return Rect{}, false
+	}
+
+	for _, dt := range defsTokens {
+		if err := enc.EncodeToken(dt); err != nil {
+			return Rect{}, false
+		}
 	}
 
 	for _, a := range ancestorStack {

@@ -13,6 +13,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	appkg "inkanim/internal/app"
+	svg "inkanim/pkg/inksvg"
 )
 
 // uiQueue receives async preview-build callbacks in tests. The Fyne test driver
@@ -29,6 +30,7 @@ func TestMain(m *testing.M) {
 // waitForPreview runs queued UI callbacks on the calling (test) goroutine until
 // no preview build is in flight and nothing is left to apply.
 func waitForPreview(mw *MainWindow) {
+	mw.flushPreviewUpdate()
 	p := mw.centerPanel
 	for {
 		select {
@@ -61,7 +63,10 @@ func TestAsyncPreviewBuildAndInspectorFollowsPlayback(t *testing.T) {
 	defer testApp.Quit()
 
 	mw := NewMainWindow(testApp)
-	defer waitForPreview(mw) // settle async preview builds before the next test
+	defer func() {
+		waitForPreview(mw)
+		mw.centerPanel.Pause()
+	}() // settle async preview builds before the next test
 	testSVGPath, err := filepath.Abs("../../testdata/pendulum.svg")
 	if err != nil {
 		t.Fatalf("failed to resolve test SVG path: %v", err)
@@ -112,7 +117,10 @@ func TestMainWindowInitAndLoad(t *testing.T) {
 	defer app.Quit()
 
 	mw := NewMainWindow(app)
-	defer waitForPreview(mw) // settle async preview builds before the next test
+	defer func() {
+		waitForPreview(mw)
+		mw.centerPanel.Pause()
+	}() // settle async preview builds before the next test
 	if mw == nil {
 		t.Fatalf("expected NewMainWindow to succeed")
 	}
@@ -196,7 +204,10 @@ func TestAnimationPlayback(t *testing.T) {
 	defer app.Quit()
 
 	mw := NewMainWindow(app)
-	defer waitForPreview(mw) // settle async preview builds before the next test
+	defer func() {
+		waitForPreview(mw)
+		mw.centerPanel.Pause()
+	}() // settle async preview builds before the next test
 	testSVGPath, err := filepath.Abs("../../testdata/pendulum.svg")
 	if err != nil {
 		t.Fatalf("failed to resolve test SVG path: %v", err)
@@ -225,7 +236,10 @@ func TestCheckFrameDifferences(t *testing.T) {
 	defer app.Quit()
 
 	mw := NewMainWindow(app)
-	defer waitForPreview(mw) // settle async preview builds before the next test
+	defer func() {
+		waitForPreview(mw)
+		mw.centerPanel.Pause()
+	}() // settle async preview builds before the next test
 	testSVGPath, err := filepath.Abs("../../testdata/pendulum.svg")
 	if err != nil {
 		t.Fatalf("failed to resolve test SVG path: %v", err)
@@ -275,7 +289,10 @@ func TestNoLoopPlaybackAndButtonStates(t *testing.T) {
 	defer app.Quit()
 
 	mw := NewMainWindow(app)
-	defer waitForPreview(mw) // settle async preview builds before the next test
+	defer func() {
+		waitForPreview(mw)
+		mw.centerPanel.Pause()
+	}() // settle async preview builds before the next test
 	testSVGPath, err := filepath.Abs("../../testdata/pendulum.svg")
 	if err != nil {
 		t.Fatalf("failed to resolve test SVG path: %v", err)
@@ -351,7 +368,10 @@ func TestPingPongPlaybackAndExportUI(t *testing.T) {
 	defer app.Quit()
 
 	mw := NewMainWindow(app)
-	defer waitForPreview(mw) // settle async preview builds before the next test
+	defer func() {
+		waitForPreview(mw)
+		mw.centerPanel.Pause()
+	}() // settle async preview builds before the next test
 	testSVGPath, err := filepath.Abs("../../testdata/pendulum.svg")
 	if err != nil {
 		t.Fatalf("failed to resolve test SVG path: %v", err)
@@ -408,7 +428,10 @@ func TestCropBoundaryUIAndGuides(t *testing.T) {
 	defer app.Quit()
 
 	mw := NewMainWindow(app)
-	defer waitForPreview(mw) // settle async preview builds before the next test
+	defer func() {
+		waitForPreview(mw)
+		mw.centerPanel.Pause()
+	}() // settle async preview builds before the next test
 	if mw == nil {
 		t.Fatalf("expected NewMainWindow to succeed")
 	}
@@ -470,7 +493,10 @@ func TestPausePlaybackModal(t *testing.T) {
 	defer app.Quit()
 
 	mw := NewMainWindow(app)
-	defer waitForPreview(mw) // settle async preview builds before the next test
+	defer func() {
+		waitForPreview(mw)
+		mw.centerPanel.Pause()
+	}() // settle async preview builds before the next test
 	testSVGPath, err := filepath.Abs("../../testdata/pendulum.svg")
 	if err != nil {
 		t.Fatalf("failed to resolve test SVG path: %v", err)
@@ -676,7 +702,10 @@ func TestSidebarTabs(t *testing.T) {
 	defer testApp.Quit()
 
 	mw := NewMainWindow(testApp)
-	defer waitForPreview(mw) // settle async preview builds before the next test
+	defer func() {
+		waitForPreview(mw)
+		mw.centerPanel.Pause()
+	}() // settle async preview builds before the next test
 	if mw.sidebarTabs == nil {
 		t.Fatal("expected sidebarTabs to be non-nil")
 	}
@@ -708,7 +737,10 @@ func TestScaleInspectorToggle(t *testing.T) {
 	defer testApp.Quit()
 
 	mw := NewMainWindow(testApp)
-	defer waitForPreview(mw) // settle async preview builds before the next test
+	defer func() {
+		waitForPreview(mw)
+		mw.centerPanel.Pause()
+	}() // settle async preview builds before the next test
 	if mw.centerPanel.inspectorCheck == nil {
 		t.Fatal("expected inspectorCheck to be non-nil")
 	}
@@ -756,7 +788,10 @@ func TestWysiwygPreview(t *testing.T) {
 	defer testApp.Quit()
 
 	mw := NewMainWindow(testApp)
-	defer waitForPreview(mw) // settle async preview builds before the next test
+	defer func() {
+		waitForPreview(mw)
+		mw.centerPanel.Pause()
+	}() // settle async preview builds before the next test
 	testSVGPath, err := filepath.Abs("../../testdata/bouncing_walker.svg")
 	if err != nil {
 		t.Fatalf("failed to resolve test SVG path: %v", err)
@@ -818,7 +853,10 @@ func TestPreviewBackgroundSwitcher(t *testing.T) {
 	defer app.Quit()
 
 	mw := NewMainWindow(app)
-	defer waitForPreview(mw) // settle async preview builds before the next test
+	defer func() {
+		waitForPreview(mw)
+		mw.centerPanel.Pause()
+	}() // settle async preview builds before the next test
 	if mw.centerPanel.bgSelect == nil {
 		t.Fatal("expected bgSelect to be non-nil")
 	}
@@ -867,7 +905,10 @@ func TestGPUResidentPreviewFrameStack(t *testing.T) {
 	defer app.Quit()
 
 	mw := NewMainWindow(app)
-	defer waitForPreview(mw)
+	defer func() {
+		waitForPreview(mw)
+		mw.centerPanel.Pause()
+	}()
 
 	testSVGPath, err := filepath.Abs("../../testdata/pendulum.svg")
 	if err != nil {
@@ -959,7 +1000,10 @@ func BenchmarkRenderPlaybackTick(b *testing.B) {
 	defer app.Quit()
 
 	mw := NewMainWindow(app)
-	defer waitForPreview(mw)
+	defer func() {
+		waitForPreview(mw)
+		mw.centerPanel.Pause()
+	}()
 
 	testSVGPath, err := filepath.Abs("../../testdata/pendulum.svg")
 	if err != nil {
@@ -989,7 +1033,10 @@ func TestDroppedFramesWarning(t *testing.T) {
 	defer app.Quit()
 
 	mw := NewMainWindow(app)
-	defer waitForPreview(mw)
+	defer func() {
+		waitForPreview(mw)
+		mw.centerPanel.Pause()
+	}()
 
 	testSVGPath, err := filepath.Abs("../../testdata/pendulum.svg")
 	if err != nil {
@@ -1083,7 +1130,10 @@ func TestTimelinePlaybackAndFrameSkipping(t *testing.T) {
 	defer app.Quit()
 
 	mw := NewMainWindow(app)
-	defer waitForPreview(mw)
+	defer func() {
+		waitForPreview(mw)
+		mw.centerPanel.Pause()
+	}()
 
 	testSVGPath, err := filepath.Abs("../../testdata/pendulum.svg")
 	if err != nil {
@@ -1223,7 +1273,10 @@ func TestMainWindowSaveReloadAndCloseLifecycle(t *testing.T) {
 	defer app.Quit()
 
 	mw := NewMainWindow(app)
-	defer waitForPreview(mw)
+	defer func() {
+		waitForPreview(mw)
+		mw.centerPanel.Pause()
+	}()
 
 	// Test RightExportPanel helpers and empty-frame PromptExport dialog
 	mw.rightPanel.SetOnExportSuccess(func(path string) {})
@@ -1314,7 +1367,10 @@ func TestSidecarControlFileUI(t *testing.T) {
 
 	// 2. Open the .inka file directly in a new window and verify all UI controls restore
 	mw2 := NewMainWindow(testApp)
-	defer waitForPreview(mw2)
+	defer func() {
+		waitForPreview(mw2)
+		mw2.centerPanel.Pause()
+	}()
 	loadAndWait(mw2, inkaPath)
 	mw2.centerPanel.Pause()
 
@@ -1349,7 +1405,10 @@ func TestProjectWorkflowAndLinkedSVGTree(t *testing.T) {
 	defer testApp.Quit()
 
 	mw := NewMainWindow(testApp)
-	defer waitForPreview(mw)
+	defer func() {
+		waitForPreview(mw)
+		mw.centerPanel.Pause()
+	}()
 
 	// 1. Verify blank Untitled Project startup state and project-centric File menu
 	if mw.fileLabel.Text != "Untitled Project" {
@@ -1443,19 +1502,24 @@ func TestProjectWorkflowAndLinkedSVGTree(t *testing.T) {
 	waitForPreview(mw)
 	mw.centerPanel.Pause()
 
-	// 3. Verify tree shows ONLY Linked File roots -> Layers -> Nested Groups (no leaf shapes!)
+	// 3. Verify tree shows Linked File roots -> Layers -> Nested Groups -> Drawable Leaf Shapes,
+	// while stripping/hiding legacy IAMS motion helper paths.
 	roots := mw.tree.ChildUIDs("")
 	if len(roots) != 2 {
 		t.Fatalf("expected 2 linked SVG root groups in tree, got %v", roots)
 	}
-	for _, uid := range []string{"src_1__arm_rect", "src_1__arm_rot", "src_2__star_circle"} {
-		for _, parentUID := range []string{"", "src_1", "src_2", "src_1__layer_hero", "src_1__g_arm", "src_2__layer_props", "src_2__g_star"} {
-			for _, child := range mw.tree.ChildUIDs(parentUID) {
-				if child == uid {
-					t.Errorf("expected leaf shape %q to be hidden from tree under %q", uid, parentUID)
-				}
+	for _, parentUID := range []string{"", "src_1", "src_2", "src_1__layer_hero", "src_1__g_arm", "src_2__layer_props", "src_2__g_star"} {
+		for _, child := range mw.tree.ChildUIDs(parentUID) {
+			if child == "src_1__arm_rot" {
+				t.Errorf("expected motion helper path %q to be hidden from tree under %q", child, parentUID)
 			}
 		}
+	}
+	if children := mw.tree.ChildUIDs("src_1__g_arm"); len(children) != 1 || children[0] != "src_1__arm_rect" {
+		t.Errorf("expected drawable leaf shape src_1__arm_rect under src_1__g_arm, got %v", children)
+	}
+	if children := mw.tree.ChildUIDs("src_2__g_star"); len(children) != 1 || children[0] != "src_2__star_circle" {
+		t.Errorf("expected drawable leaf shape src_2__star_circle under src_2__g_star, got %v", children)
 	}
 
 	// Select nested group src_2__g_star and verify Stage Properties card is rendered in Inspector
@@ -1507,7 +1571,10 @@ func TestTimelinePanelRulerScrubAndActionBars(t *testing.T) {
 	defer testApp.Quit()
 
 	mw := NewMainWindow(testApp)
-	defer waitForPreview(mw)
+	defer func() {
+		waitForPreview(mw)
+		mw.centerPanel.Pause()
+	}()
 
 	if mw.timelinePanel == nil {
 		t.Fatalf("expected mw.timelinePanel to be initialized")
@@ -1637,20 +1704,23 @@ func TestTimelinePanelRulerScrubAndActionBars(t *testing.T) {
 	}
 
 	// 5. Verify collapsible parent track rows, layer/group renaming, preset actions, and double-click modals
-	tracksBefore := tp.CollectTracks()
+	tracksInitial := tp.CollectTracks()
 	var parentID string
-	for _, tr := range tracksBefore {
+	for _, tr := range tracksInitial {
 		if tr.HasChildren {
 			parentID = tr.NodeID
 			break
 		}
 	}
 	if parentID != "" {
+		tp.collapsedNodes[parentID] = false
+		tp.Refresh()
+		tracksExpanded := tp.CollectTracks()
 		tp.collapsedNodes[parentID] = true
 		tp.Refresh()
 		tracksCollapsed := tp.CollectTracks()
-		if len(tracksCollapsed) >= len(tracksBefore) {
-			t.Errorf("expected collapsing parent %q to hide child tracks: before=%d, after=%d", parentID, len(tracksBefore), len(tracksCollapsed))
+		if len(tracksCollapsed) >= len(tracksExpanded) {
+			t.Errorf("expected collapsing parent %q to hide child tracks: expanded=%d, collapsed=%d", parentID, len(tracksExpanded), len(tracksCollapsed))
 		}
 		tp.collapsedNodes[parentID] = false
 		tp.Refresh()
@@ -1690,7 +1760,10 @@ func TestTimelinePingPongDurationReorderAndUndoRedo(t *testing.T) {
 	defer app.Quit()
 
 	mw := NewMainWindow(app)
-	defer waitForPreview(mw)
+	defer func() {
+		waitForPreview(mw)
+		mw.centerPanel.Pause()
+	}()
 
 	// 1. Verify default 512x512 preview scaling before and after NewProject()
 	if mw.session.ExportOptions.SquareSize != 512 {
@@ -1804,6 +1877,7 @@ func TestTimelinePingPongDurationReorderAndUndoRedo(t *testing.T) {
 	if err == nil {
 		_ = mw.AddSVGFile(secondSVGPath)
 		waitForPreview(mw)
+		mw.centerPanel.Pause()
 		rootsBefore := mw.editorState.Roots
 		if len(rootsBefore) >= 2 {
 			firstRootID := rootsBefore[0].ID
@@ -1834,6 +1908,7 @@ func TestTimelinePingPongDurationReorderAndUndoRedo(t *testing.T) {
 		t.Fatalf("AddSVGDataWithOptions(stripIAMS=true) failed: %v", err)
 	}
 	waitForPreview(mw)
+	mw.centerPanel.Pause()
 	if tp.TotalDurationSec() != 3.0 {
 		t.Errorf("expected TotalDurationSec() == 3.0 after importing 30-frame SVG with stripIAMS=true, got %g", tp.TotalDurationSec())
 	}
@@ -1857,6 +1932,7 @@ func TestTimelinePingPongDurationReorderAndUndoRedo(t *testing.T) {
 		t.Fatalf("AddSVGDataWithOptions(stripIAMS=false) failed: %v", err)
 	}
 	waitForPreview(mw)
+	mw.centerPanel.Pause()
 	initialMPCount := len(mw.session.Document.MotionPaths)
 	if initialMPCount != 2 {
 		t.Fatalf("expected 2 initial MotionPaths, got %d", initialMPCount)
@@ -1893,5 +1969,590 @@ func TestTimelinePingPongDurationReorderAndUndoRedo(t *testing.T) {
 		}
 	}
 }
+
+func TestCanvasGizmoOverlayPathAndStagePlacement(t *testing.T) {
+	fyneApp := test.NewApp()
+	defer fyneApp.Quit()
+
+	mw := NewMainWindow(fyneApp)
+	defer func() {
+		waitForPreview(mw)
+		mw.centerPanel.Pause()
+	}()
+
+	svgPath, err := filepath.Abs("../../testdata/pendulum.svg")
+	if err != nil {
+		t.Fatalf("failed to resolve pendulum.svg: %v", err)
+	}
+	if err := mw.AddSVGFile(svgPath); err != nil {
+		t.Fatalf("AddSVGFile failed: %v", err)
+	}
+	waitForPreview(mw)
+	mw.centerPanel.Pause()
+
+	// 1. Verify ParseGizmoPath and FormatGizmoPath round-trip for lines and cubic curves
+	segs := ParseGizmoPath("M 10 20 L 110 20 C 120 40 150 60 200 80")
+	if len(segs) != 2 {
+		t.Fatalf("expected 2 gizmo segments, got %d", len(segs))
+	}
+	if segs[0].IsCurve || segs[0].StartX != 10 || segs[0].EndX != 110 {
+		t.Errorf("unexpected first segment: %+v", segs[0])
+	}
+	if !segs[1].IsCurve || segs[1].Ctrl1X != 120 || segs[1].EndY != 80 {
+		t.Errorf("unexpected second segment: %+v", segs[1])
+	}
+	formatted := FormatGizmoPath(segs)
+	if !strings.Contains(formatted, "M 10.0 20.0 L 110.0 20.0 C 120.0 40.0 150.0 60.0 200.0 80.0") {
+		t.Errorf("unexpected formatted path: %s", formatted)
+	}
+
+	// 2. Select a layer/group track and add a Move action
+	tracks := mw.timelinePanel.CollectTracks()
+	var targetNodeID string
+	for _, tr := range tracks {
+		if n := mw.editorState.NodeMap[tr.NodeID]; n != nil && !n.IsLinkedFile {
+			targetNodeID = tr.NodeID
+			break
+		}
+	}
+	if targetNodeID == "" {
+		t.Fatalf("expected a non-linked track node")
+	}
+	mw.timelinePanel.SelectTrack(targetNodeID)
+	mw.timelinePanel.AddActionToActiveNode("Move")
+
+	gizmo := mw.centerPanel.gizmoOverlay
+	if gizmo == nil {
+		t.Fatalf("expected CenterPreviewPanel to have a gizmoOverlay")
+	}
+	gizmo.Resize(fyne.NewSize(400, 400))
+
+	svgToView, _, ok := gizmo.viewportTransform(400, 400)
+	if !ok {
+		t.Fatalf("expected viewportTransform to succeed")
+	}
+
+	// 3. Drag the Move action's End anchor (anchor index 1) via the gizmo
+	_, objKey, objCfg, _, moveIdx, moveSegs := gizmo.activeSelection()
+	if moveIdx < 0 || len(moveSegs) == 0 {
+		t.Fatalf("expected active Move action with segments")
+	}
+	origPathD := objCfg.Actions[moveIdx].PathD
+	ex, ey := svgToView(moveSegs[0].EndX, moveSegs[0].EndY)
+	gizmo.Dragged(&fyne.DragEvent{
+		PointEvent: fyne.PointEvent{Position: fyne.NewPos(float32(ex)+40, float32(ey)+30)},
+		Dragged:    fyne.NewDelta(40, 30),
+	})
+	gizmo.DragEnd()
+
+	updatedCfg := mw.session.Objects[objKey]
+	if updatedCfg.Actions[moveIdx].PathD == origPathD {
+		t.Errorf("expected Move action PathD to change after dragging end anchor, still %q", updatedCfg.Actions[moveIdx].PathD)
+	}
+
+	// 4. Drag the first control handle (Ctrl1) to bend the line into a cubic Bézier curve (C)
+	_, _, _, _, _, moveSegs = gizmo.activeSelection()
+	c1x, c1y := svgToView(moveSegs[0].Ctrl1X, moveSegs[0].Ctrl1Y)
+	gizmo.Dragged(&fyne.DragEvent{
+		PointEvent: fyne.PointEvent{Position: fyne.NewPos(float32(c1x), float32(c1y)-35)},
+		Dragged:    fyne.NewDelta(0, -35),
+	})
+	gizmo.DragEnd()
+
+	curvedCfg := mw.session.Objects[objKey]
+	if !strings.Contains(curvedCfg.Actions[moveIdx].PathD, " C ") {
+		t.Errorf("expected dragging Ctrl1 handle to promote path to cubic Bézier (' C '), got %q", curvedCfg.Actions[moveIdx].PathD)
+	}
+
+	// 5. Switch to Track selection mode (clear selectedActionID) and drag the Pivot crosshair to set a custom pivot
+	mw.selectedActionID = ""
+	mw.timelinePanel.SelectTrack(targetNodeID)
+	_, pivX, pivY, hasBounds := gizmo.resolveObjectBoundsAndPivot(targetNodeID, curvedCfg)
+	if hasBounds {
+		px, py := svgToView(pivX, pivY)
+		gizmo.Dragged(&fyne.DragEvent{
+			PointEvent: fyne.PointEvent{Position: fyne.NewPos(float32(px)+25, float32(py)+25)},
+			Dragged:    fyne.NewDelta(25, 25),
+		})
+		gizmo.DragEnd()
+
+		pivCfg := mw.session.Objects[objKey]
+		if pivCfg.PivotType != "custom" {
+			t.Errorf("expected PivotType=='custom' after dragging pivot crosshair, got %q", pivCfg.PivotType)
+		}
+	}
+}
+
+func TestMultiTrackMoveGizmoAnimatesElements(t *testing.T) {
+	fyneApp := test.NewApp()
+	defer fyneApp.Quit()
+
+	mw := NewMainWindow(fyneApp)
+	defer func() {
+		waitForPreview(mw)
+		mw.centerPanel.Pause()
+	}()
+
+	svgData := []byte(`<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="200" height="200" viewBox="0 0 200 200">
+  <g id="layer1" inkscape:groupmode="layer" inkscape:label="Red Box">
+    <rect id="rect1" x="10" y="20" width="30" height="30" fill="#ff0000" />
+  </g>
+  <g id="layer2" inkscape:groupmode="layer" inkscape:label="Blue Box">
+    <rect id="rect2" x="10" y="120" width="30" height="30" fill="#0000ff" />
+  </g>
+</svg>`)
+	tmpDir := t.TempDir()
+	svgPath := filepath.Join(tmpDir, "two_layers.svg")
+	if err := os.WriteFile(svgPath, svgData, 0644); err != nil {
+		t.Fatalf("failed to write test SVG: %v", err)
+	}
+	if err := mw.AddSVGFile(svgPath); err != nil {
+		t.Fatalf("AddSVGFile failed: %v", err)
+	}
+	waitForPreview(mw)
+	mw.centerPanel.Pause()
+
+	tracks := mw.timelinePanel.CollectTracks()
+	var layerNodeIDs []string
+	for _, tr := range tracks {
+		if n := mw.editorState.NodeMap[tr.NodeID]; n != nil && !n.IsLinkedFile {
+			layerNodeIDs = append(layerNodeIDs, tr.NodeID)
+		}
+	}
+	if len(layerNodeIDs) < 2 {
+		t.Fatalf("expected at least 2 layer tracks, got %v", layerNodeIDs)
+	}
+
+	gizmo := mw.centerPanel.gizmoOverlay
+	gizmo.Resize(fyne.NewSize(400, 400))
+	svgToView, _, ok := gizmo.viewportTransform(400, 400)
+	if !ok {
+		t.Fatalf("viewportTransform failed")
+	}
+
+	// Add Move actions to both layers and drag their end anchors far to the right
+	seenActionIDs := make(map[string]bool)
+	for _, nID := range layerNodeIDs[:2] {
+		mw.timelinePanel.SelectTrack(nID)
+		mw.timelinePanel.AddActionToActiveNode("Move")
+		if mw.selectedActionID == "" {
+			t.Fatalf("expected selectedActionID after adding Move to %s", nID)
+		}
+		if seenActionIDs[mw.selectedActionID] {
+			t.Fatalf("duplicate action ID generated across tracks: %s", mw.selectedActionID)
+		}
+		seenActionIDs[mw.selectedActionID] = true
+
+		// Even if user clicks the track header (clearing selectedActionID), the Move gizmo must stay active
+		mw.selectedActionID = ""
+		mw.timelinePanel.SelectTrack(nID)
+
+		selNodeID, _, _, _, moveIdx, moveSegs := gizmo.activeSelection()
+		if selNodeID != nID || moveIdx < 0 || len(moveSegs) == 0 {
+			t.Fatalf("expected active Move gizmo for %s, got node=%s moveIdx=%d", nID, selNodeID, moveIdx)
+		}
+
+		ex, ey := svgToView(moveSegs[0].EndX, moveSegs[0].EndY)
+		gizmo.Dragged(&fyne.DragEvent{
+			PointEvent: fyne.PointEvent{Position: fyne.NewPos(float32(ex)+80, float32(ey))},
+			Dragged:    fyne.NewDelta(80, 0),
+		})
+		gizmo.DragEnd()
+	}
+
+	waitForPreview(mw)
+
+	if len(mw.session.Document.MotionPaths) < 2 {
+		t.Fatalf("expected at least 2 MotionPaths on Document, got %d", len(mw.session.Document.MotionPaths))
+	}
+	frames := mw.centerPanel.mainCanvasFrames
+	if len(frames) < 2 {
+		t.Fatalf("expected animated preview frames, got %d", len(frames))
+	}
+
+	// Compare first frame and last frame to verify elements actually moved across the canvas
+	first := frames[0].Image
+	last := frames[len(frames)-1].Image
+	bounds := first.Bounds()
+	diffPixels := 0
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			r1, g1, b1, a1 := first.At(x, y).RGBA()
+			r2, g2, b2, a2 := last.At(x, y).RGBA()
+			if r1 != r2 || g1 != g2 || b1 != b2 || a1 != a2 {
+				diffPixels++
+			}
+		}
+	}
+	if diffPixels == 0 {
+		t.Errorf("expected rendered pixels to move between frame 0 and frame %d after dragging Move gizmos, but frames are identical", len(frames)-1)
+	}
+}
+
+func TestEmptyLayersFilteredAndLeafShapesInTransformedGroupAnimate(t *testing.T) {
+	fyneApp := test.NewApp()
+	defer fyneApp.Quit()
+
+	mw := NewMainWindow(fyneApp)
+	defer func() {
+		waitForPreview(mw)
+		mw.centerPanel.Pause()
+	}()
+
+	// SVG modeled after MossNerd.svg:
+	// - Empty self-closing <g inkscape:groupmode="layer" /> shells ("Glasses", "Hair Top")
+	// - Non-empty layer ("Ear") with a translated parent group g36 containing:
+	//   * Unlabeled leaf <path id="path7"> (actual glasses)
+	//   * Labeled leaf <path id="path8" inkscape:label="Shirt" style="...;paint-order:stroke fill markers">
+	//   * Nested group <g id="g35" inkscape:label="Right Eye">
+	svgData := []byte(`<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="256" height="256" viewBox="0 0 256 256">
+  <g inkscape:groupmode="layer" id="layer6" inkscape:label="Glasses" style="display:inline" />
+  <g inkscape:groupmode="layer" id="layer2" inkscape:label="Hair Top" style="display:inline" />
+  <g inkscape:groupmode="layer" id="layer4" inkscape:label="Ear" style="display:inline">
+    <g id="g36" transform="translate(37.66581,-7.1259644)">
+      <path id="path7" d="M 40 40 L 90 40 L 90 60 L 40 60 Z" style="fill:#00ff00;stroke:#000000;stroke-width:2" />
+      <path id="path8" inkscape:label="Shirt" d="M 40 110 L 120 110 L 120 170 L 40 170 Z" style="fill:#38bdf8;stroke:#000000;stroke-width:6;paint-order:stroke fill markers" />
+      <g id="g35" inkscape:label="Right Eye">
+        <circle id="c_eye" cx="65" cy="50" r="8" fill="#ff0055" />
+      </g>
+    </g>
+  </g>
+</svg>`)
+
+	tmpDir := t.TempDir()
+	svgPath := filepath.Join(tmpDir, "moss_nerd_like.svg")
+	if err := os.WriteFile(svgPath, svgData, 0644); err != nil {
+		t.Fatalf("failed to write test SVG: %v", err)
+	}
+	if err := mw.AddSVGFile(svgPath); err != nil {
+		t.Fatalf("AddSVGFile failed: %v", err)
+	}
+	waitForPreview(mw)
+	mw.centerPanel.Pause()
+
+	// 1. Empty layers must return an empty Rect{} from GetElementRect (not fall back to full DrawingRect)
+	emptyRect := mw.session.Document.GetElementRect("layer6")
+	if emptyRect.Width > 0 || emptyRect.Height > 0 {
+		t.Errorf("expected empty layer6 GetElementRect to have 0 size, got %+v", emptyRect)
+	}
+
+	// 2. CollectTracks must match Inkscape 1:1: show empty layers marked "(empty)" in visual z-order,
+	// with Layer: Ear starting collapsed (not exploding grandchildren).
+	tracks := mw.timelinePanel.CollectTracks()
+	trackByID := make(map[string]TimelineTrackModel, len(tracks))
+	gotIDs := make([]string, 0, len(tracks))
+	for _, tr := range tracks {
+		trackByID[tr.NodeID] = tr
+		gotIDs = append(gotIDs, tr.NodeID)
+	}
+	wantInitialOrder := []string{"src_1", "layer4", "layer2", "layer6"}
+	if strings.Join(gotIDs, ",") != strings.Join(wantInitialOrder, ",") {
+		t.Fatalf("expected initial tracks %v, got %v", wantInitialOrder, gotIDs)
+	}
+	if !trackByID["layer6"].IsEmpty || trackByID["layer6"].Title != "Layer: Glasses (empty)" || trackByID["layer6"].HasChildren {
+		t.Errorf("unexpected empty layer6 model: %+v", trackByID["layer6"])
+	}
+	if !trackByID["layer2"].IsEmpty || trackByID["layer2"].Title != "Layer: Hair Top (empty)" || trackByID["layer2"].HasChildren {
+		t.Errorf("unexpected empty layer2 model: %+v", trackByID["layer2"])
+	}
+	if trackByID["layer4"].IsEmpty || !trackByID["layer4"].IsCollapsed || !trackByID["layer4"].HasChildren {
+		t.Errorf("expected layer4 ('Ear') to start collapsed with children, got %+v", trackByID["layer4"])
+	}
+
+	// Verify tapping a rendered track header row button triggers selection cleanly
+	var tappedLayer6Btn *timelineTrackHeaderBtn
+	var findTrackBtn func(co fyne.CanvasObject, label string) *timelineTrackHeaderBtn
+	findTrackBtn = func(co fyne.CanvasObject, label string) *timelineTrackHeaderBtn {
+		if b, ok := co.(*timelineTrackHeaderBtn); ok && b.text == label {
+			return b
+		}
+		if c, ok := co.(*fyne.Container); ok {
+			for _, child := range c.Objects {
+				if found := findTrackBtn(child, label); found != nil {
+					return found
+				}
+			}
+		}
+		return nil
+	}
+	for _, row := range mw.timelinePanel.tracksVBox.Objects {
+		if b := findTrackBtn(row, "Layer: Glasses (empty)"); b != nil {
+			tappedLayer6Btn = b
+			break
+		}
+	}
+	if tappedLayer6Btn == nil {
+		t.Fatalf("expected to find rendered timelineTrackHeaderBtn for empty layer6")
+	}
+	test.Tap(tappedLayer6Btn)
+	if mw.editorState.ActiveNode == nil || mw.editorState.ActiveNode.ID != "layer6" {
+		t.Fatalf("expected tapping header button to select layer6, got %+v", mw.editorState.ActiveNode)
+	}
+	if mw.timelinePanel.AddActionBtn.Disabled() {
+		t.Errorf("expected AddActionBtn to be enabled when empty layer6 is selected")
+	}
+	mw.timelinePanel.AddActionToActiveNode("Move")
+	if _, cfg, hasCfg := mw.resolveNodeObjectConfig(mw.editorState.NodeMap["layer6"]); !hasCfg || len(cfg.Actions) != 1 {
+		t.Errorf("expected AddActionToActiveNode on empty layer6 to add 1 action, got hasCfg=%v len=%d", hasCfg, len(cfg.Actions))
+	}
+	mw.doUndo()
+	waitForPreview(mw)
+	if _, cfg, hasCfg := mw.resolveNodeObjectConfig(mw.editorState.NodeMap["layer6"]); hasCfg && len(cfg.Actions) != 0 {
+		t.Errorf("expected Undo to revert empty layer6 action, got len=%d", len(cfg.Actions))
+	}
+
+	// 3. Expanding ONLY layer4 must reveal g36 collapsed (no grandchild explosion yet)
+	mw.timelinePanel.collapsedNodes["layer4"] = false
+	mw.timelinePanel.Refresh()
+	tracksAfterEar := mw.timelinePanel.CollectTracks()
+	afterEarByID := make(map[string]TimelineTrackModel)
+	for _, tr := range tracksAfterEar {
+		afterEarByID[tr.NodeID] = tr
+	}
+	if tr, ok := afterEarByID["g36"]; !ok || !tr.IsCollapsed || !tr.HasChildren {
+		t.Fatalf("expected expanding Ear to reveal g36 collapsed with children, got ok=%v tr=%+v", ok, tr)
+	}
+	if _, exploded := afterEarByID["path7"]; exploded {
+		t.Errorf("expected g36 children (path7) to stay hidden until g36 is expanded")
+	}
+
+	// 4. Expanding g36 reveals path7, path8, and g35 (collapsed so c_eye stays hidden)
+	mw.timelinePanel.collapsedNodes["g36"] = false
+	mw.timelinePanel.Refresh()
+	tracksAfterG36 := mw.timelinePanel.CollectTracks()
+	afterG36ByID := make(map[string]TimelineTrackModel)
+	for _, tr := range tracksAfterG36 {
+		afterG36ByID[tr.NodeID] = tr
+	}
+	for _, wantID := range []string{"layer4", "g36", "path7", "path8", "g35"} {
+		if _, exists := afterG36ByID[wantID]; !exists {
+			t.Errorf("expected drawable element %q to be present after expanding g36, got tracks=%+v", wantID, tracksAfterG36)
+		}
+	}
+	if tr, ok := afterG36ByID["g35"]; !ok || !tr.IsCollapsed {
+		t.Errorf("expected nested group g35 to remain collapsed, got ok=%v tr=%+v", ok, tr)
+	}
+	if _, exploded := afterG36ByID["c_eye"]; exploded {
+		t.Errorf("expected c_eye inside collapsed g35 to stay hidden")
+	}
+
+	// 5. Animate leaf shape path7 (glasses) and paint-order leaf shape path8 (Shirt) inside translated group g36
+	for _, nID := range []string{"path7", "path8"} {
+		mw.timelinePanel.SelectTrack(nID)
+		mw.timelinePanel.AddActionToActiveNode("Move")
+	}
+	waitForPreview(mw)
+
+	frame0SVG, err := svg.BuildTimelineFrameSVGAtTime(mw.session.Document, 0.0, mw.timelinePanel.TotalDurationSec(), svg.Rect{})
+	if err != nil {
+		t.Fatalf("BuildTimelineFrameSVGAtTime(0) failed: %v", err)
+	}
+	frameEndSVG, err := svg.BuildTimelineFrameSVGAtTime(mw.session.Document, mw.timelinePanel.TotalDurationSec(), mw.timelinePanel.TotalDurationSec(), svg.Rect{})
+	if err != nil {
+		t.Fatalf("BuildTimelineFrameSVGAtTime(end) failed: %v", err)
+	}
+	if string(frame0SVG) == string(frameEndSVG) {
+		t.Fatalf("expected frame SVG at t=end to differ from t=0 when leaf shapes are animated")
+	}
+	if !strings.Contains(string(frameEndSVG), `id="path8_stroke"`) || !strings.Contains(string(frameEndSVG), `translate(32.000000, 0.000000)`) {
+		t.Errorf("expected both path7 and paint-order desugared path8_stroke/path8 to receive translate(32, 0) at end frame, got:\n%s", string(frameEndSVG))
+	}
+
+	frames := mw.centerPanel.mainCanvasFrames
+	if len(frames) < 2 {
+		t.Fatalf("expected animated preview frames, got %d", len(frames))
+	}
+	first := frames[0].Image
+	last := frames[len(frames)-1].Image
+	bounds := first.Bounds()
+	diffPixels := 0
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			r1, g1, b1, a1 := first.At(x, y).RGBA()
+			r2, g2, b2, a2 := last.At(x, y).RGBA()
+			if r1 != r2 || g1 != g2 || b1 != b2 || a1 != a2 {
+				diffPixels++
+			}
+		}
+	}
+	if diffPixels == 0 {
+		t.Errorf("expected rendered pixels to move between frame 0 and frame %d for leaf shapes in transformed group", len(frames)-1)
+	}
+}
+
+func TestActionEditModalLiveUpdateAndDeleteLayerWithChildren(t *testing.T) {
+	a := test.NewApp()
+	defer a.Quit()
+
+	mw := NewMainWindow(a)
+	defer func() {
+		mw.Close()
+		mw.centerPanel.Pause()
+	}()
+
+	svgData := []byte(`<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="256" height="256" viewBox="0 0 256 256">
+  <g inkscape:groupmode="layer" id="layer4" inkscape:label="Ear">
+    <g id="g36">
+      <path id="path7" d="M 40 40 L 90 40 L 90 60 L 40 60 Z" style="fill:#00ff00" />
+    </g>
+  </g>
+  <g inkscape:groupmode="layer" id="layer2" inkscape:label="KeepLayer">
+    <rect id="keepRect" x="10" y="10" width="20" height="20" fill="#ff0000" />
+  </g>
+</svg>`)
+
+	tmpDir := t.TempDir()
+	svgPath := filepath.Join(tmpDir, "edit_and_delete.svg")
+	if err := os.WriteFile(svgPath, svgData, 0644); err != nil {
+		t.Fatalf("failed to write test SVG: %v", err)
+	}
+	if err := mw.AddSVGFile(svgPath); err != nil {
+		t.Fatalf("AddSVGFile failed: %v", err)
+	}
+	waitForPreview(mw)
+	mw.centerPanel.Pause()
+
+	// Add a Rot action to path7
+	mw.timelinePanel.SelectTrack("path7")
+	mw.timelinePanel.AddActionToActiveNode("Rot")
+	waitForPreview(mw)
+
+	openModalAndFindGridControls := func() (*widget.Select, *widget.Entry, *widget.Button, *widget.Button) {
+		mw.timelinePanel.ShowActionEditModal("path7", 0)
+		top := mw.window.Canvas().Overlays().Top()
+		if top == nil {
+			t.Fatalf("expected action edit modal overlay to be open")
+		}
+		var easeSelect *widget.Select
+		var degEntry *widget.Entry
+		var saveBtn, cancelBtn *widget.Button
+
+		// Walk containers/widgets/popups looking for labels paired with their adjacent grid controls and action buttons
+		var walk func(co fyne.CanvasObject)
+		walk = func(co fyne.CanvasObject) {
+			if co == nil {
+				return
+			}
+			if btn, ok := co.(*widget.Button); ok {
+				switch btn.Text {
+				case "Save Action":
+					saveBtn = btn
+				case "Cancel":
+					cancelBtn = btn
+				}
+				return
+			}
+			if pop, ok := co.(*widget.PopUp); ok {
+				walk(pop.Content)
+				return
+			}
+			if c, ok := co.(*fyne.Container); ok {
+				for i, child := range c.Objects {
+					if lbl, isLbl := child.(*widget.Label); isLbl && i+1 < len(c.Objects) {
+						switch lbl.Text {
+						case "Ease:":
+							if sel, okSel := c.Objects[i+1].(*widget.Select); okSel {
+								easeSelect = sel
+							}
+						case "Degrees:":
+							if ent, okEnt := c.Objects[i+1].(*widget.Entry); okEnt {
+								degEntry = ent
+							}
+						}
+					}
+					walk(child)
+				}
+				return
+			}
+			if w, ok := co.(fyne.Widget); ok {
+				for _, obj := range test.WidgetRenderer(w).Objects() {
+					walk(obj)
+				}
+			}
+		}
+		walk(top)
+		if easeSelect == nil || degEntry == nil || saveBtn == nil || cancelBtn == nil {
+			t.Fatalf("missing modal widgets: ease=%v deg=%v save=%v cancel=%v", easeSelect != nil, degEntry != nil, saveBtn != nil, cancelBtn != nil)
+		}
+		return easeSelect, degEntry, saveBtn, cancelBtn
+	}
+
+	// 1. Live editing updates session.Objects + Document.MotionPaths BEFORE Save, and Cancel reverts!
+	easeSel, degEnt, _, cancelBtn := openModalAndFindGridControls()
+	degEnt.SetText("180")
+	easeSel.SetSelected("linear")
+
+	_, cfgLive, _ := mw.resolveNodeObjectConfig(mw.editorState.NodeMap["path7"])
+	if len(cfgLive.Actions) != 1 || cfgLive.Actions[0].RotationAngle != 180 || cfgLive.Actions[0].Ease != "linear" {
+		t.Fatalf("expected immediate live update before Save (180/linear), got %+v", cfgLive.Actions)
+	}
+	if len(mw.session.Document.MotionPaths) == 0 || mw.session.Document.MotionPaths[0].Config.RotationAngle != 180 {
+		t.Fatalf("expected Document.MotionPaths to update live to 180, got %+v", mw.session.Document.MotionPaths)
+	}
+
+	test.Tap(cancelBtn)
+	waitForPreview(mw)
+	_, cfgCanceled, _ := mw.resolveNodeObjectConfig(mw.editorState.NodeMap["path7"])
+	if cfgCanceled.Actions[0].RotationAngle != 45 || cfgCanceled.Actions[0].Ease != "in-out" {
+		t.Fatalf("expected Cancel to revert to 45/in-out, got %+v", cfgCanceled.Actions[0])
+	}
+
+	// 2. Re-open, edit live to 120 deg, and click Save Action
+	_, degEnt2, saveBtn2, _ := openModalAndFindGridControls()
+	degEnt2.SetText("120")
+	test.Tap(saveBtn2)
+	waitForPreview(mw)
+	_, cfgSaved, _ := mw.resolveNodeObjectConfig(mw.editorState.NodeMap["path7"])
+	if cfgSaved.Actions[0].RotationAngle != 120 {
+		t.Fatalf("expected Save Action to persist 120 deg, got %+v", cfgSaved.Actions[0])
+	}
+
+	// 3. Delete non-empty Layer "layer4" (contains g36 -> path7 + Rot action)
+	if err := mw.DeleteTrackNode("layer4"); err != nil {
+		t.Fatalf("DeleteTrackNode(layer4) failed: %v", err)
+	}
+	waitForPreview(mw)
+
+	if mw.editorState.NodeMap["layer4"] != nil || mw.editorState.NodeMap["g36"] != nil || mw.editorState.NodeMap["path7"] != nil {
+		t.Fatalf("expected layer4 and descendants removed from NodeMap after deletion")
+	}
+	if strings.Contains(string(mw.rawSourceBytes["src_1"]), `id="layer4"`) || strings.Contains(string(mw.rawSourceBytes["src_1"]), `id="path7"`) {
+		t.Errorf("expected layer4 subtree removed from rawSourceBytes, got:\n%s", string(mw.rawSourceBytes["src_1"]))
+	}
+	for k, cfg := range mw.session.Objects {
+		if k == "layer4" || k == "g36" || k == "path7" || cfg.FallbackXMLID == "path7" {
+			t.Errorf("expected deleted descendant ObjectConfig %q (fallback %q) removed", k, cfg.FallbackXMLID)
+		}
+	}
+
+	// 4. Undo must restore layer4, descendants, rawSourceBytes, AND path7's 120-deg Rot action; Redo removes them again
+	mw.doUndo()
+	waitForPreview(mw)
+	if mw.editorState.NodeMap["layer4"] == nil || mw.editorState.NodeMap["path7"] == nil {
+		t.Fatalf("expected Undo to restore layer4 and path7")
+	}
+	if !strings.Contains(string(mw.rawSourceBytes["src_1"]), `id="layer4"`) {
+		t.Errorf("expected Undo to restore layer4 in rawSourceBytes")
+	}
+	if _, cfgRestored, hasRestored := mw.resolveNodeObjectConfig(mw.editorState.NodeMap["path7"]); !hasRestored || len(cfgRestored.Actions) != 1 || cfgRestored.Actions[0].RotationAngle != 120 {
+		t.Errorf("expected Undo to restore path7 Rot(120) action, got has=%v cfg=%+v", hasRestored, cfgRestored)
+	}
+
+	mw.doRedo()
+	waitForPreview(mw)
+	if mw.editorState.NodeMap["layer4"] != nil || mw.editorState.NodeMap["path7"] != nil {
+		t.Fatalf("expected Redo to remove layer4 and path7 again")
+	}
+	if strings.Contains(string(mw.rawSourceBytes["src_1"]), `id="layer4"`) {
+		t.Errorf("expected Redo to remove layer4 from rawSourceBytes again")
+	}
+}
+
+
+
+
 
 

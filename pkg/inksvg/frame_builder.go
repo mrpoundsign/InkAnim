@@ -715,16 +715,6 @@ func reorderSourceWrapperChildren(tokens []xml.Token, doc *SVGDocument, motionMa
 	if !ok || startElem.Name.Local != "g" {
 		return tokens
 	}
-	var isSource bool
-	for _, a := range startElem.Attr {
-		if a.Name.Local == "data-inka-source" && a.Value != "" {
-			isSource = true
-			break
-		}
-	}
-	if !isSource {
-		return tokens
-	}
 
 	var children []topLevelNode
 	var cur []xml.Token
@@ -744,7 +734,9 @@ func reorderSourceWrapperChildren(tokens []xml.Token, doc *SVGDocument, motionMa
 			depth--
 			if depth == 0 {
 				var id string
+				var isChildGroup bool
 				if se, ok := cur[0].(xml.StartElement); ok {
+					isChildGroup = se.Name.Local == "g"
 					for _, a := range se.Attr {
 						if a.Name.Local == "id" {
 							id = a.Value
@@ -752,9 +744,17 @@ func reorderSourceWrapperChildren(tokens []xml.Token, doc *SVGDocument, motionMa
 						}
 					}
 				}
+				if isChildGroup {
+					cur = reorderSourceWrapperChildren(cur, doc, motionMap, kfPos, maxF, curTimeSec, totalDurSec)
+				}
+				// Keep desugared paint-order stroke element paired with its fill element at the same baseZ
+				childBaseZ := baseZ
+				if strings.HasSuffix(id, "_stroke") {
+					baseZ--
+				}
 				children = append(children, topLevelNode{
 					id:     id,
-					baseZ:  baseZ,
+					baseZ:  childBaseZ,
 					tokens: cur,
 				})
 				baseZ++
@@ -774,11 +774,12 @@ func reorderSourceWrapperChildren(tokens []xml.Token, doc *SVGDocument, motionMa
 
 	var anyDepth bool
 	for i := range children {
+		lookupID := strings.TrimSuffix(children[i].id, "_stroke")
 		activeDepth := 0
-		if stObj, exists := doc.StageObjects[children[i].id]; exists {
+		if stObj, exists := doc.StageObjects[lookupID]; exists {
 			activeDepth += stObj.ZOffset
 		}
-		if paths, exists := motionMap[children[i].id]; exists {
+		if paths, exists := motionMap[lookupID]; exists {
 			for _, mp := range paths {
 				if !mp.Config.HasDepth {
 					continue
@@ -824,6 +825,7 @@ func reorderSourceWrapperChildren(tokens []xml.Token, doc *SVGDocument, motionMa
 func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocument, kfPos float64, maxF int, curTimeSec, totalDurSec float64, motionMap map[string][]MotionPath, cameraActive bool, camX, camY float64, groupSweepMap map[string]string) error {
 	var currentGDepth int
 	var parallaxActiveDepth int
+	parentMatrixStack := []Matrix2D{IdentityMatrix()}
 
 	type activeColorState struct {
 		depth   int
@@ -871,9 +873,24 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 				}
 			}
 
-			// Apply translation, rotation, scaling, and visibility to animated groups
-			if elem.Name.Local == "g" {
-				currentGDepth++
+			isGroup := elem.Name.Local == "g"
+			isAnimatable := isGroup || isDrawableLeafElement(elem.Name.Local)
+			mParent := parentMatrixStack[len(parentMatrixStack)-1]
+			origGroupTransform := IdentityMatrix()
+			if isGroup {
+				for _, attr := range elem.Attr {
+					if attr.Name.Local == "transform" {
+						origGroupTransform = parseTransform(attr.Value)
+						break
+					}
+				}
+			}
+
+			// Apply translation, rotation, scaling, and visibility to animated groups and leaf elements
+			if isAnimatable {
+				if isGroup {
+					currentGDepth++
+				}
 				var id string
 				var isSourceWrapper bool
 				for _, attr := range elem.Attr {
@@ -884,10 +901,25 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 						isSourceWrapper = attr.Value != ""
 					}
 				}
-				paths := motionMap[id]
+				lookupID := id
+				paths := motionMap[lookupID]
+				stObj, hasStageObj := doc.StageObjects[lookupID]
+				if len(paths) == 0 && !hasStageObj && strings.HasSuffix(id, "_stroke") {
+					baseID := strings.TrimSuffix(id, "_stroke")
+					if baseID != "" {
+						if bp := motionMap[baseID]; len(bp) > 0 {
+							lookupID = baseID
+							paths = bp
+						}
+						if bs, ok := doc.StageObjects[baseID]; ok {
+							lookupID = baseID
+							stObj = bs
+							hasStageObj = true
+						}
+					}
+				}
 				hasPaths := len(paths) > 0
-				stObj, hasStageObj := doc.StageObjects[id]
-				applyCamera := cameraActive && parallaxActiveDepth == 0 && (!isSourceWrapper || hasPaths)
+				applyCamera := isGroup && cameraActive && parallaxActiveDepth == 0 && (!isSourceWrapper || hasPaths)
 
 				if hasPaths || hasStageObj || applyCamera {
 					factor := 1.0
@@ -950,10 +982,12 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 					}
 
 					if groupHidden {
-						if parallaxActiveDepth == currentGDepth {
-							parallaxActiveDepth = 0
+						if isGroup {
+							if parallaxActiveDepth == currentGDepth {
+								parallaxActiveDepth = 0
+							}
+							currentGDepth--
 						}
-						currentGDepth--
 						setElementHidden(&elem)
 						if err := encoder.EncodeToken(sanitizeElementForOutput(elem)); err != nil {
 							return err
@@ -979,7 +1013,7 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 					}
 
 					if hasStageObj && stObj.OverrideStartPos {
-						nativeRect := doc.GetElementRect(id)
+						nativeRect := doc.GetElementRect(lookupID)
 						if nativeRect.Width > 0 || nativeRect.Height > 0 {
 							totalDx += stObj.StartX - nativeRect.X
 							totalDy += stObj.StartY - nativeRect.Y
@@ -1002,18 +1036,18 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 						if stObj.BaseRotation != 0 {
 							totalRot += stObj.BaseRotation
 							rotPivotDetermined = true
-							rotPivotX, rotPivotY = resolveStageObjectPivot(doc, id, stObj)
+							rotPivotX, rotPivotY = resolveStageObjectPivot(doc, lookupID, stObj)
 						}
 						if stObj.BaseScaleX != 0 && math.Abs(stObj.BaseScaleX-1.0) > 1e-4 {
 							totalSx *= stObj.BaseScaleX
 							scalePivotDetermined = true
-							scalePivotX, scalePivotY = resolveStageObjectPivot(doc, id, stObj)
+							scalePivotX, scalePivotY = resolveStageObjectPivot(doc, lookupID, stObj)
 						}
 						if stObj.BaseScaleY != 0 && math.Abs(stObj.BaseScaleY-1.0) > 1e-4 {
 							totalSy *= stObj.BaseScaleY
 							if !scalePivotDetermined {
 								scalePivotDetermined = true
-								scalePivotX, scalePivotY = resolveStageObjectPivot(doc, id, stObj)
+								scalePivotX, scalePivotY = resolveStageObjectPivot(doc, lookupID, stObj)
 							}
 						}
 					}
@@ -1134,7 +1168,7 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 						hasRotEffect := mp.Config.Type == "rot" || mp.Config.RotationAngle != 0 || mp.Config.HasRotationRange || mp.Config.OrientPath
 						if !rotPivotDetermined && hasRotEffect {
 							rotPivotDetermined = true
-							rotPivotX, rotPivotY = resolvePivotWithFallback(doc, id, mp.Config, mp.PathData, stObj, hasStageObj)
+							rotPivotX, rotPivotY = resolvePivotWithFallback(doc, lookupID, mp.Config, mp.PathData, stObj, hasStageObj)
 						}
 
 						// Evaluate scale effect
@@ -1150,7 +1184,7 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 
 							if !scalePivotDetermined {
 								scalePivotDetermined = true
-								scalePivotX, scalePivotY = resolvePivotWithFallback(doc, id, mp.Config, mp.PathData, stObj, hasStageObj)
+								scalePivotX, scalePivotY = resolvePivotWithFallback(doc, lookupID, mp.Config, mp.PathData, stObj, hasStageObj)
 							}
 						}
 
@@ -1181,6 +1215,17 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 
 					if len(transformParts) > 0 {
 						newTransform := strings.Join(transformParts, " ")
+						if !mParent.IsIdentity() {
+							tRoot := parseTransform(newTransform)
+							if invParent, ok := mParent.Inverse(); ok {
+								mLocal := invParent.Multiply(tRoot).Multiply(mParent)
+								if math.Abs(mLocal.A-1) < 1e-6 && math.Abs(mLocal.B) < 1e-6 && math.Abs(mLocal.C) < 1e-6 && math.Abs(mLocal.D-1) < 1e-6 {
+									newTransform = fmt.Sprintf("translate(%f, %f)", mLocal.E, mLocal.F)
+								} else {
+									newTransform = fmt.Sprintf("matrix(%f %f %f %f %f %f)", mLocal.A, mLocal.B, mLocal.C, mLocal.D, mLocal.E, mLocal.F)
+								}
+							}
+						}
 						transformFound := false
 						for iAttr, attr := range elem.Attr {
 							if attr.Name.Local == "transform" {
@@ -1197,23 +1242,31 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 						}
 					}
 
-					// Check for Color sweep modifier attached to this group (Mode 2)
+					// Check for Color sweep modifier attached to this element (Mode 2)
 					var colorSweepPushed bool
-					if sweepID, ok := groupSweepMap[id]; ok {
+					if sweepID, ok := groupSweepMap[lookupID]; ok {
 						for _, mp := range paths {
 							if mp.Config.IsColor && mp.Config.HasColorAngle {
-								colorStack = append(colorStack, activeColorState{
-									depth:   currentGDepth,
-									gradURL: sweepID,
-									target:  mp.Config.ColorTarget,
-								})
+								target := mp.Config.ColorTarget
+								if strings.HasPrefix(target, "#") || target == "" {
+									target = "fill"
+								}
+								if isGroup {
+									colorStack = append(colorStack, activeColorState{
+										depth:   currentGDepth,
+										gradURL: sweepID,
+										target:  target,
+									})
+								} else {
+									applyColorOverride(&elem, "", 1.0, target, sweepID)
+								}
 								colorSweepPushed = true
 								break
 							}
 						}
 					}
 
-					// Check for Color solid shift modifier attached to this group (Mode 1)
+					// Check for Color solid shift modifier attached to this element (Mode 1)
 					if !colorSweepPushed {
 						for _, mp := range paths {
 							if mp.Config.IsColor && !mp.Config.HasColorAngle {
@@ -1246,12 +1299,27 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 									}
 									if grad, ok := doc.Gradients[mp.FillURL]; ok && len(grad.Stops) > 0 {
 										hex, op := InterpolateGradientColor(grad, t)
-										colorStack = append(colorStack, activeColorState{
-											depth:   currentGDepth,
-											hex:     hex,
-											opacity: op,
-											target:  mp.Config.ColorTarget,
-										})
+										if isGroup {
+											colorStack = append(colorStack, activeColorState{
+												depth:   currentGDepth,
+												hex:     hex,
+												opacity: op,
+												target:  mp.Config.ColorTarget,
+											})
+										} else {
+											applyColorOverride(&elem, hex, op, mp.Config.ColorTarget, "")
+										}
+									} else if strings.HasPrefix(mp.Config.ColorTarget, "#") {
+										if isGroup {
+											colorStack = append(colorStack, activeColorState{
+												depth:   currentGDepth,
+												hex:     mp.Config.ColorTarget,
+												opacity: 1.0,
+												target:  "fill",
+											})
+										} else {
+											applyColorOverride(&elem, mp.Config.ColorTarget, 1.0, "fill", "")
+										}
 									}
 								}
 								break
@@ -1261,12 +1329,19 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 				}
 			}
 
+			if isGroup {
+				parentMatrixStack = append(parentMatrixStack, mParent.Multiply(origGroupTransform))
+			}
+
 			if err := encoder.EncodeToken(sanitizeElementForOutput(elem)); err != nil {
 				return err
 			}
 
 		case xml.EndElement:
 			if elem.Name.Local == "g" {
+				if len(parentMatrixStack) > 1 {
+					parentMatrixStack = parentMatrixStack[:len(parentMatrixStack)-1]
+				}
 				for len(colorStack) > 0 && colorStack[len(colorStack)-1].depth >= currentGDepth {
 					colorStack = colorStack[:len(colorStack)-1]
 				}
@@ -1306,19 +1381,27 @@ func resolvePivotWithFallback(doc *SVGDocument, groupID string, config MotionCon
 	return resolvePivot(doc, groupID, config, pathData)
 }
 
+func elementOrDrawingRect(doc *SVGDocument, id string) Rect {
+	r := doc.GetElementRect(id)
+	if r.Width <= 0 && r.Height <= 0 {
+		return doc.GetDrawingRect()
+	}
+	return r
+}
+
 func resolvePivot(doc *SVGDocument, groupID string, config MotionConfig, pathData string) (float64, float64) {
 	switch config.PivotType {
 	case "custom":
 		return config.PivotX, config.PivotY
 	case "node":
 		if config.PivotNodeID != "" {
-			nodeRect := doc.GetElementRect(config.PivotNodeID)
+			nodeRect := elementOrDrawingRect(doc, config.PivotNodeID)
 			return nodeRect.X + nodeRect.Width/2.0, nodeRect.Y + nodeRect.Height/2.0
 		}
-		groupRect := doc.GetElementRect(groupID)
+		groupRect := elementOrDrawingRect(doc, groupID)
 		return groupRect.X + groupRect.Width/2.0, groupRect.Y + groupRect.Height/2.0
 	case "edge":
-		groupRect := doc.GetElementRect(groupID)
+		groupRect := elementOrDrawingRect(doc, groupID)
 		return CalculateEdgePivot(groupRect, config.PivotEdgeAngle)
 	case "path-start":
 		if !config.OrientPath && config.Type != "move" {
@@ -1326,10 +1409,10 @@ func resolvePivot(doc *SVGDocument, groupID string, config MotionConfig, pathDat
 				return sx, sy
 			}
 		}
-		groupRect := doc.GetElementRect(groupID)
+		groupRect := elementOrDrawingRect(doc, groupID)
 		return groupRect.X + groupRect.Width/2.0, groupRect.Y + groupRect.Height/2.0
 	default: // "center"
-		groupRect := doc.GetElementRect(groupID)
+		groupRect := elementOrDrawingRect(doc, groupID)
 		return groupRect.X + groupRect.Width/2.0, groupRect.Y + groupRect.Height/2.0
 	}
 }

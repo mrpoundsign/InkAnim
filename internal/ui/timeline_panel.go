@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"maps"
 	"math"
 	"slices"
 	"strconv"
@@ -23,7 +24,9 @@ import (
 )
 
 const (
-	timelineTrackLabelWidth = float32(275)
+	timelineTrackLabelWidth = float32(310)
+	timelineIndentStepPx    = float32(14)
+	timelineDisclosureWidth = float32(28)
 	timelineRulerHeight     = float32(30)
 	timelineTrackRowHeight  = float32(34)
 	timelineActionSubRowPx  = float32(24)
@@ -39,6 +42,7 @@ type TimelineTrackModel struct {
 	HasChildren bool
 	IsCollapsed bool
 	IsSelected  bool
+	IsEmpty     bool
 	Config      app.ObjectConfig
 }
 
@@ -367,6 +371,27 @@ func (tp *TimelinePanel) CollectTracks() []TimelineTrackModel {
 		return false
 	}
 
+	var subtreeHasActiveDescendant func(n *doctree.DocNode) bool
+	subtreeHasActiveDescendant = func(n *doctree.DocNode) bool {
+		for _, c := range n.Children {
+			_, cCfg, cHas := tp.mw.resolveNodeObjectConfig(c)
+			if cHas && (len(cCfg.Actions) > 0 || cCfg.HasDisplayWindow || cCfg.OverrideStartPos) {
+				return true
+			}
+			if subtreeHasActiveDescendant(c) {
+				return true
+			}
+		}
+		return false
+	}
+
+	shouldDefaultCollapse := func(n *doctree.DocNode) bool {
+		if n.IsLinkedFile {
+			return false
+		}
+		return !subtreeHasActiveDescendant(n)
+	}
+
 	var walk func(nodes []*doctree.DocNode, depth int)
 	walk = func(nodes []*doctree.DocNode, depth int) {
 		for _, n := range nodes {
@@ -385,20 +410,33 @@ func (tp *TimelinePanel) CollectTracks() []TimelineTrackModel {
 				prefix = "Layer: "
 			case n.IsGroup:
 				prefix = "Group: "
+			case n.Tag == "text":
+				prefix = "Text: "
+			case n.Tag == "image":
+				prefix = "Image: "
 			default:
-				prefix = "<" + n.Tag + "> "
+				prefix = "Shape: "
+			}
+			title := prefix + n.DisplayTitle()
+			if n.IsLayer && !n.HasDrawableContent {
+				title += " (empty)"
 			}
 			isSelected := state.ActiveNode != nil && state.ActiveNode.ID == n.ID
 			hasKids := hasVisibleChild(n)
-			collapsed := tp.collapsedNodes[n.ID]
+			collapsed, explicitCollapse := tp.collapsedNodes[n.ID]
+			if !explicitCollapse && hasKids {
+				collapsed = shouldDefaultCollapse(n)
+				tp.collapsedNodes[n.ID] = collapsed
+			}
 			tracks = append(tracks, TimelineTrackModel{
 				NodeID:      n.ID,
 				ObjectKey:   objKey,
-				Title:       prefix + n.DisplayTitle(),
+				Title:       title,
 				Depth:       depth,
 				HasChildren: hasKids,
 				IsCollapsed: collapsed,
 				IsSelected:  isSelected,
+				IsEmpty:     !n.HasDrawableContent,
 				Config:      objCfg,
 			})
 			if hasKids && !collapsed {
@@ -423,32 +461,151 @@ func (tp *TimelinePanel) SelectTrack(nodeID string) {
 		if tp.mw.refreshInspectorFn != nil {
 			tp.mw.refreshInspectorFn()
 		}
+		if tp.mw.centerPanel != nil {
+			tp.mw.centerPanel.RefreshGizmos()
+		}
 		tp.Refresh()
 	}
 }
 
-// timelineTrackHeaderBtn is a button for track rows that supports both single-click selection
-// and double-click to open the Object & Stage Properties modal.
+// timelineTrackHeaderBtn is a truncating pill row widget that supports selection,
+// hover highlight, active-object emphasis, empty-layer muting, single tap, and double tap.
 type timelineTrackHeaderBtn struct {
-	widget.Button
+	widget.BaseWidget
+	text        string
+	selected    bool
+	active      bool
+	empty       bool
+	hovered     bool
+	onTap       func()
 	onDoubleTap func()
 }
 
-func newTimelineTrackHeaderBtn(label string, onTap, onDoubleTap func()) *timelineTrackHeaderBtn {
+func newTimelineTrackHeaderBtn(label string, selected, active, empty bool, onTap, onDoubleTap func()) *timelineTrackHeaderBtn {
 	b := &timelineTrackHeaderBtn{
+		text:        label,
+		selected:    selected,
+		active:      active,
+		empty:       empty,
+		onTap:       onTap,
 		onDoubleTap: onDoubleTap,
 	}
-	b.Text = label
-	b.OnTapped = onTap
-	b.Alignment = widget.ButtonAlignLeading
 	b.ExtendBaseWidget(b)
 	return b
+}
+
+func (b *timelineTrackHeaderBtn) Tapped(_ *fyne.PointEvent) {
+	if b.onTap != nil {
+		b.onTap()
+	}
 }
 
 func (b *timelineTrackHeaderBtn) DoubleTapped(_ *fyne.PointEvent) {
 	if b.onDoubleTap != nil {
 		b.onDoubleTap()
 	}
+}
+
+func (b *timelineTrackHeaderBtn) MouseIn(_ *desktop.MouseEvent) {
+	b.hovered = true
+	b.Refresh()
+}
+
+func (b *timelineTrackHeaderBtn) MouseMoved(_ *desktop.MouseEvent) {}
+
+func (b *timelineTrackHeaderBtn) MouseOut() {
+	b.hovered = false
+	b.Refresh()
+}
+
+func (b *timelineTrackHeaderBtn) CreateRenderer() fyne.WidgetRenderer {
+	bg := canvas.NewRectangle(color.Transparent)
+	bg.CornerRadius = 4
+	seg := &widget.TextSegment{
+		Text:  b.text,
+		Style: widget.RichTextStyle{Inline: true},
+	}
+	rt := widget.NewRichText(seg)
+	rt.Truncation = fyne.TextTruncateEllipsis
+	r := &timelineTrackHeaderRenderer{btn: b, bg: bg, rt: rt, seg: seg}
+	r.Refresh()
+	return r
+}
+
+type timelineTrackHeaderRenderer struct {
+	btn *timelineTrackHeaderBtn
+	bg  *canvas.Rectangle
+	rt  *widget.RichText
+	seg *widget.TextSegment
+}
+
+func (r *timelineTrackHeaderRenderer) MinSize() fyne.Size {
+	return fyne.NewSize(40, timelineTrackRowHeight-2)
+}
+
+func (r *timelineTrackHeaderRenderer) Layout(size fyne.Size) {
+	r.bg.Move(fyne.NewPos(0, 2))
+	r.bg.Resize(fyne.NewSize(size.Width, max(0, size.Height-4)))
+
+	rtMin := r.rt.MinSize()
+	y := max(float32(0), (size.Height-rtMin.Height)/2)
+	r.rt.Move(fyne.NewPos(4, y))
+	r.rt.Resize(fyne.NewSize(max(float32(0), size.Width-8), min(size.Height, rtMin.Height)))
+}
+
+func (r *timelineTrackHeaderRenderer) Refresh() {
+	switch {
+	case r.btn.selected:
+		r.bg.FillColor = color.RGBA{R: 56, G: 189, B: 248, A: 255}
+	case r.btn.hovered:
+		r.bg.FillColor = color.RGBA{R: 255, G: 255, B: 255, A: 28}
+	case r.btn.active:
+		r.bg.FillColor = color.RGBA{R: 30, G: 41, B: 59, A: 210}
+	default:
+		r.bg.FillColor = color.Transparent
+	}
+	r.bg.Refresh()
+
+	r.seg.Text = r.btn.text
+	r.seg.Style.TextStyle = fyne.TextStyle{
+		Bold:   r.btn.selected || r.btn.active,
+		Italic: r.btn.empty,
+	}
+	switch {
+	case r.btn.selected:
+		r.seg.Style.ColorName = theme.ColorNameForeground
+	case r.btn.empty:
+		r.seg.Style.ColorName = theme.ColorNameDisabled
+	default:
+		r.seg.Style.ColorName = theme.ColorNameForeground
+	}
+	r.rt.Refresh()
+}
+
+func (r *timelineTrackHeaderRenderer) Objects() []fyne.CanvasObject {
+	return []fyne.CanvasObject{r.bg, r.rt}
+}
+
+func (r *timelineTrackHeaderRenderer) Destroy() {}
+
+// trackLeadLayout reserves a depth-scaled left indent plus a fixed disclosure chevron slot
+// so leaf rows and expandable parent rows align vertically without shifting.
+type trackLeadLayout struct {
+	indentPx  float32
+	slotWidth float32
+}
+
+func (l *trackLeadLayout) MinSize(_ []fyne.CanvasObject) fyne.Size {
+	return fyne.NewSize(l.indentPx+l.slotWidth, timelineTrackRowHeight-2)
+}
+
+func (l *trackLeadLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) {
+	if len(objects) == 0 {
+		return
+	}
+	o := objects[0]
+	o.Move(fyne.NewPos(l.indentPx, 1))
+	o.Resize(fyne.NewSize(l.slotWidth, max(0, size.Height-2)))
 }
 
 // Refresh rebuilds the track rows to reflect current session objects, actions, and selection.
@@ -462,50 +619,48 @@ func (tp *TimelinePanel) Refresh() {
 
 	for _, tr := range tracks {
 		track := tr
-		indent := strings.Repeat("  ", track.Depth)
-		arrow := ""
-		if track.HasChildren {
-			if track.IsCollapsed {
-				arrow = "▶ "
-			} else {
-				arrow = "▼ "
-			}
-		}
-
+		hasActiveCfg := len(track.Config.Actions) > 0 || track.Config.HasDisplayWindow || track.Config.OverrideStartPos
 		btn := newTimelineTrackHeaderBtn(
-			indent+arrow+track.Title,
+			track.Title,
+			track.IsSelected,
+			hasActiveCfg,
+			track.IsEmpty,
 			func() {
+				if tp.mw != nil {
+					tp.mw.selectedActionID = ""
+				}
 				tp.SelectTrack(track.NodeID)
 			},
 			func() {
+				if tp.mw != nil {
+					tp.mw.selectedActionID = ""
+				}
 				tp.SelectTrack(track.NodeID)
 				tp.ShowTrackPropertiesModal(track.NodeID)
 			},
 		)
-		switch {
-		case track.IsSelected:
-			btn.Importance = widget.HighImportance
-		case len(track.Config.Actions) > 0 || track.Config.HasDisplayWindow || track.Config.OverrideStartPos:
-			btn.Importance = widget.MediumImportance
-		default:
-			btn.Importance = widget.LowImportance
-		}
 
-		var leftAction fyne.CanvasObject
+		indentPx := float32(track.Depth) * timelineIndentStepPx
+		var leftLead fyne.CanvasObject
 		if track.HasChildren {
-			toggleLbl := "▼"
+			chevronIcon := theme.MenuDropDownIcon()
 			if track.IsCollapsed {
-				toggleLbl = "▶"
+				chevronIcon = theme.NavigateNextIcon()
 			}
-			collapseBtn := widget.NewButton(toggleLbl, func() {
+			collapseBtn := widget.NewButtonWithIcon("", chevronIcon, func() {
 				tp.collapsedNodes[track.NodeID] = !tp.collapsedNodes[track.NodeID]
 				tp.Refresh()
 			})
 			collapseBtn.Importance = widget.LowImportance
-			leftAction = collapseBtn
+			leftLead = container.New(&trackLeadLayout{indentPx: indentPx, slotWidth: timelineDisclosureWidth}, collapseBtn)
+		} else {
+			leftLead = container.New(&trackLeadLayout{indentPx: indentPx, slotWidth: timelineDisclosureWidth})
 		}
 
 		propsBtn := widget.NewButtonWithIcon("", theme.SettingsIcon(), func() {
+			if tp.mw != nil {
+				tp.mw.selectedActionID = ""
+			}
 			tp.SelectTrack(track.NodeID)
 			tp.ShowTrackPropertiesModal(track.NodeID)
 		})
@@ -515,14 +670,14 @@ func (tp *TimelinePanel) Refresh() {
 		if tp.mw != nil {
 			canUp, canDown := tp.mw.CanMoveTrackNode(track.NodeID)
 			if canUp || canDown {
-				upBtn := widget.NewButton("▲", func() {
+				upBtn := widget.NewButtonWithIcon("", theme.MoveUpIcon(), func() {
 					_ = tp.mw.MoveTrackNode(track.NodeID, -1)
 				})
 				upBtn.Importance = widget.LowImportance
 				if !canUp {
 					upBtn.Disable()
 				}
-				downBtn := widget.NewButton("▼", func() {
+				downBtn := widget.NewButtonWithIcon("", theme.MoveDownIcon(), func() {
 					_ = tp.mw.MoveTrackNode(track.NodeID, 1)
 				})
 				downBtn.Importance = widget.LowImportance
@@ -533,7 +688,7 @@ func (tp *TimelinePanel) Refresh() {
 			}
 		}
 
-		headerCell := container.NewBorder(nil, nil, leftAction, rightAction, btn)
+		headerCell := container.NewBorder(nil, nil, leftLead, rightAction, btn)
 
 		lane := newTimelineTrackLane(tp, track)
 		tp.lanes = append(tp.lanes, lane)
@@ -567,6 +722,24 @@ func (tp *TimelinePanel) Refresh() {
 	if tp.ruler != nil {
 		tp.ruler.Refresh()
 	}
+}
+
+func (tp *TimelinePanel) defaultNodeCenter(nodeID string, objCfg app.ObjectConfig) (float64, float64) {
+	cx, cy := 64.0, 64.0
+	if tp.mw != nil && tp.mw.session != nil && tp.mw.session.Document != nil {
+		r := tp.mw.session.Document.GetElementRect(nodeID)
+		if r.Width > 0 || r.Height > 0 {
+			if objCfg.OverrideStartPos {
+				return objCfg.StartX + r.Width/2.0, objCfg.StartY + r.Height/2.0
+			}
+			return r.X + r.Width/2.0, r.Y + r.Height/2.0
+		}
+		vb := tp.mw.session.GetActiveBoundaryRect(0)
+		if vb.Width > 0 || vb.Height > 0 {
+			return vb.X + vb.Width/2.0, vb.Y + vb.Height/2.0
+		}
+	}
+	return cx, cy
 }
 
 // SyncUndoRedo synchronizes the timeline toolbar's Undo/Redo button states with the active EditorState.
@@ -607,25 +780,36 @@ func (tp *TimelinePanel) AddActionToActiveNode(actionType string) {
 	objCfg.SourceID = node.SourceID
 	objCfg.FallbackXMLID = node.ID
 
+	if tp.mw.session.TotalDurationMs <= 150 && !tp.mw.session.HasManualDuration {
+		tp.mw.session.TotalDurationMs = 1500
+	}
 	durSec := tp.TotalDurationSec()
+	isActIDUsed := func(cand string) bool {
+		if slices.ContainsFunc(objCfg.Actions, func(a app.ActionConfig) bool { return a.ID == cand }) {
+			return true
+		}
+		for _, otherCfg := range tp.mw.session.Objects {
+			if slices.ContainsFunc(otherCfg.Actions, func(a app.ActionConfig) bool { return a.ID == cand }) {
+				return true
+			}
+		}
+		return false
+	}
 	nextActID := func(offset int) string {
 		n := len(objCfg.Actions) + 1 + offset
-		cand := fmt.Sprintf("act_%d", n)
-		for slices.ContainsFunc(objCfg.Actions, func(a app.ActionConfig) bool { return a.ID == cand }) {
+		prefix := node.ID
+		if prefix == "" {
+			prefix = "obj"
+		}
+		cand := fmt.Sprintf("%s_act_%d", prefix, n)
+		for isActIDUsed(cand) {
 			n++
-			cand = fmt.Sprintf("act_%d", n)
+			cand = fmt.Sprintf("%s_act_%d", prefix, n)
 		}
 		return cand
 	}
 
-	cx, cy := 64.0, 64.0
-	if tp.mw.session.Document != nil {
-		r := tp.mw.session.Document.GetElementRect(node.ID)
-		if r.Width > 0 || r.Height > 0 {
-			cx = r.X + r.Width/2.0
-			cy = r.Y + r.Height/2.0
-		}
-	}
+	cx, cy := tp.defaultNodeCenter(node.ID, objCfg)
 
 	actType := strings.ToLower(strings.TrimSpace(actionType))
 	if actType == "" {
@@ -750,8 +934,8 @@ func (tp *TimelinePanel) AddActionToActiveNode(actionType string) {
 		newActs = append(newActs, act)
 	}
 
-	objCfg.Actions = append(objCfg.Actions, newActs...)
-	tp.mw.session.Objects[objKey] = objCfg
+	objCfg.Actions = slices.Clone(append(objCfg.Actions, newActs...))
+	tp.mw.consolidateNodeObjectConfig(node.ID, objKey, objCfg)
 	if len(newActs) > 0 {
 		tp.mw.selectedActionID = newActs[len(newActs)-1].ID
 	}
@@ -763,11 +947,14 @@ func (tp *TimelinePanel) AddActionToActiveNode(actionType string) {
 		tp.mw.refreshInspectorFn()
 	}
 	tp.Refresh()
+	if tp.mw.centerPanel != nil {
+		tp.mw.centerPanel.RefreshGizmos()
+	}
 	tp.mw.schedulePreviewUpdate()
 }
 
-// ShowTrackPropertiesModal opens a modal dialog for renaming a Layer/Group and configuring
-// Stage Placement, Display Timing, Linked SVG actions, or deleting an empty group.
+// ShowTrackPropertiesModal opens a modal dialog for renaming a Layer/Group/Object and configuring
+// Stage Placement, Display Timing, Linked SVG actions, or deleting the element.
 func (tp *TimelinePanel) ShowTrackPropertiesModal(nodeID string) {
 	if tp.mw == nil || tp.mw.editorState == nil || tp.mw.session == nil {
 		return
@@ -779,10 +966,12 @@ func (tp *TimelinePanel) ShowTrackPropertiesModal(nodeID string) {
 	if tp.mw.session.Objects == nil {
 		tp.mw.session.Objects = make(map[string]app.ObjectConfig)
 	}
-	objKey, objCfg, _ := tp.mw.resolveNodeObjectConfig(node)
+	objKey, objCfg, hadOrigCfg := tp.mw.resolveNodeObjectConfig(node)
 	if objKey == "" {
 		objKey = node.ID
 	}
+	origObjCfg := objCfg
+	origObjCfg.Actions = slices.Clone(objCfg.Actions)
 
 	var kind string
 	switch {
@@ -818,16 +1007,7 @@ func (tp *TimelinePanel) ShowTrackPropertiesModal(nodeID string) {
 	}
 	updateStartPosEnables(objCfg.OverrideStartPos)
 
-	startPosCheck := widget.NewCheck("Custom Start Position (override SVG page position)", func(checked bool) {
-		if checked && startXEntry.Text == "0" && startYEntry.Text == "0" && tp.mw.session.Document != nil {
-			r := tp.mw.session.Document.GetElementRect(node.ID)
-			if r.Width > 0 || r.Height > 0 {
-				startXEntry.SetText(fmt.Sprintf("%.1f", r.X+r.Width/2.0))
-				startYEntry.SetText(fmt.Sprintf("%.1f", r.Y+r.Height/2.0))
-			}
-		}
-		updateStartPosEnables(checked)
-	})
+	startPosCheck := widget.NewCheck("Custom Start Position (override SVG page position)", nil)
 	startPosCheck.Checked = objCfg.OverrideStartPos
 
 	totalDurSec := tp.TotalDurationSec()
@@ -852,22 +1032,149 @@ func (tp *TimelinePanel) ShowTrackPropertiesModal(nodeID string) {
 	}
 	updateDisplayWinEnables(objCfg.HasDisplayWindow)
 
-	displayWinCheck := widget.NewCheck("Custom Display Time Window (seconds)", func(checked bool) {
-		updateDisplayWinEnables(checked)
-	})
+	displayWinCheck := widget.NewCheck("Custom Display Time Window (seconds)", nil)
 	displayWinCheck.Checked = objCfg.HasDisplayWindow
 
 	zOffsetEntry := widget.NewEntry()
 	zOffsetEntry.SetText(strconv.Itoa(objCfg.ZOffset))
 
-	pivotSelect := widget.NewSelect([]string{"center", "top", "bottom", "left", "right"}, nil)
+	pivotXEntry := widget.NewEntry()
+	pivotXEntry.SetText(fmt.Sprintf("%g", objCfg.PivotX))
+	pivotYEntry := widget.NewEntry()
+	pivotYEntry.SetText(fmt.Sprintf("%g", objCfg.PivotY))
+	updatePivotEnables := func(pivType string) {
+		if pivType == "custom" {
+			pivotXEntry.Enable()
+			pivotYEntry.Enable()
+		} else {
+			pivotXEntry.Disable()
+			pivotYEntry.Disable()
+		}
+	}
+
+	pivotSelect := widget.NewSelect([]string{"center", "top", "bottom", "left", "right", "custom"}, nil)
 	if objCfg.PivotType != "" {
 		pivotSelect.SetSelected(objCfg.PivotType)
 	} else {
 		pivotSelect.SetSelected("center")
 	}
+	updatePivotEnables(pivotSelect.Selected)
+
+	initializing := true
+	liveModified := false
+	committed := false
+
+	collectTrackObj := func(cur app.ObjectConfig) app.ObjectConfig {
+		cur.OverrideStartPos = startPosCheck.Checked
+		if v, err := strconv.ParseFloat(strings.TrimSpace(startXEntry.Text), 64); err == nil {
+			cur.StartX = v
+		}
+		if v, err := strconv.ParseFloat(strings.TrimSpace(startYEntry.Text), 64); err == nil {
+			cur.StartY = v
+		}
+		cur.HasDisplayWindow = displayWinCheck.Checked
+		if v, err := strconv.ParseFloat(strings.TrimSpace(appearEntry.Text), 64); err == nil && v >= 0 {
+			cur.StartTimeSec = v
+		}
+		if v, err := strconv.ParseFloat(strings.TrimSpace(hideEntry.Text), 64); err == nil && v >= 0 {
+			cur.EndTimeSec = v
+		}
+		if v, err := strconv.Atoi(strings.TrimSpace(zOffsetEntry.Text)); err == nil {
+			cur.ZOffset = v
+		}
+		cur.PivotType = pivotSelect.Selected
+		if cur.PivotType == "custom" {
+			if v, err := strconv.ParseFloat(strings.TrimSpace(pivotXEntry.Text), 64); err == nil {
+				cur.PivotX = v
+			}
+			if v, err := strconv.ParseFloat(strings.TrimSpace(pivotYEntry.Text), 64); err == nil {
+				cur.PivotY = v
+			}
+		}
+		cur.SourceID = node.SourceID
+		cur.FallbackXMLID = node.ID
+		return cur
+	}
+
+	applyTrackLive := func() {
+		if initializing {
+			return
+		}
+		objCfg = collectTrackObj(objCfg)
+		liveModified = true
+		tp.mw.consolidateNodeObjectConfig(node.ID, objKey, objCfg)
+		for _, lane := range tp.lanes {
+			if lane.track.NodeID == node.ID {
+				lane.track.Config = objCfg
+			}
+		}
+		tp.refreshGuidesOnly()
+		if tp.mw.centerPanel != nil {
+			tp.mw.centerPanel.RefreshGizmos()
+		}
+		tp.mw.schedulePreviewUpdate()
+	}
+
+	startPosCheck.OnChanged = func(checked bool) {
+		if checked && startXEntry.Text == "0" && startYEntry.Text == "0" && tp.mw.session.Document != nil {
+			r := tp.mw.session.Document.GetElementRect(node.ID)
+			if r.Width > 0 || r.Height > 0 {
+				wasInit := initializing
+				initializing = true
+				startXEntry.SetText(fmt.Sprintf("%.1f", r.X+r.Width/2.0))
+				startYEntry.SetText(fmt.Sprintf("%.1f", r.Y+r.Height/2.0))
+				initializing = wasInit
+			}
+		}
+		updateStartPosEnables(checked)
+		applyTrackLive()
+	}
+	displayWinCheck.OnChanged = func(checked bool) {
+		updateDisplayWinEnables(checked)
+		applyTrackLive()
+	}
+	pivotSelect.OnChanged = func(pivType string) {
+		updatePivotEnables(pivType)
+		applyTrackLive()
+	}
+	startXEntry.OnChanged = func(_ string) { applyTrackLive() }
+	startYEntry.OnChanged = func(_ string) { applyTrackLive() }
+	appearEntry.OnChanged = func(_ string) { applyTrackLive() }
+	hideEntry.OnChanged = func(_ string) { applyTrackLive() }
+	zOffsetEntry.OnChanged = func(_ string) { applyTrackLive() }
+	pivotXEntry.OnChanged = func(_ string) { applyTrackLive() }
+	pivotYEntry.OnChanged = func(_ string) { applyTrackLive() }
+	initializing = false
 
 	var d *dialog.CustomDialog
+
+	revertTrackIfUncommitted := func() {
+		if committed || !liveModified {
+			return
+		}
+		liveModified = false
+		if hadOrigCfg {
+			tp.mw.consolidateNodeObjectConfig(node.ID, objKey, origObjCfg)
+		} else {
+			delete(tp.mw.session.Objects, objKey)
+			if tp.mw.session.Document != nil {
+				durSec := float64(max(tp.mw.session.TotalDurationMs, 100)) / 1000.0
+				tp.mw.session.Document.TotalDurationSec = durSec
+				app.ApplyObjectsToDocument(tp.mw.session.Document, tp.mw.session.Objects, durSec)
+			}
+		}
+		if tp.mw.refreshTreeFn != nil {
+			tp.mw.refreshTreeFn()
+		}
+		if tp.mw.refreshInspectorFn != nil {
+			tp.mw.refreshInspectorFn()
+		}
+		tp.Refresh()
+		if tp.mw.centerPanel != nil {
+			tp.mw.centerPanel.RefreshGizmos()
+		}
+		tp.mw.schedulePreviewUpdate()
+	}
 
 	var items []fyne.CanvasObject
 	if !node.IsLinkedFile {
@@ -878,6 +1185,7 @@ func (tp *TimelinePanel) ShowTrackPropertiesModal(nodeID string) {
 		)
 	} else if node.SourceID != "" {
 		stripBtn := widget.NewButtonWithIcon("Strip Legacy IAMS", theme.ContentCutIcon(), func() {
+			committed = true
 			if d != nil {
 				d.Hide()
 			}
@@ -888,6 +1196,7 @@ func (tp *TimelinePanel) ShowTrackPropertiesModal(nodeID string) {
 		stripBtn.Importance = widget.LowImportance
 
 		unlinkBtn := widget.NewButtonWithIcon("Unlink SVG", theme.DeleteIcon(), func() {
+			committed = true
 			if d != nil {
 				d.Hide()
 			}
@@ -904,8 +1213,21 @@ func (tp *TimelinePanel) ShowTrackPropertiesModal(nodeID string) {
 		)
 	}
 
+	isEmptyNode := !node.HasDrawableContent
+
 	items = append(items,
 		widget.NewLabelWithStyle("Stage Placement & Display Timing", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+	)
+	if isEmptyNode {
+		emptyHint := widget.NewLabelWithStyle(
+			"Note: This layer currently has no drawable artwork in the SVG; actions and placement configured here will take effect once shapes are added to it.",
+			fyne.TextAlignLeading,
+			fyne.TextStyle{Italic: true},
+		)
+		emptyHint.Wrapping = fyne.TextWrapWord
+		items = append(items, emptyHint)
+	}
+	items = append(items,
 		startPosCheck,
 		container.NewGridWithColumns(4,
 			widget.NewLabel("Start X:"), startXEntry,
@@ -920,20 +1242,21 @@ func (tp *TimelinePanel) ShowTrackPropertiesModal(nodeID string) {
 			widget.NewLabel("Z-Offset:"), zOffsetEntry,
 			widget.NewLabel("Pivot:"), pivotSelect,
 		),
+		container.NewGridWithColumns(4,
+			widget.NewLabel("Pivot X:"), pivotXEntry,
+			widget.NewLabel("Pivot Y:"), pivotYEntry,
+		),
 	)
 
 	canDelete, deleteReason := tp.mw.editorState.CanDeleteElement(node.ID)
 	var deleteBtn *widget.Button
 	if !node.IsLinkedFile {
 		deleteBtn = widget.NewButtonWithIcon("Delete "+kind, theme.DeleteIcon(), func() {
+			committed = true
 			if d != nil {
 				d.Hide()
 			}
-			tp.SelectTrack(node.ID)
-			if tp.mw.doDeleteActiveElement != nil {
-				tp.mw.doDeleteActiveElement()
-			}
-			tp.Refresh()
+			_ = tp.mw.DeleteTrackNode(node.ID)
 		})
 		deleteBtn.Importance = widget.DangerImportance
 		if !canDelete {
@@ -948,27 +1271,9 @@ func (tp *TimelinePanel) ShowTrackPropertiesModal(nodeID string) {
 	}
 
 	saveBtn := widget.NewButtonWithIcon("Save", theme.ConfirmIcon(), func() {
-		objCfg.OverrideStartPos = startPosCheck.Checked
-		if v, err := strconv.ParseFloat(strings.TrimSpace(startXEntry.Text), 64); err == nil {
-			objCfg.StartX = v
-		}
-		if v, err := strconv.ParseFloat(strings.TrimSpace(startYEntry.Text), 64); err == nil {
-			objCfg.StartY = v
-		}
-		objCfg.HasDisplayWindow = displayWinCheck.Checked
-		if v, err := strconv.ParseFloat(strings.TrimSpace(appearEntry.Text), 64); err == nil && v >= 0 {
-			objCfg.StartTimeSec = v
-		}
-		if v, err := strconv.ParseFloat(strings.TrimSpace(hideEntry.Text), 64); err == nil && v >= 0 {
-			objCfg.EndTimeSec = v
-		}
-		if v, err := strconv.Atoi(strings.TrimSpace(zOffsetEntry.Text)); err == nil {
-			objCfg.ZOffset = v
-		}
-		objCfg.PivotType = pivotSelect.Selected
-		objCfg.SourceID = node.SourceID
-		objCfg.FallbackXMLID = node.ID
-		tp.mw.session.Objects[objKey] = objCfg
+		committed = true
+		objCfg = collectTrackObj(objCfg)
+		tp.mw.consolidateNodeObjectConfig(node.ID, objKey, objCfg)
 
 		renamed := false
 		if !node.IsLinkedFile {
@@ -989,6 +1294,9 @@ func (tp *TimelinePanel) ShowTrackPropertiesModal(nodeID string) {
 			tp.mw.refreshInspectorFn()
 		}
 		tp.Refresh()
+		if tp.mw.centerPanel != nil {
+			tp.mw.centerPanel.RefreshGizmos()
+		}
 		tp.mw.schedulePreviewUpdate()
 		if d != nil {
 			d.Hide()
@@ -997,6 +1305,7 @@ func (tp *TimelinePanel) ShowTrackPropertiesModal(nodeID string) {
 	saveBtn.Importance = widget.HighImportance
 
 	cancelBtn := widget.NewButton("Cancel", func() {
+		revertTrackIfUncommitted()
 		if d != nil {
 			d.Hide()
 		}
@@ -1014,6 +1323,7 @@ func (tp *TimelinePanel) ShowTrackPropertiesModal(nodeID string) {
 	content := container.NewVBox(items...)
 
 	d = dialog.NewCustomWithoutButtons(fmt.Sprintf("%s Properties — %s", kind, node.DisplayTitle()), content, tp.mw.window)
+	d.SetOnClosed(revertTrackIfUncommitted)
 	d.Resize(fyne.NewSize(480, 380))
 	d.Show()
 }
@@ -1031,6 +1341,9 @@ func (tp *TimelinePanel) ShowActionEditModal(nodeID string, actionIdx int) {
 	if !hasCfg || actionIdx < 0 || actionIdx >= len(objCfg.Actions) {
 		return
 	}
+	origObjCfg := objCfg
+	origObjCfg.Actions = slices.Clone(objCfg.Actions)
+
 	act := objCfg.Actions[actionIdx]
 	tp.mw.selectedActionID = act.ID
 
@@ -1077,14 +1390,23 @@ func (tp *TimelinePanel) ShowActionEditModal(nodeID string, actionIdx int) {
 		pivotSelect.SetSelected("center")
 	}
 
-	// Type-specific fields
+	// Type-specific fields (with sensible defaults when switching action types live)
+	pathInit := act.PathD
+	if actType != "move" && strings.TrimSpace(pathInit) == "" {
+		cx, cy := tp.defaultNodeCenter(node.ID, objCfg)
+		pathInit = fmt.Sprintf("M %.1f %.1f L %.1f %.1f", cx, cy, cx+32.0, cy)
+	}
 	pathEntry := widget.NewEntry()
-	pathEntry.SetText(act.PathD)
+	pathEntry.SetText(pathInit)
 	orientCheck := widget.NewCheck("Orient to Path", nil)
 	orientCheck.Checked = act.OrientPath
 
+	degInit := act.RotationAngle
+	if actType != "rot" && degInit == 0 {
+		degInit = 45.0
+	}
 	degEntry := widget.NewEntry()
-	degEntry.SetText(fmt.Sprintf("%g", act.RotationAngle))
+	degEntry.SetText(fmt.Sprintf("%g", degInit))
 	rotDirSelect := widget.NewSelect([]string{"cw", "ccw"}, nil)
 	if act.RotationDir != "" {
 		rotDirSelect.SetSelected(act.RotationDir)
@@ -1120,27 +1442,174 @@ func (tp *TimelinePanel) ShowActionEditModal(nodeID string, actionIdx int) {
 	}
 	scaleToYEntry.SetText(fmt.Sprintf("%g", stY))
 
+	opFromInit, opToInit := act.OpacityFrom, act.OpacityTo
+	if actType != "fade" && !act.HasOpacity && opFromInit == 0 && opToInit == 0 {
+		opToInit = 1.0
+	}
 	opFromEntry := widget.NewEntry()
-	opFromEntry.SetText(fmt.Sprintf("%g", act.OpacityFrom))
+	opFromEntry.SetText(fmt.Sprintf("%g", opFromInit))
 	opToEntry := widget.NewEntry()
-	opToEntry.SetText(fmt.Sprintf("%g", act.OpacityTo))
+	opToEntry.SetText(fmt.Sprintf("%g", opToInit))
 
+	colorInit := act.ColorTarget
+	if actType != "color" && colorInit == "" {
+		colorInit = "#38BDF8"
+	}
 	colorTargetEntry := widget.NewEntry()
-	colorTargetEntry.SetText(act.ColorTarget)
+	colorTargetEntry.SetText(colorInit)
 	colorAngleEntry := widget.NewEntry()
 	colorAngleEntry.SetText(fmt.Sprintf("%g", act.ColorAngle))
 
+	depthInit := act.DepthOffset
+	if actType != "depth" && depthInit == 0 {
+		depthInit = 5
+	}
 	depthEntry := widget.NewEntry()
-	depthEntry.SetText(strconv.Itoa(act.DepthOffset))
+	depthEntry.SetText(strconv.Itoa(depthInit))
+
+	collectAction := func(cur app.ActionConfig) app.ActionConfig {
+		cur.Type = strings.ToLower(typeSelect.Selected)
+		if v, err := strconv.ParseFloat(strings.TrimSpace(startEntry.Text), 64); err == nil && v >= 0 {
+			cur.StartSec = v
+			cur.IsAll = false
+		}
+		if v, err := strconv.ParseFloat(strings.TrimSpace(endEntry.Text), 64); err == nil && v > 0 {
+			cur.EndSec = v
+			cur.IsAll = false
+		}
+		cur.Ease = easeSelect.Selected
+		if v, err := strconv.Atoi(strings.TrimSpace(repeatEntry.Text)); err == nil && v > 0 {
+			cur.Repeat = v
+		}
+		cur.PingPong = pingPongCheck.Checked
+		cur.Reverse = reverseCheck.Checked
+		cur.PivotType = pivotSelect.Selected
+
+		switch cur.Type {
+		case "move":
+			cur.PathD = strings.TrimSpace(pathEntry.Text)
+			cur.OrientPath = orientCheck.Checked
+		case "rot":
+			if v, err := strconv.ParseFloat(strings.TrimSpace(degEntry.Text), 64); err == nil {
+				cur.RotationAngle = v
+			}
+			cur.RotationDir = rotDirSelect.Selected
+		case "scale":
+			if v, err := strconv.ParseFloat(strings.TrimSpace(scaleFromXEntry.Text), 64); err == nil {
+				cur.ScaleFromX = v
+			}
+			if v, err := strconv.ParseFloat(strings.TrimSpace(scaleFromYEntry.Text), 64); err == nil {
+				cur.ScaleFromY = v
+			}
+			if v, err := strconv.ParseFloat(strings.TrimSpace(scaleToXEntry.Text), 64); err == nil {
+				cur.ScaleToX = v
+			}
+			if v, err := strconv.ParseFloat(strings.TrimSpace(scaleToYEntry.Text), 64); err == nil {
+				cur.ScaleToY = v
+			}
+		case "fade":
+			if v, err := strconv.ParseFloat(strings.TrimSpace(opFromEntry.Text), 64); err == nil {
+				cur.OpacityFrom = v
+				cur.HasOpacity = true
+			}
+			if v, err := strconv.ParseFloat(strings.TrimSpace(opToEntry.Text), 64); err == nil {
+				cur.OpacityTo = v
+				cur.HasOpacity = true
+			}
+		case "color":
+			cur.ColorTarget = strings.TrimSpace(colorTargetEntry.Text)
+			if v, err := strconv.ParseFloat(strings.TrimSpace(colorAngleEntry.Text), 64); err == nil {
+				cur.ColorAngle = v
+				cur.HasColorAngle = true
+			}
+		case "depth":
+			if v, err := strconv.Atoi(strings.TrimSpace(depthEntry.Text)); err == nil {
+				cur.DepthOffset = v
+			}
+		}
+		return cur
+	}
+
+	var d *dialog.CustomDialog
+	initializing := true
+	liveModified := false
+	committed := false
+
+	applyLive := func() {
+		if initializing || actionIdx < 0 || actionIdx >= len(objCfg.Actions) {
+			return
+		}
+		act = collectAction(act)
+		objCfg.Actions[actionIdx] = act
+		liveModified = true
+		tp.mw.consolidateNodeObjectConfig(node.ID, objKey, objCfg)
+		for _, lane := range tp.lanes {
+			if lane.track.NodeID == node.ID {
+				lane.track.Config = objCfg
+			}
+		}
+		tp.refreshGuidesOnly()
+		if tp.mw.centerPanel != nil {
+			tp.mw.centerPanel.RefreshGizmos()
+		}
+		tp.mw.schedulePreviewUpdate()
+	}
+
+	revertIfUncommitted := func() {
+		if committed || !liveModified {
+			return
+		}
+		liveModified = false
+		tp.mw.consolidateNodeObjectConfig(node.ID, objKey, origObjCfg)
+		if tp.mw.refreshTreeFn != nil {
+			tp.mw.refreshTreeFn()
+		}
+		if tp.mw.refreshInspectorFn != nil {
+			tp.mw.refreshInspectorFn()
+		}
+		tp.Refresh()
+		if tp.mw.centerPanel != nil {
+			tp.mw.centerPanel.RefreshGizmos()
+		}
+		tp.mw.schedulePreviewUpdate()
+	}
+
+	editOnCanvasBtn := widget.NewButtonWithIcon("Edit Path on Canvas Gizmo", theme.VisibilityIcon(), func() {
+		if liveModified {
+			act = collectAction(act)
+			objCfg.Actions[actionIdx] = act
+			tp.CommitTrackConfig(node.ID, objKey, objCfg)
+		}
+		committed = true
+		tp.mw.selectedActionID = act.ID
+		tp.SelectTrack(node.ID)
+		if tp.mw.centerPanel != nil {
+			tp.mw.centerPanel.RefreshGizmos()
+		}
+		tp.Refresh()
+		if d != nil {
+			d.Hide()
+		}
+	})
+	editOnCanvasBtn.Importance = widget.HighImportance
+
+	gizmoHint := widget.NewLabelWithStyle(
+		"Tip: Drag green/blue anchors or pink/gray curve handles directly on the preview canvas. Double-click the path to add/remove points.",
+		fyne.TextAlignLeading,
+		fyne.TextStyle{Italic: true},
+	)
+	gizmoHint.Wrapping = fyne.TextWrapWord
 
 	specificBox := container.NewVBox()
 	rebuildSpecific := func(t string) {
 		switch strings.ToLower(t) {
 		case "move":
 			specificBox.Objects = []fyne.CanvasObject{
+				editOnCanvasBtn,
+				gizmoHint,
+				orientCheck,
 				widget.NewLabel("Motion Path (SVG d):"),
 				pathEntry,
-				orientCheck,
 			}
 		case "rot":
 			specificBox.Objects = []fyne.CanvasObject{
@@ -1184,11 +1653,35 @@ func (tp *TimelinePanel) ShowActionEditModal(nodeID string, actionIdx int) {
 		specificBox.Refresh()
 	}
 	rebuildSpecific(actType)
-	typeSelect.OnChanged = rebuildSpecific
 
-	var d *dialog.CustomDialog
+	typeSelect.OnChanged = func(t string) {
+		rebuildSpecific(t)
+		applyLive()
+	}
+	easeSelect.OnChanged = func(_ string) { applyLive() }
+	startEntry.OnChanged = func(_ string) { applyLive() }
+	endEntry.OnChanged = func(_ string) { applyLive() }
+	repeatEntry.OnChanged = func(_ string) { applyLive() }
+	pingPongCheck.OnChanged = func(_ bool) { applyLive() }
+	reverseCheck.OnChanged = func(_ bool) { applyLive() }
+	pivotSelect.OnChanged = func(_ string) { applyLive() }
+	pathEntry.OnChanged = func(_ string) { applyLive() }
+	orientCheck.OnChanged = func(_ bool) { applyLive() }
+	degEntry.OnChanged = func(_ string) { applyLive() }
+	rotDirSelect.OnChanged = func(_ string) { applyLive() }
+	scaleFromXEntry.OnChanged = func(_ string) { applyLive() }
+	scaleFromYEntry.OnChanged = func(_ string) { applyLive() }
+	scaleToXEntry.OnChanged = func(_ string) { applyLive() }
+	scaleToYEntry.OnChanged = func(_ string) { applyLive() }
+	opFromEntry.OnChanged = func(_ string) { applyLive() }
+	opToEntry.OnChanged = func(_ string) { applyLive() }
+	colorTargetEntry.OnChanged = func(_ string) { applyLive() }
+	colorAngleEntry.OnChanged = func(_ string) { applyLive() }
+	depthEntry.OnChanged = func(_ string) { applyLive() }
+	initializing = false
 
 	deleteBtn := widget.NewButtonWithIcon("Delete Action", theme.DeleteIcon(), func() {
+		committed = true
 		if d != nil {
 			d.Hide()
 		}
@@ -1202,67 +1695,9 @@ func (tp *TimelinePanel) ShowActionEditModal(nodeID string, actionIdx int) {
 	deleteBtn.Importance = widget.DangerImportance
 
 	saveBtn := widget.NewButtonWithIcon("Save Action", theme.ConfirmIcon(), func() {
-		act.Type = strings.ToLower(typeSelect.Selected)
-		if v, err := strconv.ParseFloat(strings.TrimSpace(startEntry.Text), 64); err == nil && v >= 0 {
-			act.StartSec = v
-			act.IsAll = false
-		}
-		if v, err := strconv.ParseFloat(strings.TrimSpace(endEntry.Text), 64); err == nil && v > 0 {
-			act.EndSec = v
-			act.IsAll = false
-		}
-		act.Ease = easeSelect.Selected
-		if v, err := strconv.Atoi(strings.TrimSpace(repeatEntry.Text)); err == nil && v > 0 {
-			act.Repeat = v
-		}
-		act.PingPong = pingPongCheck.Checked
-		act.Reverse = reverseCheck.Checked
-		act.PivotType = pivotSelect.Selected
-
-		switch act.Type {
-		case "move":
-			act.PathD = strings.TrimSpace(pathEntry.Text)
-			act.OrientPath = orientCheck.Checked
-		case "rot":
-			if v, err := strconv.ParseFloat(strings.TrimSpace(degEntry.Text), 64); err == nil {
-				act.RotationAngle = v
-			}
-			act.RotationDir = rotDirSelect.Selected
-		case "scale":
-			if v, err := strconv.ParseFloat(strings.TrimSpace(scaleFromXEntry.Text), 64); err == nil {
-				act.ScaleFromX = v
-			}
-			if v, err := strconv.ParseFloat(strings.TrimSpace(scaleFromYEntry.Text), 64); err == nil {
-				act.ScaleFromY = v
-			}
-			if v, err := strconv.ParseFloat(strings.TrimSpace(scaleToXEntry.Text), 64); err == nil {
-				act.ScaleToX = v
-			}
-			if v, err := strconv.ParseFloat(strings.TrimSpace(scaleToYEntry.Text), 64); err == nil {
-				act.ScaleToY = v
-			}
-		case "fade":
-			if v, err := strconv.ParseFloat(strings.TrimSpace(opFromEntry.Text), 64); err == nil {
-				act.OpacityFrom = v
-				act.HasOpacity = true
-			}
-			if v, err := strconv.ParseFloat(strings.TrimSpace(opToEntry.Text), 64); err == nil {
-				act.OpacityTo = v
-				act.HasOpacity = true
-			}
-		case "color":
-			act.ColorTarget = strings.TrimSpace(colorTargetEntry.Text)
-			if v, err := strconv.ParseFloat(strings.TrimSpace(colorAngleEntry.Text), 64); err == nil {
-				act.ColorAngle = v
-				act.HasColorAngle = true
-			}
-		case "depth":
-			if v, err := strconv.Atoi(strings.TrimSpace(depthEntry.Text)); err == nil {
-				act.DepthOffset = v
-			}
-		}
-
+		act = collectAction(act)
 		objCfg.Actions[actionIdx] = act
+		committed = true
 		tp.CommitTrackConfig(node.ID, objKey, objCfg)
 		tp.Refresh()
 		if d != nil {
@@ -1272,6 +1707,7 @@ func (tp *TimelinePanel) ShowActionEditModal(nodeID string, actionIdx int) {
 	saveBtn.Importance = widget.HighImportance
 
 	cancelBtn := widget.NewButton("Cancel", func() {
+		revertIfUncommitted()
 		if d != nil {
 			d.Hide()
 		}
@@ -1280,6 +1716,7 @@ func (tp *TimelinePanel) ShowActionEditModal(nodeID string, actionIdx int) {
 	actionBottomRow := container.NewHBox(deleteBtn)
 	if len(objCfg.Actions) > 1 {
 		moveUpBtn := widget.NewButton("▲ Up", func() {
+			committed = true
 			if d != nil {
 				d.Hide()
 			}
@@ -1290,6 +1727,7 @@ func (tp *TimelinePanel) ShowActionEditModal(nodeID string, actionIdx int) {
 			moveUpBtn.Disable()
 		}
 		moveDownBtn := widget.NewButton("▼ Down", func() {
+			committed = true
 			if d != nil {
 				d.Hide()
 			}
@@ -1328,6 +1766,7 @@ func (tp *TimelinePanel) ShowActionEditModal(nodeID string, actionIdx int) {
 	)
 
 	d = dialog.NewCustomWithoutButtons(fmt.Sprintf("Edit Action (%s) — %s", strings.ToUpper(act.Type), node.DisplayTitle()), content, tp.mw.window)
+	d.SetOnClosed(revertIfUncommitted)
 	d.Resize(fyne.NewSize(480, 360))
 	d.Show()
 }
@@ -1338,7 +1777,25 @@ func (tp *TimelinePanel) DeleteSelectedAction() bool {
 		return false
 	}
 	targetID := tp.mw.selectedActionID
-	for objKey, objCfg := range tp.mw.session.Objects {
+
+	// Check ActiveNode first in case of legacy duplicate action IDs
+	if activeNode := tp.mw.editorState.ActiveNode; activeNode != nil {
+		objKey, objCfg, hasCfg := tp.mw.resolveNodeObjectConfig(activeNode)
+		if hasCfg {
+			for idx, act := range objCfg.Actions {
+				if act.ID == targetID {
+					objCfg.Actions = append(objCfg.Actions[:idx], objCfg.Actions[idx+1:]...)
+					tp.mw.selectedActionID = ""
+					tp.CommitTrackConfig(activeNode.ID, objKey, objCfg)
+					tp.Refresh()
+					return true
+				}
+			}
+		}
+	}
+
+	for _, objKey := range slices.Sorted(maps.Keys(tp.mw.session.Objects)) {
+		objCfg := tp.mw.session.Objects[objKey]
 		for idx, act := range objCfg.Actions {
 			if act.ID == targetID {
 				objCfg.Actions = append(objCfg.Actions[:idx], objCfg.Actions[idx+1:]...)
@@ -1381,20 +1838,21 @@ func (tp *TimelinePanel) CommitTrackConfig(nodeID, objKey string, cfg app.Object
 	if tp.mw == nil || tp.mw.session == nil {
 		return
 	}
-	if tp.mw.session.Objects == nil {
-		tp.mw.session.Objects = make(map[string]app.ObjectConfig)
-	}
 	if objKey == "" {
 		objKey = nodeID
 	}
 	cfg.FallbackXMLID = nodeID
-	tp.mw.session.Objects[objKey] = cfg
+	cfg.Actions = slices.Clone(cfg.Actions)
+	tp.mw.consolidateNodeObjectConfig(nodeID, objKey, cfg)
 	tp.mw.RecordStudioChange("Update timeline track")
 	if tp.mw.refreshTreeFn != nil {
 		tp.mw.refreshTreeFn()
 	}
 	if tp.mw.refreshInspectorFn != nil {
 		tp.mw.refreshInspectorFn()
+	}
+	if tp.mw.centerPanel != nil {
+		tp.mw.centerPanel.RefreshGizmos()
 	}
 	tp.mw.schedulePreviewUpdate()
 }
@@ -1712,9 +2170,15 @@ func (l *timelineTrackLane) Tapped(ev *fyne.PointEvent) {
 		if l.tp.mw != nil {
 			l.tp.mw.selectedActionID = act.ID
 			l.tp.SelectTrack(l.track.NodeID)
+			if l.tp.mw.centerPanel != nil {
+				l.tp.mw.centerPanel.RefreshGizmos()
+			}
 		}
 		l.Refresh()
 		return
+	}
+	if l.tp.mw != nil {
+		l.tp.mw.selectedActionID = ""
 	}
 	l.tp.SelectTrack(l.track.NodeID)
 	l.tp.ScrubAtX(ev.Position.X, w)
@@ -1755,8 +2219,12 @@ func (l *timelineTrackLane) Dragged(ev *fyne.DragEvent) {
 				l.origEndSec = dur
 			}
 			l.origEndSec = clampFloat(l.origEndSec, l.origStartSec, dur)
+			l.tp.SelectTrack(l.track.NodeID)
 			if l.tp.mw != nil {
 				l.tp.mw.selectedActionID = act.ID
+				if l.tp.mw.centerPanel != nil {
+					l.tp.mw.centerPanel.RefreshGizmos()
+				}
 			}
 		} else if mode == dragDisplayResizeStart || mode == dragDisplayResizeEnd {
 			l.origStartSec = clampFloat(l.track.Config.StartTimeSec, 0, dur)

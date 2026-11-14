@@ -910,28 +910,29 @@ func TestCanDeleteElement(t *testing.T) {
 		t.Errorf("expected circle with synthetic ID to NOT be deletable")
 	}
 
-	// 3. Non-empty group (layer1 contains rect1 and circle): not deletable
+	// 3. Non-empty layer (layer1 contains rect1 and circle): deletable
 	canDel, reason = state.CanDeleteElement("layer1")
-	if canDel {
-		t.Errorf("expected non-empty layer1 to NOT be deletable")
-	}
-	if !strings.Contains(reason, "Group contains") {
-		t.Errorf("expected reason to mention child elements, got %q", reason)
+	if !canDel {
+		t.Errorf("expected non-empty layer1 to be deletable, got reason: %s", reason)
 	}
 
-	// 4. Group containing only invisible <clipPath>: not deletable
+	// 4. Group containing <clipPath>: deletable
 	canDel, reason = state.CanDeleteElement("group_with_clip")
-	if canDel {
-		t.Errorf("expected group_with_clip to NOT be deletable")
-	}
-	if !strings.Contains(reason, "Group contains 1 element") {
-		t.Errorf("expected reason to mention 1 element, got %q", reason)
+	if !canDel {
+		t.Errorf("expected group_with_clip to be deletable, got reason: %s", reason)
 	}
 
 	// 5. Empty group: deletable
 	canDel, reason = state.CanDeleteElement("empty_group")
 	if !canDel {
 		t.Errorf("expected empty_group to be deletable, got reason: %s", reason)
+	}
+
+	// 6. Linked source wrapper node: not deletable (uses Unlink SVG)
+	state.NodeMap["src_1"] = &doctree.DocNode{ID: "src_1", IsLinkedFile: true}
+	canDel, reason = state.CanDeleteElement("src_1")
+	if canDel || !strings.Contains(reason, "Unlink SVG") {
+		t.Errorf("expected linked source src_1 not deletable with Unlink SVG reason, got canDel=%v reason=%q", canDel, reason)
 	}
 }
 
@@ -1086,13 +1087,13 @@ func TestEditorWindow_DeleteElementUI(t *testing.T) {
 		t.Errorf("expected layer1 to become active node, got %+v", state.ActiveNode)
 	}
 
-	// After deletion, active node is layer1 which still has child rect2, so Delete should be disabled!
+	// After deletion, active node is non-empty layer1 (still has child rect2), which IS now deletable!
 	delBtn2 := findDeleteBtn(w.Content())
 	if delBtn2 == nil {
 		t.Fatalf("Delete button not found after update")
 	}
-	if !delBtn2.Disabled() {
-		t.Errorf("expected Delete button to be disabled for non-empty layer1")
+	if delBtn2.Disabled() {
+		t.Errorf("expected Delete button to be enabled for non-empty layer1")
 	}
 
 	// Find deletableTree

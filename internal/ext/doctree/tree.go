@@ -21,20 +21,33 @@ type Directive struct {
 
 // DocNode represents an element in the SVG document hierarchy.
 type DocNode struct {
-	ID           string
-	Tag          string
-	Label        string // inkscape:label if set
-	IsLinkedFile bool   // true if top-level linked SVG source group (data-inka-source)
-	SourceID     string // linked SVG source ID (e.g. "src_1")
-	IsLayer      bool   // true if inkscape:groupmode="layer"
-	IsGroup      bool   // true if tag == "g"
-	SyntheticID  bool   // true if element lacked an SVG 'id' attribute
-	Directives   []Directive
-	LabelPrefix  string // text before any motion directive (e.g. "Fade In: ")
-	LabelSuffix  string // text after all motion directives (e.g. " · Preset")
-	ParentID     string
-	Parent       *DocNode
-	Children     []*DocNode
+	ID                 string
+	Tag                string
+	Label              string // inkscape:label if set
+	IsLinkedFile       bool   // true if top-level linked SVG source group (data-inka-source)
+	SourceID           string // linked SVG source ID (e.g. "src_1")
+	IsLayer            bool   // true if inkscape:groupmode="layer"
+	IsGroup            bool   // true if tag == "g"
+	SyntheticID        bool   // true if element lacked an SVG 'id' attribute
+	IsHidden           bool   // true if element has display:none or visibility:hidden without Show/Hide directive
+	IsMotionHelper     bool   // true if non-group shape carrying an IAMS motion directive
+	HasDrawableContent bool   // true if this node or any descendant is a visible drawable element
+	Directives         []Directive
+	LabelPrefix        string // text before any motion directive (e.g. "Fade In: ")
+	LabelSuffix        string // text after all motion directives (e.g. " · Preset")
+	ParentID           string
+	Parent             *DocNode
+	Children           []*DocNode
+}
+
+// IsDrawableLeafTag returns true if the SVG XML tag is a standalone drawable leaf shape or text element.
+func IsDrawableLeafTag(tag string) bool {
+	switch tag {
+	case "path", "rect", "circle", "ellipse", "polygon", "polyline", "line", "text", "image", "use":
+		return true
+	default:
+		return false
+	}
 }
 
 // DisplayTitle returns a friendly label for the UI tree node.
@@ -43,6 +56,9 @@ func (n *DocNode) DisplayTitle() string {
 		return n.LabelPrefix
 	}
 	if n.ID != "" {
+		if n.SourceID != "" {
+			return strings.TrimPrefix(n.ID, n.SourceID+"__")
+		}
 		return n.ID
 	}
 	if n.Label != "" {
@@ -174,7 +190,7 @@ func ParseTree(svgData []byte) ([]*DocNode, map[string]*DocNode, error) {
 				continue
 			}
 
-			var id, label, groupMode, sourceIDAttr string
+			var id, label, groupMode, sourceIDAttr, styleAttr, displayAttr, visibilityAttr string
 			for _, attr := range tok.Attr {
 				switch attr.Name.Local {
 				case "id":
@@ -185,18 +201,25 @@ func ParseTree(svgData []byte) ([]*DocNode, map[string]*DocNode, error) {
 					groupMode = attr.Value
 				case "data-inka-source":
 					sourceIDAttr = attr.Value
+				case "style":
+					styleAttr = attr.Value
+				case "display":
+					displayAttr = attr.Value
+				case "visibility":
+					visibilityAttr = attr.Value
 				}
+			}
+
+			// Skip synthetic background rect or paint-order desugared stroke duplicates
+			if id == "inkanim_page_background" || (localTag != "g" && strings.HasSuffix(id, "_stroke")) {
+				stack = append(stack, stackItem{tag: localTag, skip: true})
+				continue
 			}
 
 			hasRealID := id != ""
 			if !hasRealID {
 				syntheticCount++
 				id = fmt.Sprintf("%s_%d", localTag, syntheticCount)
-			}
-
-			prefix, directives, suffix := ParseDirectives(label)
-			if len(directives) == 0 && prefix == "" {
-				prefix = id
 			}
 
 			// Attach to closest parent DocNode in stack
@@ -213,18 +236,34 @@ func ParseTree(svgData []byte) ([]*DocNode, map[string]*DocNode, error) {
 				sourceID = parent.SourceID
 			}
 
+			prefix, directives, suffix := ParseDirectives(label)
+			if len(directives) == 0 && prefix == "" {
+				if sourceID != "" {
+					prefix = strings.TrimPrefix(id, sourceID+"__")
+				} else {
+					prefix = id
+				}
+			}
+
+			isHidden := isElementHiddenByAttr(styleAttr, displayAttr, visibilityAttr, directives)
+			isMotionHelper := localTag != "g" && len(directives) > 0
+			isSelfDrawable := IsDrawableLeafTag(localTag) && !isHidden && !isMotionHelper
+
 			node := &DocNode{
-				ID:           id,
-				Tag:          localTag,
-				Label:        label,
-				IsLinkedFile: sourceIDAttr != "",
-				SourceID:     sourceID,
-				IsLayer:      groupMode == "layer",
-				IsGroup:      localTag == "g",
-				SyntheticID:  !hasRealID,
-				Directives:   directives,
-				LabelPrefix:  prefix,
-				LabelSuffix:  suffix,
+				ID:                 id,
+				Tag:                localTag,
+				Label:              label,
+				IsLinkedFile:       sourceIDAttr != "",
+				SourceID:           sourceID,
+				IsLayer:            groupMode == "layer",
+				IsGroup:            localTag == "g",
+				SyntheticID:        !hasRealID,
+				IsHidden:           isHidden,
+				IsMotionHelper:     isMotionHelper,
+				HasDrawableContent: isSelfDrawable,
+				Directives:         directives,
+				LabelPrefix:        prefix,
+				LabelSuffix:        suffix,
 			}
 
 			nodeMap[id] = node
@@ -246,6 +285,25 @@ func ParseTree(svgData []byte) ([]*DocNode, map[string]*DocNode, error) {
 		}
 	}
 
+	var computeDrawable func(n *DocNode) bool
+	computeDrawable = func(n *DocNode) bool {
+		var childDrawable bool
+		for _, c := range n.Children {
+			if computeDrawable(c) {
+				childDrawable = true
+			}
+		}
+		if n.IsHidden {
+			n.HasDrawableContent = false
+		} else if childDrawable {
+			n.HasDrawableContent = true
+		}
+		return n.HasDrawableContent
+	}
+	for _, r := range roots {
+		computeDrawable(r)
+	}
+
 	// Reverse tree hierarchy so display order matches Inkscape's Layers & Objects panel
 	// (visual z-order: top-most layer/object at the top, bottom-most layer at the bottom).
 	var reverseOrder func(nodes []*DocNode)
@@ -260,4 +318,27 @@ func ParseTree(svgData []byte) ([]*DocNode, map[string]*DocNode, error) {
 	reverseOrder(roots)
 
 	return roots, nodeMap, nil
+}
+
+func isElementHiddenByAttr(styleAttr, displayAttr, visibilityAttr string, directives []Directive) bool {
+	for _, d := range directives {
+		if strings.EqualFold(d.Type, "show") || strings.EqualFold(d.Type, "hide") {
+			return false
+		}
+	}
+	if strings.EqualFold(strings.TrimSpace(displayAttr), "none") || strings.EqualFold(strings.TrimSpace(visibilityAttr), "hidden") {
+		return true
+	}
+	for part := range strings.SplitSeq(styleAttr, ";") {
+		kv := strings.SplitN(part, ":", 2)
+		if len(kv) != 2 {
+			continue
+		}
+		k := strings.ToLower(strings.TrimSpace(kv[0]))
+		v := strings.ToLower(strings.TrimSpace(kv[1]))
+		if (k == "display" && v == "none") || (k == "visibility" && v == "hidden") {
+			return true
+		}
+	}
+	return false
 }

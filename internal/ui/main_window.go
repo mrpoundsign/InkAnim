@@ -106,6 +106,7 @@ func NewMainWindow(appInstance fyne.App) *MainWindow {
 
 	// Construct panels with coordinated refresh hooks
 	mw.centerPanel = NewCenterPreviewPanel(sess)
+	mw.centerPanel.SetGizmoOverlay(NewCanvasGizmoOverlay(mw))
 
 	// Layers & Motion tab (retained for extension mode and undo/redo shortcut initialization)
 	motionSplit := setupLayersAndMotionTab(mw)
@@ -1123,6 +1124,11 @@ func (mw *MainWindow) applyStudioSnapshot(snap StudioSnapshot) {
 		mw.centerPanel.isUpdatingTiming = true
 		mw.centerPanel.pingPongCheck.SetChecked(cloned.PingPong)
 		mw.centerPanel.isUpdatingTiming = false
+	}
+	if mw.session.Document != nil {
+		durSec := float64(max(mw.session.TotalDurationMs, 100)) / 1000.0
+		mw.session.Document.TotalDurationSec = durSec
+		app.ApplyObjectsToDocument(mw.session.Document, mw.session.Objects, durSec)
 	}
 	mw.projectDirty = true
 }
