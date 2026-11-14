@@ -1635,8 +1635,8 @@ func TestTimelinePanelRulerScrubAndActionBars(t *testing.T) {
 
 	// Resize right edge of the action from 1.0s (x=400) to 0.6s (x=240)
 	lane.Dragged(&fyne.DragEvent{
-		PointEvent: fyne.PointEvent{Position: fyne.NewPos(240, 16)},
-		Dragged:    fyne.Delta{DX: -158, DY: 0}, // start at x=398 (right edge grip)
+		Position: fyne.NewPos(240, 16),
+		Dragged:  fyne.Delta{DX: -158, DY: 0}, // start at x=398 (right edge grip)
 	})
 	lane.DragEnd()
 	waitForPreview(mw)
@@ -1653,8 +1653,8 @@ func TestTimelinePanelRulerScrubAndActionBars(t *testing.T) {
 	lane = tp.lanes[0]
 	lane.Resize(fyne.NewSize(400, timelineTrackRowHeight))
 	lane.Dragged(&fyne.DragEvent{
-		PointEvent: fyne.PointEvent{Position: fyne.NewPos(200, 16)},
-		Dragged:    fyne.Delta{DX: 80, DY: 0}, // start at x=120 (middle of 0..240 bar)
+		Position: fyne.NewPos(200, 16),
+		Dragged:  fyne.Delta{DX: 80, DY: 0}, // start at x=120 (middle of 0..240 bar)
 	})
 	lane.DragEnd()
 	waitForPreview(mw)
@@ -2038,8 +2038,8 @@ func TestCanvasGizmoOverlayPathAndStagePlacement(t *testing.T) {
 	origPathD := objCfg.Actions[moveIdx].PathD
 	ex, ey := svgToView(moveSegs[0].EndX, moveSegs[0].EndY)
 	gizmo.Dragged(&fyne.DragEvent{
-		PointEvent: fyne.PointEvent{Position: fyne.NewPos(float32(ex)+40, float32(ey)+30)},
-		Dragged:    fyne.NewDelta(40, 30),
+		Position: fyne.NewPos(float32(ex)+40, float32(ey)+30),
+		Dragged:  fyne.NewDelta(40, 30),
 	})
 	gizmo.DragEnd()
 
@@ -2052,8 +2052,8 @@ func TestCanvasGizmoOverlayPathAndStagePlacement(t *testing.T) {
 	_, _, _, _, _, moveSegs = gizmo.activeSelection()
 	c1x, c1y := svgToView(moveSegs[0].Ctrl1X, moveSegs[0].Ctrl1Y)
 	gizmo.Dragged(&fyne.DragEvent{
-		PointEvent: fyne.PointEvent{Position: fyne.NewPos(float32(c1x), float32(c1y)-35)},
-		Dragged:    fyne.NewDelta(0, -35),
+		Position: fyne.NewPos(float32(c1x), float32(c1y)-35),
+		Dragged:  fyne.NewDelta(0, -35),
 	})
 	gizmo.DragEnd()
 
@@ -2069,8 +2069,8 @@ func TestCanvasGizmoOverlayPathAndStagePlacement(t *testing.T) {
 	if hasBounds {
 		px, py := svgToView(pivX, pivY)
 		gizmo.Dragged(&fyne.DragEvent{
-			PointEvent: fyne.PointEvent{Position: fyne.NewPos(float32(px)+25, float32(py)+25)},
-			Dragged:    fyne.NewDelta(25, 25),
+			Position: fyne.NewPos(float32(px)+25, float32(py)+25),
+			Dragged:  fyne.NewDelta(25, 25),
 		})
 		gizmo.DragEnd()
 
@@ -2211,8 +2211,8 @@ func TestCanvasGizmoCtrlAngleSnapping(t *testing.T) {
 	}
 
 	gizmo.Dragged(&fyne.DragEvent{
-		PointEvent: fyne.PointEvent{Position: fyne.NewPos(float32(tvx), float32(tvy))},
-		Dragged:    fyne.NewDelta(float32(tvx-ex), float32(tvy-ey)),
+		Position: fyne.NewPos(float32(tvx), float32(tvy)),
+		Dragged:  fyne.NewDelta(float32(tvx-ex), float32(tvy-ey)),
 	})
 
 	if len(gizmo.dragSegs) == 0 {
@@ -2277,8 +2277,8 @@ func TestCanvasGizmoCtrlAngleSnapping(t *testing.T) {
 
 	gizmo.MouseDown(&desktop.MouseEvent{Modifier: fyne.KeyModifierControl})
 	gizmo.Dragged(&fyne.DragEvent{
-		PointEvent: fyne.PointEvent{Position: fyne.NewPos(float32(tstartVX), float32(tstartVY))},
-		Dragged:    fyne.NewDelta(float32(tstartVX-startVX), float32(tstartVY-startVY)),
+		Position: fyne.NewPos(float32(tstartVX), float32(tstartVY)),
+		Dragged:  fyne.NewDelta(float32(tstartVX-startVX), float32(tstartVY-startVY)),
 	})
 	if gizmo.dragMode != gizmoDragPathAnchor || gizmo.dragSegIdx != 0 {
 		t.Fatalf("expected dragMode == gizmoDragPathAnchor, segIdx == 0, got mode=%v, idx=%d", gizmo.dragMode, gizmo.dragSegIdx)
@@ -2309,8 +2309,8 @@ func TestCanvasGizmoCtrlAngleSnapping(t *testing.T) {
 
 	gizmo.MouseDown(&desktop.MouseEvent{Modifier: fyne.KeyModifierControl})
 	gizmo.Dragged(&fyne.DragEvent{
-		PointEvent: fyne.PointEvent{Position: fyne.NewPos(float32(tc1VX), float32(tc1VY))},
-		Dragged:    fyne.NewDelta(float32(tc1VX-c1VX), float32(tc1VY-c1VY)),
+		Position: fyne.NewPos(float32(tc1VX), float32(tc1VY)),
+		Dragged:  fyne.NewDelta(float32(tc1VX-c1VX), float32(tc1VY-c1VY)),
 	})
 	if gizmo.dragMode != gizmoDragPathCtrl1 {
 		t.Fatalf("expected dragMode == gizmoDragPathCtrl1, got %v", gizmo.dragMode)
@@ -2397,8 +2397,8 @@ func TestMultiTrackMoveGizmoAnimatesElements(t *testing.T) {
 
 		ex, ey := svgToView(moveSegs[0].EndX, moveSegs[0].EndY)
 		gizmo.Dragged(&fyne.DragEvent{
-			PointEvent: fyne.PointEvent{Position: fyne.NewPos(float32(ex)+80, float32(ey))},
-			Dragged:    fyne.NewDelta(80, 0),
+			Position: fyne.NewPos(float32(ex)+80, float32(ey)),
+			Dragged:  fyne.NewDelta(80, 0),
 		})
 		gizmo.DragEnd()
 	}
@@ -2792,9 +2792,3 @@ func TestActionEditModalLiveUpdateAndDeleteLayerWithChildren(t *testing.T) {
 		t.Errorf("expected Redo to remove layer4 from rawSourceBytes again")
 	}
 }
-
-
-
-
-
-

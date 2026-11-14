@@ -1,21 +1,45 @@
 package ui
 
 import (
-	"fmt"
-	"net/url"
+	"context"
+	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/dialog"
-	"fyne.io/fyne/v2/widget"
-
-	"inkanim/internal/app"
+	"github.com/mrpoundsign/appinstaller/pkg/updater"
+	"github.com/mrpoundsign/appinstaller/pkg/updaterui"
 )
 
-// CheckStartupUpdate verifies if a new version is available and prompts the user.
+func showSelfUpdateDialog(parent fyne.Window, currentVersion string, rel *updater.ReleaseInfo, checker *updater.Checker) {
+	updaterui.ShowUpdateDialog(updaterui.DialogConfig{
+		Parent:         parent,
+		AppName:        "InkAnim",
+		CurrentVersion: currentVersion,
+		Release:        rel,
+		Checker:        checker,
+		OnSkipVersion: func(ver string) {
+			if a := fyne.CurrentApp(); a != nil {
+				a.Preferences().SetString("SkippedUpdateVersion", ver)
+			}
+		},
+		OnQuitApp: func() {
+			if a := fyne.CurrentApp(); a != nil {
+				a.Quit()
+			}
+		},
+	})
+}
+
+// CheckStartupUpdate verifies if a new version is available and prompts the user with SHA-256 verified self-update.
 func CheckStartupUpdate(parent fyne.Window, currentVersion string) {
-	prefs := fyne.CurrentApp().Preferences()
+	if strings.EqualFold(strings.TrimSpace(currentVersion), "dev") {
+		return
+	}
+	a := fyne.CurrentApp()
+	if a == nil {
+		return
+	}
+	prefs := a.Preferences()
 
 	snoozeUntil := prefs.String("UpdateSnoozeUntil")
 	if snoozeUntil != "" {
@@ -28,43 +52,21 @@ func CheckStartupUpdate(parent fyne.Window, currentVersion string) {
 
 	skippedVersion := prefs.String("SkippedUpdateVersion")
 
-	app.CheckForUpdateAsync(currentVersion, nil, func(res *app.UpdateResult, err error) {
-		if err != nil || !res.IsOutdated {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		checker := updater.NewChecker("mrpoundsign", "InkAnim")
+		rel, isNewer, err := checker.CheckLatest(ctx, currentVersion)
+		if err != nil || !isNewer || rel == nil {
 			return
 		}
-		if res.LatestVersion == skippedVersion {
+		if skippedVersion != "" && updater.NormalizeVersion(rel.TagName) == updater.NormalizeVersion(skippedVersion) {
 			return
 		}
 
 		fyne.Do(func() {
-			var dlg dialog.Dialog
-
-			msg := fmt.Sprintf("A new version of InkAnim is available!\n\nCurrent: %s\nLatest: %s", res.CurrentVersion, res.LatestVersion)
-			label := widget.NewLabel(msg)
-
-			downloadBtn := widget.NewButton("Download Now", func() {
-				if u, err := url.Parse(res.ReleaseURL); err == nil {
-					_ = fyne.CurrentApp().OpenURL(u)
-				}
-				dlg.Hide()
-			})
-			downloadBtn.Importance = widget.HighImportance
-
-			snoozeBtn := widget.NewButton("Remind Me Later", func() {
-				fyne.CurrentApp().Preferences().SetString("UpdateSnoozeUntil", time.Now().Add(24*time.Hour).Format(time.RFC3339))
-				dlg.Hide()
-			})
-
-			skipBtn := widget.NewButton("Skip This Version", func() {
-				fyne.CurrentApp().Preferences().SetString("SkippedUpdateVersion", res.LatestVersion)
-				dlg.Hide()
-			})
-
-			buttons := container.NewHBox(skipBtn, snoozeBtn, downloadBtn)
-			content := container.NewVBox(label, widget.NewSeparator(), buttons)
-
-			dlg = dialog.NewCustom("Update Available", "Close", content, parent)
-			dlg.Show()
+			showSelfUpdateDialog(parent, currentVersion, rel, checker)
 		})
-	})
+	}()
 }

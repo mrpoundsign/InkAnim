@@ -1,0 +1,1 @@
+# This file keeps cmd/installer/payload/ tracked for go:embed during non-installer builds.
