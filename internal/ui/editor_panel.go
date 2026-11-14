@@ -136,6 +136,23 @@ func setupStudioHistoryAndShortcuts(mw *MainWindow) {
 		}
 	})
 
+	if deskCanvas, ok := w.Canvas().(desktop.Canvas); ok {
+		deskCanvas.SetOnKeyDown(func(ev *fyne.KeyEvent) {
+			if ev != nil && (ev.Name == desktop.KeyControlLeft || ev.Name == desktop.KeyControlRight) {
+				if mw.centerPanel != nil && mw.centerPanel.gizmoOverlay != nil {
+					mw.centerPanel.gizmoOverlay.SetCtrlHeld(true)
+				}
+			}
+		})
+		deskCanvas.SetOnKeyUp(func(ev *fyne.KeyEvent) {
+			if ev != nil && (ev.Name == desktop.KeyControlLeft || ev.Name == desktop.KeyControlRight) {
+				if mw.centerPanel != nil && mw.centerPanel.gizmoOverlay != nil {
+					mw.centerPanel.gizmoOverlay.SetCtrlHeld(false)
+				}
+			}
+		})
+	}
+
 	mw.updateUndoRedo()
 }
 
