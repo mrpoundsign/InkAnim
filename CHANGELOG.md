@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-11-13
+
+### Added
+- **Interactive Seconds & Frames Studio Timeline**:
+  - Added a dedicated seconds-first animation timeline with optional frame readouts, interactive ruler scrubbing, hover timestamp indicators, and a 1:1 Inkscape Layer & Group track hierarchy ([#143](https://github.com/mrpoundsign/InkAnim/issues/143), [#144](https://github.com/mrpoundsign/InkAnim/issues/144)).
+  - Added vertically stacked, draggable, and edge-resizable timeline bars for object display windows (`Start`/`End`) and simultaneous motion actions (`Move`, `Rot`, `Scale`, `Fade`, `Color`), with live-updating action editor modals and full Undo/Redo support for deleting Layers, Groups, and actions ([#143](https://github.com/mrpoundsign/InkAnim/issues/143), [#144](https://github.com/mrpoundsign/InkAnim/issues/144)).
+- **On-Canvas Motion Spline, Placement & Pivot Gizmos**:
+  - Added interactive canvas gizmos directly over the Studio preview viewport for dragging initial object stage placement, positioning custom rotation/scale pivot crosshairs, and bending `Move` trajectories into cubic Bézier curves via `Ctrl1`/`Ctrl2` tangent handles ([#144](https://github.com/mrpoundsign/InkAnim/issues/144)).
+  - Added live **15-degree `Ctrl` angle snapping** when dragging motion path start, end, or intermediate waypoint anchors (supporting mid-drag `Ctrl` press/release toggling without curve-handle drift while keeping Bézier tangent handles freeform) ([#147](https://github.com/mrpoundsign/InkAnim/issues/147)).
+- **Project-First `.inka` Workflow & Co-Located Linked SVGs**:
+  - Promoted `.inka` files to first-class Studio projects (`New Project`, `Open Project...`, `Save Project`, `Add / Import SVG...`) capable of linking and compositing multiple external Inkscape SVGs co-located in the project directory with live multi-file watching and reload ([#142](https://github.com/mrpoundsign/InkAnim/issues/142), [#145](https://github.com/mrpoundsign/InkAnim/issues/145)).
+  - Added automatic migration of legacy IAMS SVG motion directives into `.inka` timeline actions on import, with an optional prompt to keep or strip legacy IAMS labels/paths from the source SVG ([#145](https://github.com/mrpoundsign/InkAnim/issues/145)).
+
+### Changed
+- **Consolidated onto Native Desktop Studio & Static GitHub Pages**:
+  - Streamlined InkAnim exclusively around the native cross-platform Desktop Studio (`Windows`, `macOS`, `Linux`) and the static documentation and sample showcase site hosted at `https://mrpoundsign.com/InkAnim/` ([#146](https://github.com/mrpoundsign/InkAnim/issues/146)).
+
+### Removed
+- **Legacy WebAssembly Demo, Headless CLI & Inkscape Extension**:
+  - Removed the in-browser WebAssembly target, `inkanim-cli`, and the `inkanim-ext` Inkscape extension in favor of the standalone `.inka` Desktop Studio workflow ([#146](https://github.com/mrpoundsign/InkAnim/issues/146)).
+
+---
+
 ## [0.5.0] - 2026-10-28
 
 ### Added

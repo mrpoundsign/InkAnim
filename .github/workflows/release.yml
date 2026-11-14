@@ -141,7 +141,7 @@ jobs:
           path: gui-dist/
 
   release:
-    name: Release Binaries (GoReleaser + Client)
+    name: Release Desktop Studio Binaries
     needs: [test, build-gui-linux-windows, build-gui-macos]
     runs-on: ubuntu-latest
     steps:
@@ -194,4 +194,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload ${{ github.ref_name }} gui-dist/* dist/checksums.txt dist/SHA256SUMS.txt --clobber
+          if ! gh release view "${{ github.ref_name }}" >/dev/null 2>&1; then
+            gh release create "${{ github.ref_name }}" --verify-tag --generate-notes
+          fi
+          gh release upload "${{ github.ref_name }}" gui-dist/* dist/checksums.txt dist/SHA256SUMS.txt --clobber
