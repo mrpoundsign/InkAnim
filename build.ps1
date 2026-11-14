@@ -1,23 +1,16 @@
 # InkAnim Build Script (PowerShell)
 # Usage:
-#   .\build.ps1                # Build both Desktop GUI and CLI
-#   .\build.ps1 -Target gui    # Build Desktop GUI (with Zig CGo)
-#   .\build.ps1 -Target cli    # Build Pure-Go CLI (Zero-CGo)
+#   .\build.ps1                # Run lint, tests, and build Desktop Studio GUI
+#   .\build.ps1 -Target gui    # Build Desktop Studio GUI (with Zig CGo) -> build\bin\inkanim.exe
+#   .\build.ps1 -Target web    # Assemble static GitHub Pages site -> build\web\
 #   .\build.ps1 -Target test   # Run all unit tests
-#   .\build.ps1 -Target lint   # Run golangci-lint
-#   .\build.ps1 -Target cross  # Cross-compile CLI for Windows, Linux, macOS
+#   .\build.ps1 -Target lint   # Run go fix -diff & golangci-lint-v2
 #   .\build.ps1 -Target check  # Run goreleaser check
 #   .\build.ps1 -Target clean  # Clean build artifacts
-#   .\build.ps1 -Target ext-win # Build Inkscape extension package for Windows
-#   .\build.ps1 -Target ext-win -Install # Build and install extension to Inkscape
-#   .\build.ps1 -Install       # Build and install Inkscape extension
-#   .\build.ps1 -Install -NoBuild # Install existing package without rebuilding
 
 param(
-    [ValidateSet("all", "gui", "cli", "wasm", "wasm-check", "serve", "test", "test-update-golden", "lint", "cross", "check", "clean", "ext-win")]
-    [string]$Target = "all",
-    [switch]$Install,
-    [switch]$NoBuild
+    [ValidateSet("all", "gui", "web", "test", "test-update-golden", "lint", "check", "clean")]
+    [string]$Target = "all"
 )
 
 $ErrorActionPreference = "Stop"
@@ -44,27 +37,17 @@ $sysPath = [System.Environment]::GetEnvironmentVariable("Path", "Machine")
 $env:Path = "$userPath;$sysPath;$env:Path"
 
 $BuildDir = Join-Path $PSScriptRoot "build"
+$BinDir = Join-Path $BuildDir "bin"
 if (-not (Test-Path $BuildDir)) { New-Item -ItemType Directory -Path $BuildDir | Out-Null }
+if (-not (Test-Path $BinDir)) { New-Item -ItemType Directory -Path $BinDir | Out-Null }
 
 $ZigExe = Find-Tool "zig" @(
     "$env:LOCALAPPDATA\Microsoft\WinGet\Packages\zig.zig_Microsoft.Winget.Source_8wekyb3d8bbwe\zig-windows-x86_64-0.16.0\zig.exe",
     "C:\Program Files\zig\zig.exe"
 )
 
-function Build-CLI {
-    Write-Host "`n==> Building inkanim-cli (Pure Go, CGO_ENABLED=0)..." -ForegroundColor Cyan
-    $env:CGO_ENABLED = "0"
-    $outPath = Join-Path $BuildDir "inkanim-cli.exe"
-    & $GoExe build -trimpath -ldflags="-s -w" -o $outPath ./cmd/inkanim-cli
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "[OK] Successfully built $outPath" -ForegroundColor Green
-    } else {
-        Write-Error "Failed to build inkanim-cli."
-    }
-}
-
 function Build-GUI {
-    Write-Host "`n==> Building inkanim Desktop GUI (with CGo)..." -ForegroundColor Cyan
+    Write-Host "`n==> Building inkanim Desktop Studio GUI (with CGo)..." -ForegroundColor Cyan
     if (-not $ZigExe) {
         Write-Warning "Zig compiler not found. Attempting build with default system C compiler..."
         $env:CGO_ENABLED = "1"
@@ -74,7 +57,8 @@ function Build-GUI {
         $env:CC = "zig cc"
     }
 
-    $outPath = Join-Path $BuildDir "inkanim.exe"
+    if (-not (Test-Path $BinDir)) { New-Item -ItemType Directory -Path $BinDir | Out-Null }
+    $outPath = Join-Path $BinDir "inkanim.exe"
     & $GoExe build -trimpath -ldflags="-s -w -H=windowsgui -extldflags=-Wl,--subsystem,windows" -o $outPath ./cmd/inkanim
     if ($LASTEXITCODE -eq 0) {
         Write-Host "[OK] Successfully built $outPath" -ForegroundColor Green
@@ -83,132 +67,23 @@ function Build-GUI {
     }
 }
 
-function Build-ExtWin {
-    Write-Host "`n==> Building inkanim-ext for Windows (with CGo)..." -ForegroundColor Cyan
-    if (-not $ZigExe) {
-        Write-Warning "Zig compiler not found. Attempting build with default system C compiler..."
-        $env:CGO_ENABLED = "1"
-    } else {
-        Write-Host "Using Zig C compiler: $ZigExe" -ForegroundColor DarkGray
-        $env:CGO_ENABLED = "1"
-        $env:CC = "zig cc"
-    }
-    $extDir = Join-Path $BuildDir "inkscape-ext\windows-amd64"
-    if (Test-Path $extDir) { Remove-Item $extDir -Recurse -Force }
-    $binDir = Join-Path $extDir "bin"
-    New-Item -ItemType Directory -Path $binDir -Force | Out-Null
-
-    $outExe = Join-Path $binDir "inkanim-ext.exe"
-    $env:GOOS = "windows"
-    $env:GOARCH = "amd64"
-    & $GoExe build -trimpath -ldflags="-s -w -H=windowsgui -extldflags=-Wl,--subsystem,windows" -o $outExe ./cmd/inkanim-ext
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "Failed to build inkanim-ext.exe."
-    }
-
-    Copy-Item (Join-Path $PSScriptRoot "extensions\inkscape\*.inx") $extDir -Force
-    Copy-Item (Join-Path $PSScriptRoot "assets\icon.png") $extDir -Force
-
-    $zipFile = Join-Path $BuildDir "InkAnim_dev_inkscape-extension_windows_amd64.zip"
-    if (Test-Path $zipFile) { Remove-Item $zipFile -Force }
-    Compress-Archive -Path (Join-Path $extDir "*") -DestinationPath $zipFile
-
-    Write-Host "[OK] Successfully built extension package:" -ForegroundColor Green
-    Write-Host "     Binary: $outExe"
-    Write-Host "     Zip:    $zipFile"
-}
-
-function Install-ExtWin {
-    $zipFile = Join-Path $BuildDir "InkAnim_dev_inkscape-extension_windows_amd64.zip"
-    if (-not (Test-Path $zipFile)) {
-        # Check legacy name for fallback
-        $legacyZip = Join-Path $BuildDir "inkanim-inkscape-extension_dev_windows_amd64.zip"
-        if (Test-Path $legacyZip) {
-            $zipFile = $legacyZip
-        } else {
-            Write-Host "Extension package not found. Building first..." -ForegroundColor DarkGray
-            Build-ExtWin
-        }
-    }
-
-    Write-Host "`n==> Installing InkAnim extension for Inkscape (Windows)..." -ForegroundColor Cyan
-
-    $inkscapeProc = Get-Process inkscape -ErrorAction SilentlyContinue
-    if ($inkscapeProc) {
-        Write-Warning "Inkscape is currently running. You must restart Inkscape for extension updates to take effect."
-    }
-
-    $extBaseDir = Join-Path $env:APPDATA "inkscape\extensions"
-    if (-not (Test-Path $extBaseDir)) {
-        New-Item -ItemType Directory -Path $extBaseDir -Force | Out-Null
-    }
-
-    $targetDir = Join-Path $extBaseDir "inkanim"
-    if (Test-Path $targetDir) {
-        Write-Host "Cleaning existing extension files in $targetDir..." -ForegroundColor DarkGray
-        Remove-Item (Join-Path $targetDir "*") -Recurse -Force -ErrorAction SilentlyContinue
-    } else {
-        New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
-    }
-
-    Write-Host "Extracting extension package to $targetDir..." -ForegroundColor DarkGray
-    Expand-Archive -Path $zipFile -DestinationPath $targetDir -Force
-
-    $inxPath = Join-Path $targetDir "motion_editor.inx"
-    $exePath = Join-Path $targetDir "bin\inkanim-ext.exe"
-
-    if ((Test-Path $inxPath) -and (Test-Path $exePath)) {
-        $exeItem = Get-Item $exePath
-        $sizeMB = [math]::Round($exeItem.Length / 1MB, 2)
-        Write-Host "[OK] Inkscape extension installed successfully!" -ForegroundColor Green
-        Write-Host "     Extension Manifest: $inxPath"
-        Write-Host "     Binary:             $exePath ($sizeMB MB)"
-        Write-Host "`n==> Next steps:" -ForegroundColor Yellow
-        Write-Host "    1. Restart Inkscape (if open)." -ForegroundColor Yellow
-        Write-Host "    2. Select an object in Inkscape." -ForegroundColor Yellow
-        Write-Host "    3. Launch via: Extensions -> InkAnim -> Motion Editor`n" -ForegroundColor Yellow
-    } else {
-        Write-Error "Extension installation verification failed: required files missing in $targetDir."
-    }
-}
-
 function Run-Tests {
     param([switch]$UpdateGolden)
     Write-Host "`n==> Running unit tests..." -ForegroundColor Cyan
+    if ($ZigExe) {
+        $env:CGO_ENABLED = "1"
+        $env:CC = "zig cc"
+    }
     if ($UpdateGolden) {
-        & $GoExe test -v ./internal/... ./pkg/... ./cmd/inkanim-cli -update-golden
+        & $GoExe test -v ./internal/... ./pkg/... -update-golden
     } else {
-        & $GoExe test -v ./internal/... ./pkg/... ./cmd/inkanim-cli
+        & $GoExe test -v ./internal/... ./pkg/...
     }
     if ($LASTEXITCODE -eq 0) {
         Write-Host "[OK] All tests passed!" -ForegroundColor Green
     } else {
         Write-Error "Tests failed."
     }
-}
-
-function Cross-Compile-CLI {
-    Write-Host "`n==> Cross-compiling inkanim-cli for Windows and Linux..." -ForegroundColor Cyan
-    $distDir = Join-Path $BuildDir "dist"
-    if (-not (Test-Path $distDir)) { New-Item -ItemType Directory -Path $distDir | Out-Null }
-
-    $targets = @(
-        @{ OS = "windows"; Arch = "amd64"; Out = (Join-Path $distDir "inkanim-cli-windows-amd64.exe") },
-        @{ OS = "windows"; Arch = "arm64"; Out = (Join-Path $distDir "inkanim-cli-windows-arm64.exe") },
-        @{ OS = "linux";   Arch = "amd64"; Out = (Join-Path $distDir "inkanim-cli-linux-amd64") },
-        @{ OS = "linux";   Arch = "arm64"; Out = (Join-Path $distDir "inkanim-cli-linux-arm64") },
-        @{ OS = "darwin";  Arch = "amd64"; Out = (Join-Path $distDir "inkanim-cli-darwin-amd64") },
-        @{ OS = "darwin";  Arch = "arm64"; Out = (Join-Path $distDir "inkanim-cli-darwin-arm64") }
-    )
-
-    $env:CGO_ENABLED = "0"
-    foreach ($t in $targets) {
-        Write-Host "Building for $($t.OS)/$($t.Arch) -> $($t.Out) ..." -ForegroundColor DarkGray
-        $env:GOOS = $t.OS
-        $env:GOARCH = $t.Arch
-        & $GoExe build -trimpath -ldflags="-s -w" -o $t.Out ./cmd/inkanim-cli
-    }
-    Write-Host "[OK] Cross-compilation completed in $distDir" -ForegroundColor Green
 }
 
 function Run-Check {
@@ -221,16 +96,27 @@ function Run-Check {
 }
 
 function Run-Lint {
+    Write-Host "`n==> Verifying code modernization (go fix -diff)..." -ForegroundColor Cyan
+    if ($ZigExe) {
+        $env:CGO_ENABLED = "1"
+        $env:CC = "zig cc"
+    }
+    $fixDiff = & $GoExe fix -diff ./...
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "go fix -diff failed."
+    }
+    if ($fixDiff) {
+        Write-Host $fixDiff
+        Write-Error "Unfixed code modernization diffs found. Run 'go fix ./...' to apply them."
+    }
+    Write-Host "[OK] Code modernizations verified!" -ForegroundColor Green
+
     Write-Host "`n==> Running golangci-lint-v2..." -ForegroundColor Cyan
     $linter = Find-Tool "golangci-lint-v2" @(
         (Join-Path $env:USERPROFILE "go\bin\golangci-lint-v2.exe")
     )
     if (-not $linter) {
         Write-Error "golangci-lint-v2 not found in PATH or ~/go/bin."
-    }
-    if ($ZigExe) {
-        $env:CGO_ENABLED = "1"
-        $env:CC = "zig cc"
     }
     & $linter run ./...
     if ($LASTEXITCODE -eq 0) {
@@ -240,113 +126,37 @@ function Run-Lint {
     }
 }
 
-function Verify-WASM {
-    Write-Host "`n==> Verifying WebAssembly compilation..." -ForegroundColor Cyan
-    $env:GOOS = "js"
-    $env:GOARCH = "wasm"
-    $env:CGO_ENABLED = "0"
-    try {
-        & $GoExe build -tags migrated_fynedo -o (Join-Path $env:TEMP "inkanim.wasm") ./cmd/inkanim
-        if ($LASTEXITCODE -eq 0) {
-            Write-Host "[OK] WebAssembly compilation verified!" -ForegroundColor Green
-        } else {
-            Write-Error "WebAssembly compilation failed."
-        }
-    } finally {
-        $env:GOOS = ""
-        $env:GOARCH = ""
-        $env:CGO_ENABLED = ""
-    }
-}
-
-function Build-WASM {
-    Write-Host "`n==> Packaging WebAssembly demo & assembling GitHub Pages site..." -ForegroundColor Cyan
+function Build-Web {
+    Write-Host "`n==> Assembling static GitHub Pages site..." -ForegroundColor Cyan
     $pagesDir = Join-Path $BuildDir "web"
-    $wasmTemp = Join-Path $BuildDir "wasm-tmp"
     if (Test-Path $pagesDir) { Remove-Item $pagesDir -Recurse -Force }
-    if (Test-Path $wasmTemp) { Remove-Item $wasmTemp -Recurse -Force }
-    New-Item -ItemType Directory -Path (Join-Path $pagesDir "demo") -Force | Out-Null
     New-Item -ItemType Directory -Path (Join-Path $pagesDir "samples") -Force | Out-Null
-    New-Item -ItemType Directory -Path $wasmTemp -Force | Out-Null
 
-    Write-Host "Compiling WebAssembly binary via Fyne..." -ForegroundColor DarkGray
-    Push-Location $wasmTemp
-    try {
-        & $GoExe run fyne.io/tools/cmd/fyne@latest package -os web --release `
-            --tags migrated_fynedo `
-            --source-dir (Join-Path $PSScriptRoot "cmd\inkanim") `
-            --icon (Join-Path $PSScriptRoot "assets\icon.png") `
-            --name InkAnim
-    } finally {
-        Pop-Location
-    }
-
-    Copy-Item (Join-Path $wasmTemp "wasm\*") (Join-Path $pagesDir "demo") -Force
-    Remove-Item $wasmTemp -Recurse -Force
-
-    # Overlay our custom demo template
-    Copy-Item (Join-Path $PSScriptRoot "web\demo\index.html") (Join-Path $pagesDir "demo\index.html") -Force
-
-    # Copy landing page assets to root
     Copy-Item (Join-Path $PSScriptRoot "web\landing\*") $pagesDir -Recurse -Force
-
-    # Copy sample SVGs
-    Copy-Item (Join-Path $PSScriptRoot "web\samples\*") (Join-Path $pagesDir "samples") -Recurse -Force
-
-    Write-Host "[OK] WebAssembly demo and landing page assembled in $pagesDir" -ForegroundColor Green
-}
-
-function Serve-Web {
-    $pagesDir = Join-Path $BuildDir "web"
-    $wasmBinary = Join-Path $pagesDir "demo\InkAnim.wasm"
-    if (-not (Test-Path $wasmBinary)) {
-        Write-Host "Web site not built yet. Building first..." -ForegroundColor DarkGray
-        Build-WASM
-    } else {
-        # Overlay latest HTML/CSS templates so changes reflect immediately
-        Copy-Item (Join-Path $PSScriptRoot "web\demo\index.html") (Join-Path $pagesDir "demo\index.html") -Force
-        Copy-Item (Join-Path $PSScriptRoot "web\landing\*") $pagesDir -Recurse -Force
-        Copy-Item (Join-Path $PSScriptRoot "web\samples\*") (Join-Path $pagesDir "samples") -Recurse -Force
+    $samplesSrc = Join-Path $PSScriptRoot "web\samples"
+    if (Test-Path $samplesSrc) {
+        Copy-Item (Join-Path $samplesSrc "*") (Join-Path $pagesDir "samples") -Recurse -Force
     }
-    & $GoExe run ./cmd/wasm-serve -dir $pagesDir -port 8080
+
+    Write-Host "[OK] Static GitHub Pages site assembled in $pagesDir" -ForegroundColor Green
 }
 
 function Clean-Artifacts {
     Write-Host "`n==> Cleaning build artifacts..." -ForegroundColor Yellow
-    Remove-Item inkanim.exe, inkanim-cli.exe -ErrorAction SilentlyContinue
+    Remove-Item inkanim.exe -ErrorAction SilentlyContinue
     if (Test-Path $BuildDir) { Remove-Item $BuildDir -Recurse -Force }
-    New-Item -ItemType Directory -Path $BuildDir | Out-Null
+    New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
     if (Test-Path "dist") { Remove-Item "dist" -Recurse -Force }
     Write-Host "[OK] Cleaned." -ForegroundColor Green
 }
 
-if ($Install) {
-    if ($NoBuild) {
-        Install-ExtWin
-        exit 0
-    }
-    if (-not $PSBoundParameters.ContainsKey('Target')) {
-        $Target = "ext-win"
-    }
-}
-
 switch ($Target) {
-    "all"                 { Run-Lint; Run-Tests; Verify-WASM; Build-CLI; Build-GUI }
+    "all"                 { Run-Lint; Run-Tests; Build-GUI }
     "gui"                 { Build-GUI }
-    "cli"                 { Build-CLI }
-    "wasm"                { Build-WASM }
-    "wasm-check"          { Verify-WASM }
-    "serve"               { Serve-Web }
+    "web"                 { Build-Web }
     "test"                { Run-Tests }
     "test-update-golden"  { Run-Tests -UpdateGolden }
     "lint"                { Run-Lint }
-    "cross"               { Cross-Compile-CLI }
     "check"               { Run-Check }
     "clean"               { Clean-Artifacts }
-    "ext-win"             { Build-ExtWin }
 }
-
-if ($Install) {
-    Install-ExtWin
-}
-

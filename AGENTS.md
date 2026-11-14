@@ -13,15 +13,14 @@
 ---
 
 ## 2. Project Overview & Mission
-**InkAnim** is an open-source desktop application and interactive WebAssembly demo written in Go that transforms **Inkscape SVGs into optimized, production-ready animated GIFs** using declarative object motion syntax (IAMS). It is especially tailored for Twitch streamers, emote creators, and web animators.
+**InkAnim** is an open-source native desktop studio written in Go that transforms **Inkscape SVGs** and `.inka` projects into optimized, production-ready animated GIFs using visual timeline keyframes, canvas gizmos, and declarative object motion syntax (IAMS). It is especially tailored for Twitch streamers, emote creators, and web animators.
 
 - **Primary Repository**: `mrpoundsign/InkAnim`
 - **Visual Identity**: Obsidian Slate, Chrome White & Electric Sky Blue (`#38BDF8`) theme derived from the studio icon.
-- **Stack**: Go 1.27.0, [Fyne v2](https://fyne.io/) (v2.8.1 GUI toolkit with WebGL/WASM support), standard library image/gif with ordered Bayer 8×8 dithering and 15-bit color quantization.
+- **Stack**: Go 1.27.0, [Fyne v2](https://fyne.io/) (v2.8.1 native Desktop GUI toolkit), standard library `image/gif` with ordered Bayer 8×8 dithering and 15-bit color quantization.
 - **Targets**:
-  - Native Desktop (Windows `inkanim.exe`, Linux, macOS `InkAnim.app`)
-  - WebAssembly (interactive in-browser demo canvas via `fyne package -os web` / `fyne serve` and offline web zip)
-  - Headless CLI (`inkanim-cli`)
+  - Native Desktop Studio: Windows (`build/bin/inkanim.exe`), Linux (`build/bin/inkanim`), macOS (`InkAnim.app`)
+  - Static Documentation & Showcase Site: GitHub Pages at `https://mrpoundsign.com/InkAnim/`
 
 ---
 
@@ -30,8 +29,7 @@
 ```
 InkAnim/
 ├── cmd/
-│   ├── inkanim/          # Primary GUI desktop & WASM entry point (main.go)
-│   └── inkanim-cli/      # Headless CLI for batch processing & automated export
+│   └── inkanim/          # Primary native Desktop Studio entry point (main.go)
 ├── pkg/
 │   └── inksvg/           # Decoupled, pure-Go Inkscape SVG preprocessor, IAMS parser & rasterizer
 │       ├── preprocess.go # XML stream preprocessor (paint-order, text-to-path, LPE, rect rx/ry)
@@ -40,23 +38,24 @@ InkAnim/
 │       ├── text.go       # Embedded DejaVu Sans & TrueType glyph outline converter
 │       └── types.go      # Frame, Document, and MotionConfig models
 ├── internal/
-│   ├── app/              # Core application session, timeline state, boundary mode, orchestration
-│   │   ├── session.go    # Session state: Document, Timeline Frames, Duration, ExportOptions
-│   │   └── session_test.go
-│   ├── gif/              # GIF compilation, palette generation, twitch validation
+│   ├── app/              # Core application session, .inka project model, timeline state, boundary mode
+│   ├── gif/              # GIF compilation, palette generation, Twitch validation
 │   │   ├── encoder.go    # Animated GIF encoding (WriteGIFToFile, WriteGIFToWriter)
 │   │   ├── quantizer.go  # Color quantization, Bayer 8×8 dithering, palette generation
 │   │   └── twitch.go     # Twitch emote specifications & validation checks
-│   └── ui/               # Fyne GUI components
-│       ├── main_window.go    # Top header, window layout, drag-and-drop, file loading
-│       ├── left_frames.go    # Animation frames list, crop boundary toggle (Page/Drawing), speed
-│       ├── center_preview.go # Animation playback engine, canvas preview, twitch scale preview
+│   └── ui/               # Fyne Desktop Studio GUI components
+│       ├── main_window.go    # Top header, menus, .inka project workflow, drag-and-drop, file loading
+│       ├── timeline_panel.go # Seconds-first animation timeline, 1:1 Inkscape hierarchy, action modals
+│       ├── canvas_gizmo.go   # Interactive canvas spline, placement, and pivot gizmos
+│       ├── center_preview.go # Animation playback engine, canvas preview, Twitch scale preview
 │       ├── right_export.go   # Export configuration (Twitch presets, square sizing, palette)
+│       ├── editor_panel.go   # Studio undo/redo shortcuts, debounced preview updates, node management
+│       ├── editor_state.go   # SVG DOM state, undo/redo snapshots, element deletion
 │       ├── theme.go          # Obsidian & Electric Sky Blue studio theme
 │       └── ui_test.go        # Headless Fyne UI unit tests
 ├── testdata/             # Sample IAMS motion SVGs and fixtures
-├── web/                  # Landing page, interactive sample gallery, and docs
-└── .git/hooks/pre-push   # Pre-push hook running `go test ./...`
+├── web/                  # Static landing page (web/landing/), docs, and sample showcase (web/samples/)
+└── .git/hooks/           # pre-commit (go fix -diff & golangci-lint-v2) and pre-push (go test)
 ```
 
 ---
@@ -70,52 +69,30 @@ Active issues and feature requests are tracked exclusively via **[GitHub Issues]
 
 ---
 
-## 5. WebAssembly (WASM) Findings
+## 5. GitHub Pages & Static Site Deployment
 
-### Why "Open SVG" and "Export GIF" don't work out-of-the-box in WASM
-- Fyne v2.8.1 includes a Web driver, but file dialogs are **unimplemented upstream**:
-  In `fyne.io/fyne/v2/dialog/file_wasm.go`:
-  ```go
-  func fileOpenOSOverride(f *FileDialog) bool {
-      // TODO #2737
-      return true
-  }
-  func fileSaveOSOverride(f *FileDialog) bool {
-      // TODO #2738
-      return true
-  }
-  ```
-  Returning `true` causes Fyne to silently drop the request without rendering any file picker.
-- **Solution for WASM (Implemented in `internal/ui/file_dialog_wasm.go`)**:
-  - Implemented a web-specific file open bridge using `syscall/js` that triggers a browser `<input type="file" accept=".svg">`, reads the selected file using `FileReader`, and passes bytes to `mw.loadData(bytes, filename)`.
-  - Implemented an export bridge using `syscall/js` that converts the encoded GIF bytes into a `Blob` and triggers a browser download via a temporary `<a>` element.
-  - Implemented browser window drag-and-drop (`dragover`/`drop` listeners on `document`) to load SVGs directly when dropped into the canvas.
-  - Implemented programmatic sample loader bridge `window.inkanimLoadBytes(filename, uint8Array)` for instant sample loading in web demos.
-
-### GitHub Pages & WebAssembly Deployment
-- **Model**: Automated modern GitHub Pages deployment (artifact-based, zero extra branches) managed by `.github/workflows/pages.yml`.
-- **Packaging**: `./build.sh wasm` (or `.\build.ps1 -Target wasm`) compiles the app into `build/web/demo/`, assembles the project landing page into `build/web/`, and copies sample assets into `build/web/samples/`.
-- **Local Testing**: Run `./build.sh serve` (or `.\build.ps1 -Target serve`) to launch a local Go static server with `application/wasm` MIME support at `http://localhost:8080`.
+- **Hosting**: Static documentation and sample showcase hosted on GitHub Pages at `https://mrpoundsign.com/InkAnim/`.
+- **Workflow**: Automated artifact-based deployment managed by `.github/workflows/pages.yml` on pushes to `main` touching `web/**` or `.github/workflows/pages.yml` (and manual `workflow_dispatch`).
+- **Local Assembly**: Run `.\build.ps1 -Target web` (Windows PowerShell) or `./build.sh web` (Linux/macOS Bash) to copy `web/landing/*` and `web/samples/*` into `build/web/`.
 
 ---
 
 ## 6. Testing & Quality Requirements
 
-1. **Mandatory Pre-Commit, Pre-Push & WASM Build Checks**:
+1. **Mandatory Pre-Commit & Pre-Push Checks**:
    - Install and keep `.git/hooks/pre-commit` and `.git/hooks/pre-push` active.
-   - **Enforced on Every Commit**: Code modernizations (`go fix -diff`), linter (`golangci-lint-v2 run ./...`), and WebAssembly compilation (`GOOS=js GOARCH=wasm go build -tags migrated_fynedo -o /dev/null ./cmd/inkanim` or `./build.sh wasm-check`) must pass on every commit and are enforced in `.git/hooks/pre-commit`.
-   - Run linter (`golangci-lint-v2`), tests, and WASM check before pushing:
+   - **Enforced on Every Commit (`.git/hooks/pre-commit`)**: Code modernizations (`go fix -diff ./...`) and linter (`golangci-lint-v2 run ./...`) must pass on every commit.
+   - **Enforced Before Push (`.git/hooks/pre-push`)**: Full unit & UI test suite (`go test ./internal/... ./pkg/...`) must pass.
+   - Run full lint, test, and build checks locally:
      ```bash
-     ./build.sh lint && ./build.sh test && ./build.sh wasm-check
-     # or
-     .git/hooks/pre-push
+     ./build.sh lint && ./build.sh test
      # or on Windows PowerShell:
-     .\build.ps1 -Target lint; .\build.ps1 -Target test; .\build.ps1 -Target wasm-check
+     .\build.ps1 -Target lint; .\build.ps1 -Target test
      ```
 2. **Mandatory GUI Verification**:
-   - Never commit code until the user has tested and confirmed the GUI works as expected.
+   - Never commit code until the user has manually tested `build/bin/inkanim.exe` and confirmed the Desktop Studio GUI works as expected.
 3. **Cross-Platform Release Builds**:
-   - Native builds for Windows, Linux, macOS, and WebAssembly are supported via GitHub Actions release workflows mirroring the StreamTanks build pattern (MinGW Windows cross-compilation, native macOS runner, and WASM studio zip).
+   - Native Desktop Studio builds for Windows, Linux, and macOS are supported via `.github/workflows/release.yml` (MinGW Windows cross-compilation, Linux tar.xz packaging, and native macOS `.app` bundling) with consolidated SHA-256 checksums.
 4. **Fyne GUI Thread Safety**:
    - In Fyne v2, all UI mutations (such as `label.SetText()`, `button.Enable()`, `widget.Show()`, or canvas refreshes) triggered from background goroutines, tickers, or asynchronous callbacks **must** be dispatched on the main render thread via `fyne.Do(func() { ... })` or `fyne.DoAndWait(...)`.
    - Never mutate Fyne widget state directly from background threads; doing so triggers runtime thread-safety warnings (`*** Error in Fyne call thread, this should have been called in fyne.Do[AndWait] ***`) and risks race conditions.
@@ -144,8 +121,14 @@ Active issues and feature requests are tracked exclusively via **[GitHub Issues]
 1. **Pipeline Ordering**: Converting `<text>` to `<path>` early in `PreprocessSVG` allows generated text paths to automatically benefit from ancestor transform stroke scaling and `paint-order: stroke fill` desugaring. (In `testdata/Alert Icon.svg`, `text1` uses `paint-order: stroke fill markers` with a 13.4px stroke!).
 2. **Y-Axis Inversion in Glyph Contours**: Font formats (`sfnt`, TrueType/OpenType) place the origin at the baseline with positive Y pointing UP towards the ascender, whereas SVG Y points DOWN. Coordinates must be inverted: `svgY = baselineY - (glyphY * fontSize / unitsPerEm)`.
 3. **Inkscape Flowed Text (`shape-inside`)**: Inkscape 1.0+ flowed text objects (`shape-inside:url(...)`) typically embed explicit baseline anchors on `<tspan x="..." y="...">`. Using `<tspan>` coordinates avoids the need for a complex text-wrapping engine for simple labels.
-4. **WASM / Cross-Platform Font Fallbacks**: System font paths (`C:\Windows\Fonts`, `/usr/share/fonts`) are inaccessible in WebAssembly. The converter embeds official DejaVu Sans TTFs (`pkg/inksvg/fonts/`) to ensure deterministic, zero-dependency cross-platform rendering.
+4. **Deterministic Cross-Platform Font Fallbacks**: Embedded official DejaVu Sans TTFs (`pkg/inksvg/fonts/`) ensure identical, zero-dependency glyph rendering across Windows, macOS, and Linux without relying on system font directories.
 
 ### Future Modularization Roadmap (Issue #50)
-The in-memory SVG preprocessor and rasterizer has been extracted from `internal/svg` into a decoupled, pure-Go public package (`pkg/inksvg`) with zero GUI/Fyne or internal dependencies (Phase 1, Issue #50). Once a companion project (e.g. the 60-frame flat motion tool) or external consumers spin up, it can be seamlessly extracted into a standalone GitHub repository (`github.com/mrpoundsign/inksvg`) without modifying package internals.
+The in-memory SVG preprocessor and rasterizer has been extracted from `internal/svg` into a decoupled, pure-Go public package (`pkg/inksvg`) with zero GUI/Fyne or internal dependencies (Phase 1, Issue #50). Once a companion project or external consumers spin up, it can be seamlessly extracted into a standalone GitHub repository (`github.com/mrpoundsign/inksvg`) without modifying package internals.
 
+---
+
+## 8. Unified Installer & Self-Updater (`@skill:goreleaser-installer-updater`)
+
+- Uses `github.com/mrpoundsign/appinstaller` (`../appinstaller`), GoReleaser v2 OSS (`.goreleaser.yaml`), and the global Antigravity skill `@skill:goreleaser-installer-updater`.
+- `cmd/installer` packages and installs `inkanim.exe` (Desktop Studio) cleanly without CLI binaries or platform build-tag stubs.

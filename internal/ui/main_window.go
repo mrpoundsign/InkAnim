@@ -17,7 +17,6 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/driver/desktop"
-	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -33,7 +32,6 @@ type MainWindow struct {
 	centerPanel        *CenterPreviewPanel
 	rightPanel         *RightExportPanel
 	timelinePanel      *TimelinePanel
-	sidebarTabs        *container.AppTabs
 	fileLabel          *widget.Label
 	statusLabel        *widget.Label
 	bottomBar          *fyne.Container
@@ -50,34 +48,21 @@ type MainWindow struct {
 	editorState           *EditorState
 	selectedActionID      string
 	stripIAMSOnImport     bool
-	stripIAMSCheck        *widget.Check
-	tree                  *deletableTree
-	inspectorCard         *fyne.Container
 	topSplit              *container.Split
-	undoBtn               *widget.Button
-	redoBtn               *widget.Button
-	undoItem           *fyne.MenuItem
-	redoItem           *fyne.MenuItem
-	copyItem           *fyne.MenuItem
-	pasteItem          *fyne.MenuItem
-	deleteItem         *fyne.MenuItem
-	mainMenu           *fyne.MainMenu
-	previewTimer       *time.Timer
-	previewGen         int
-	previewMu          sync.Mutex
-	lastHistoryMsg     string
-	refreshTreeFn      func()
-	refreshInspectorFn func()
-	updateUndoRedo     func()
-	doUndo             func()
-	doRedo             func()
-	doCopy             func()
-	doPaste            func()
+	undoItem              *fyne.MenuItem
+	redoItem              *fyne.MenuItem
+	deleteItem            *fyne.MenuItem
+	mainMenu              *fyne.MainMenu
+	previewTimer          *time.Timer
+	previewGen            int
+	previewMu             sync.Mutex
+	lastHistoryMsg        string
+	updateUndoRedo        func()
+	doUndo                func()
+	doRedo                func()
 	doDeleteActiveElement func()
 
-	// Extension mode
-	isExtMode bool
-	closed    bool
+	closed bool
 }
 
 // NewMainWindow creates and initializes the studio interface.
@@ -108,10 +93,8 @@ func NewMainWindow(appInstance fyne.App) *MainWindow {
 	mw.centerPanel = NewCenterPreviewPanel(sess)
 	mw.centerPanel.SetGizmoOverlay(NewCanvasGizmoOverlay(mw))
 
-	// Layers & Motion tab (retained for extension mode and undo/redo shortcut initialization)
-	motionSplit := setupLayersAndMotionTab(mw)
-
 	mw.timelinePanel = NewTimelinePanel(mw)
+	setupStudioHistoryAndShortcuts(mw)
 
 	mw.centerPanel.SetOnPingPongChange(func() {
 		if mw.rightPanel != nil {
@@ -174,12 +157,6 @@ func NewMainWindow(appInstance fyne.App) *MainWindow {
 		mw.statusLabel,
 	)
 
-	// Unified tabbed sidebar retained for extension mode
-	mw.sidebarTabs = container.NewAppTabs(
-		container.NewTabItemWithIcon("Layers & Motion", theme.VisibilityIcon(), motionSplit),
-		container.NewTabItemWithIcon("Export", theme.DownloadIcon(), mw.rightPanel.Container()),
-	)
-
 	mw.topSplit = container.NewHSplit(mw.centerPanel.Container(), mw.rightPanel.Container())
 	mw.topSplit.SetOffset(0.68)
 
@@ -228,9 +205,6 @@ func NewMainWindow(appInstance fyne.App) *MainWindow {
 	reloadItem.Shortcut = &desktop.CustomShortcut{KeyName: fyne.KeyR, Modifier: fyne.KeyModifierControl}
 
 	exportItem := fyne.NewMenuItem("Export GIF...", func() {
-		if mw.sidebarTabs != nil && len(mw.sidebarTabs.Items) >= 2 {
-			mw.sidebarTabs.SelectIndex(1)
-		}
 		if mw.rightPanel != nil {
 			mw.rightPanel.PromptExport()
 		}
@@ -252,9 +226,6 @@ func NewMainWindow(appInstance fyne.App) *MainWindow {
 	editMenu := fyne.NewMenu("Edit",
 		mw.undoItem,
 		mw.redoItem,
-		fyne.NewMenuItemSeparator(),
-		mw.copyItem,
-		mw.pasteItem,
 		fyne.NewMenuItemSeparator(),
 		mw.deleteItem,
 	)
@@ -282,9 +253,6 @@ func NewMainWindow(appInstance fyne.App) *MainWindow {
 		mw.SaveAs()
 	})
 	win.Canvas().AddShortcut(&desktop.CustomShortcut{KeyName: fyne.KeyE, Modifier: fyne.KeyModifierControl}, func(_ fyne.Shortcut) {
-		if mw.sidebarTabs != nil && len(mw.sidebarTabs.Items) >= 2 {
-			mw.sidebarTabs.SelectIndex(1)
-		}
 		if mw.rightPanel != nil {
 			mw.rightPanel.PromptExport()
 		}
@@ -335,7 +303,6 @@ func NewMainWindow(appInstance fyne.App) *MainWindow {
 		}
 	})
 
-	mw.initPlatform()
 	return mw
 }
 
@@ -345,7 +312,7 @@ func (mw *MainWindow) ShowAndRun() {
 	mw.window.ShowAndRun()
 }
 
-// Save saves the modified SVG back to disk (desktop) or downloads it (WASM).
+// Save saves the current project or modified SVG back to disk.
 func (mw *MainWindow) Save() {
 	mw.promptSaveSVG()
 }
@@ -387,7 +354,7 @@ func (mw *MainWindow) StopPreviewTimer() {
 	mw.previewMu.Unlock()
 }
 
-// SaveAs prompts for a new file destination to save the project (or SVG in extension mode).
+// SaveAs prompts for a new file destination to save the project.
 func (mw *MainWindow) SaveAs() {
 	mw.promptSaveSVGAs()
 }
@@ -416,12 +383,6 @@ func (mw *MainWindow) NewProject() {
 	}
 	mw.updateFileLabel()
 	mw.updateStatus()
-	if mw.refreshTreeFn != nil {
-		mw.refreshTreeFn()
-	}
-	if mw.refreshInspectorFn != nil {
-		mw.refreshInspectorFn()
-	}
 	if mw.updateUndoRedo != nil {
 		mw.updateUndoRedo()
 	}
@@ -560,8 +521,8 @@ func (mw *MainWindow) addSVGSourceInternal(rawBytes []byte, filename, diskPath s
 		return hasIAMS, err
 	}
 	mw.fileWatcher.watchFiles(mw.linkedDiskPaths())
-	if len(mw.linkedDiskPaths()) > 0 {
-		mw.showReloadButton(mw.reloadBtn)
+	if len(mw.linkedDiskPaths()) > 0 && mw.reloadBtn != nil {
+		mw.reloadBtn.Show()
 	}
 	preserveDur := len(mw.session.LinkedSources) > 1 || mw.session.HasManualDuration
 	mw.loadDataWithOptions(composed, mw.projectDisplayName(), nil, preserveDur)
@@ -694,11 +655,8 @@ func (mw *MainWindow) RemoveLinkedSVG(sourceID string) error {
 		mw.session.InvalidateCache()
 		mw.updateFileLabel()
 		mw.updateStatus()
-		if mw.refreshTreeFn != nil {
-			mw.refreshTreeFn()
-		}
-		if mw.refreshInspectorFn != nil {
-			mw.refreshInspectorFn()
+		if mw.updateUndoRedo != nil {
+			mw.updateUndoRedo()
 		}
 		if mw.centerPanel != nil {
 			mw.centerPanel.Refresh()
@@ -905,14 +863,16 @@ func (mw *MainWindow) saveProjectToPath(inkaPath string) error {
 		mw.editorState.MarkClean()
 	}
 	mw.fileWatcher.watchFiles(mw.linkedDiskPaths())
-	mw.showReloadButton(mw.reloadBtn)
+	if mw.reloadBtn != nil {
+		mw.reloadBtn.Show()
+	}
 	mw.updateStatus()
 	mw.updateFileLabel()
 	return nil
 }
 
 func (mw *MainWindow) saveSidecarControlFile() {
-	if mw.isExtMode || mw.session == nil || mw.session.Document == nil {
+	if mw.session == nil || mw.session.Document == nil {
 		return
 	}
 	targetInka := mw.projectPath
@@ -967,7 +927,9 @@ func (mw *MainWindow) loadFilePath(path string) {
 	mw.currentPath = svgPath
 	mw.currentFilename = filepath.Base(svgPath)
 	mw.fileWatcher.watchFiles(mw.linkedDiskPaths())
-	mw.showReloadButton(mw.reloadBtn)
+	if mw.reloadBtn != nil {
+		mw.reloadBtn.Show()
+	}
 	mw.loadDataWithOptions(data, filepath.Base(svgPath), ctrl, false)
 }
 
@@ -987,7 +949,7 @@ func (mw *MainWindow) loadDataWithOptions(data []byte, filename string, ctrl *ap
 	mw.statusLabel.SetText("Loading: " + filename)
 	mw.centerPanel.BeginLoading("Rasterizing frames…")
 
-	if !mw.isExtMode && len(data) > 0 && !bytes.Contains(data, []byte("data-inka-source=")) {
+	if len(data) > 0 && !bytes.Contains(data, []byte("data-inka-source=")) {
 		srcName := filename
 		if srcName == "" {
 			srcName = "artwork.svg"
@@ -999,7 +961,7 @@ func (mw *MainWindow) loadDataWithOptions(data []byte, filename string, ctrl *ap
 		}
 	}
 
-	if mw.editorState == nil || (!mw.isExtMode && !preserveSettings) {
+	if mw.editorState == nil || !preserveSettings {
 		var selectedIDs []string
 		state, err := NewEditorState(data, mw.currentPath, selectedIDs)
 		if err != nil {
@@ -1009,7 +971,7 @@ func (mw *MainWindow) loadDataWithOptions(data []byte, filename string, ctrl *ap
 			return
 		}
 		mw.editorState = state
-	} else if !mw.isExtMode {
+	} else {
 		activeID := ""
 		if mw.editorState.ActiveNode != nil {
 			activeID = mw.editorState.ActiveNode.ID
@@ -1033,7 +995,7 @@ func (mw *MainWindow) loadDataWithOptions(data []byte, filename string, ctrl *ap
 		mw.statusLabel.SetText("Failed to load SVG.")
 		return
 	}
-	if !mw.isExtMode && mw.session.Document != nil && !preserveSettings && len(mw.session.Objects) == 0 {
+	if mw.session.Document != nil && !preserveSettings && len(mw.session.Objects) == 0 {
 		mw.session.Objects = make(map[string]app.ObjectConfig)
 		durSec := float64(max(mw.session.TotalDurationMs, 1000)) / 1000.0
 		tmpCtrl := &app.ControlFile{Objects: mw.session.Objects}
@@ -1044,20 +1006,6 @@ func (mw *MainWindow) loadDataWithOptions(data []byte, filename string, ctrl *ap
 
 	mw.updateFileLabel()
 	mw.updateStatus()
-
-	if mw.tree != nil {
-		mw.tree.OpenAllBranches()
-		mw.tree.ScrollToTop()
-		if state.ActiveNode != nil {
-			mw.tree.Select(state.ActiveNode.ID)
-		}
-	}
-	if mw.refreshTreeFn != nil {
-		mw.refreshTreeFn()
-	}
-	if mw.refreshInspectorFn != nil {
-		mw.refreshInspectorFn()
-	}
 	if mw.updateUndoRedo != nil {
 		mw.updateUndoRedo()
 	}
@@ -1339,41 +1287,6 @@ func (mw *MainWindow) ShowDurationChangeModal(oldSec, newSec float64, origObject
 		mw.window,
 	)
 	d.Show()
-}
-
-// EnableExtensionMode configures the window for Inkscape extension mode with Apply and Cancel buttons.
-func (mw *MainWindow) EnableExtensionMode() {
-	mw.isExtMode = true
-	if mw.topSplit != nil && mw.sidebarTabs != nil && mw.centerPanel != nil {
-		mw.topSplit.Leading = mw.sidebarTabs
-		mw.topSplit.Trailing = mw.centerPanel.Container()
-		mw.topSplit.SetOffset(0.55)
-		mw.topSplit.Refresh()
-	}
-	applyBtn := widget.NewButtonWithIcon("Apply Changes", theme.ConfirmIcon(), func() {
-		if mw.centerPanel != nil {
-			mw.centerPanel.Pause()
-		}
-		if mw.editorState != nil && mw.editorState.IsDirty() {
-			mw.editorState.Result = mw.editorState.ComputePatchedSVG()
-			mw.editorState.Applied = true
-		} else if mw.editorState != nil {
-			mw.editorState.Applied = false
-		}
-		mw.window.Close()
-	})
-	applyBtn.Importance = widget.HighImportance
-
-	cancelBtn := widget.NewButtonWithIcon("Cancel", theme.CancelIcon(), func() {
-		mw.handleCloseRequest()
-	})
-
-	if mw.bottomBar != nil {
-		mw.bottomBar.Add(layout.NewSpacer())
-		mw.bottomBar.Add(cancelBtn)
-		mw.bottomBar.Add(applyBtn)
-		mw.bottomBar.Refresh()
-	}
 }
 
 // PausePlayback pauses active preview playback and returns a closure that resumes playback if it was previously playing.

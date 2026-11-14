@@ -5,15 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"regexp"
 	"slices"
-	"strings"
 
 	"inkanim/internal/app"
 	"inkanim/internal/ext/doctree"
-	"inkanim/internal/ext/presets"
 	"inkanim/internal/ext/svgpatch"
-	"inkanim/pkg/inksvg"
 )
 
 // StudioSnapshot captures the full .inka project and timeline state at a point in history.
@@ -80,9 +76,6 @@ type EditorState struct {
 	ApplyStudio         func(StudioSnapshot)
 	History             []Change
 	HistoryIndex        int
-	ClipboardDirectives string
-	Result              []byte
-	Applied             bool
 }
 
 const maxHistory = 100
@@ -276,284 +269,6 @@ func (s *EditorState) DeleteElement(nodeID string) error {
 	return nil
 }
 
-// ApplyPreset applies a motion preset to the active node.
-func (s *EditorState) ApplyPreset(p presets.Preset) (string, error) {
-	if s.ActiveNode == nil {
-		return "", errors.New("no active node selected")
-	}
-
-	targetNode := s.ActiveNode
-	isGroup := targetNode.IsGroup || targetNode.IsLayer
-
-	if !isGroup && !targetNode.HasDirectives() && targetNode.ParentID != "" {
-		if parent := s.NodeMap[targetNode.ParentID]; parent != nil {
-			targetNode = parent
-			isGroup = true
-		}
-	}
-
-	patchedSVG := s.ComputePatchedSVG()
-	if isGroup {
-		doc, err := inksvg.ParseSVG(patchedSVG)
-		var cx, cy float64
-		totalFrames := 20
-		if err == nil {
-			if doc.FrameCount() > 0 {
-				totalFrames = doc.FrameCount()
-			}
-			measureID := s.ActiveNode.ID
-			rect := doc.GetElementRect(measureID)
-			cx = rect.X + rect.Width/2.0
-			cy = rect.Y + rect.Height/2.0
-		}
-
-		baseID := fmt.Sprintf("%s_%s", targetNode.ID, p.ID)
-		anchorID := baseID
-		counter := 2
-		for s.NodeMap[anchorID] != nil {
-			anchorID = fmt.Sprintf("%s_%d", baseID, counter)
-			counter++
-		}
-
-		childXML := p.GenerateAnchorElement(anchorID, cx, cy, totalFrames)
-		patched, err := svgpatch.InsertChild(patchedSVG, targetNode.ID, childXML)
-		if err != nil {
-			return "", fmt.Errorf("failed to insert anchor element: %w", err)
-		}
-
-		s.SVGData = patched
-		s.ModifiedIDs = make(map[string]bool)
-
-		roots, nodeMap, err := doctree.ParseTree(s.SVGData)
-		if err != nil {
-			return "", fmt.Errorf("failed to re-parse tree: %w", err)
-		}
-		s.Roots = roots
-		s.NodeMap = nodeMap
-		if newAnchor := nodeMap[anchorID]; newAnchor != nil {
-			s.ActiveNode = newAnchor
-		}
-		s.RecordChange(fmt.Sprintf("Apply preset '%s' to %s", p.Name, targetNode.DisplayTitle()))
-		return anchorID, nil
-	}
-
-	totalFrames := 20
-	if doc, err := inksvg.ParseSVG(patchedSVG); err == nil && doc.FrameCount() > 0 {
-		totalFrames = doc.FrameCount()
-	}
-	label := p.FormatLabelForFrames(totalFrames)
-	prefix, directives, suffix := doctree.ParseDirectives(label)
-	targetNode.LabelPrefix = prefix
-	targetNode.Directives = directives
-	targetNode.LabelSuffix = suffix
-	s.ModifiedIDs[targetNode.ID] = true
-	s.RecordChange(fmt.Sprintf("Apply preset '%s' to %s", p.Name, targetNode.DisplayTitle()))
-	return targetNode.ID, nil
-}
-
-var pivotRefRe = regexp.MustCompile(`(?i)\bpivot:\s*#([a-zA-Z0-9_\-\.:]+)`)
-
-// CopyMotions extracts all directives on node into an IAMS plaintext string and caches it in s.ClipboardDirectives.
-func (s *EditorState) CopyMotions(node *doctree.DocNode) string {
-	if node == nil || len(node.Directives) == 0 {
-		return ""
-	}
-	var parts []string
-	for _, d := range node.Directives {
-		raw := strings.TrimSpace(d.Raw)
-		if raw == "" {
-			raw = fmt.Sprintf("%s {%s}", d.Type, d.Params)
-		}
-		parts = append(parts, raw)
-	}
-	text := strings.Join(parts, " ")
-	s.ClipboardDirectives = text
-	return text
-}
-
-// CopySingleDirective caches a single directive's IAMS string in s.ClipboardDirectives and returns it.
-func (s *EditorState) CopySingleDirective(d doctree.Directive) string {
-	raw := strings.TrimSpace(d.Raw)
-	if raw == "" {
-		raw = fmt.Sprintf("%s {%s}", d.Type, d.Params)
-	}
-	s.ClipboardDirectives = raw
-	return raw
-}
-
-// PasteMotions parses rawDirectives and appends them to the active element.
-func (s *EditorState) PasteMotions(rawDirectives string) (string, error) {
-	if s.ActiveNode == nil {
-		return "", errors.New("no active node selected")
-	}
-	if strings.TrimSpace(rawDirectives) == "" {
-		rawDirectives = s.ClipboardDirectives
-	}
-	if strings.TrimSpace(rawDirectives) == "" {
-		return "", errors.New("clipboard is empty")
-	}
-
-	_, parsedDirectives, _ := doctree.ParseDirectives(rawDirectives)
-	if len(parsedDirectives) == 0 {
-		return "", errors.New("no valid motion directives found to paste")
-	}
-
-	targetNode := s.ActiveNode
-	isGroup := targetNode.IsGroup || targetNode.IsLayer
-
-	if !isGroup && !targetNode.HasDirectives() && targetNode.ParentID != "" {
-		if parent := s.NodeMap[targetNode.ParentID]; parent != nil {
-			targetNode = parent
-			isGroup = true
-		}
-	}
-
-	createdPivots := make(map[string]string)
-	patchedSVG := s.ComputePatchedSVG()
-	doc, docErr := inksvg.ParseSVG(patchedSVG)
-
-	for i := range parsedDirectives {
-		d := &parsedDirectives[i]
-		matches := pivotRefRe.FindAllStringSubmatch(d.Params, -1)
-		for _, m := range matches {
-			if len(m) < 2 {
-				continue
-			}
-			matchedFull := m[0]
-			oldPivotID := m[1]
-
-			newPivotID, exists := createdPivots[oldPivotID]
-			if !exists {
-				insertGroupID := targetNode.ID
-				if !isGroup && targetNode.ParentID != "" {
-					insertGroupID = targetNode.ParentID
-				}
-
-				var cx, cy float64
-				foundLocation := false
-				if docErr == nil && doc != nil {
-					rect, ok := inksvg.ComputeElementRect(patchedSVG, oldPivotID)
-					if ok {
-						cx = rect.X + rect.Width/2.0
-						cy = rect.Y + rect.Height/2.0
-						foundLocation = true
-					}
-					if !foundLocation {
-						tRect, tOk := inksvg.ComputeElementRect(patchedSVG, s.ActiveNode.ID)
-						if tOk {
-							cx = tRect.X + tRect.Width/2.0
-							cy = tRect.Y + tRect.Height/2.0
-							foundLocation = true
-						}
-					}
-				}
-				if !foundLocation && doc != nil {
-					dRect := doc.GetDrawingRect()
-					cx = dRect.X + dRect.Width/2.0
-					cy = dRect.Y + dRect.Height/2.0
-				}
-
-				basePivotID := targetNode.ID + "_pivot"
-				newPivotID = basePivotID
-				counter := 2
-				for s.NodeMap[newPivotID] != nil {
-					newPivotID = fmt.Sprintf("%s_%d", basePivotID, counter)
-					counter++
-				}
-
-				escapedPivotID := svgpatch.EscapeAttrValue(newPivotID)
-				pivotXML := fmt.Sprintf(`<circle id="%s" cx="%.2f" cy="%.2f" r="1.5" style="fill:#38bdf8;stroke:none" inkscape:label="Pivot: %s" />`,
-					escapedPivotID, cx, cy, escapedPivotID)
-
-				patched, err := svgpatch.InsertChild(patchedSVG, insertGroupID, pivotXML)
-				if err == nil {
-					s.SVGData = patched
-					patchedSVG = patched
-					s.ModifiedIDs = make(map[string]bool)
-					if roots, nodeMap, pErr := doctree.ParseTree(s.SVGData); pErr == nil {
-						s.Roots = roots
-						s.NodeMap = nodeMap
-						if refreshedTarget := s.NodeMap[targetNode.ID]; refreshedTarget != nil {
-							targetNode = refreshedTarget
-						}
-					}
-					createdPivots[oldPivotID] = newPivotID
-				}
-			}
-
-			if newPivotID != "" {
-				d.Params = strings.Replace(d.Params, matchedFull, "pivot: #"+newPivotID, 1)
-				d.Raw = fmt.Sprintf("%s {%s}", d.Type, d.Params)
-			}
-		}
-	}
-
-	var resultingID string
-	if isGroup {
-		var cx, cy float64
-		if doc != nil {
-			measureID := s.ActiveNode.ID
-			rect, ok := inksvg.ComputeElementRect(patchedSVG, measureID)
-			if ok {
-				cx = rect.X + rect.Width/2.0
-				cy = rect.Y + rect.Height/2.0
-			} else {
-				dRect := doc.GetDrawingRect()
-				cx = dRect.X + dRect.Width/2.0
-				cy = dRect.Y + dRect.Height/2.0
-			}
-		}
-
-		baseID := targetNode.ID + "_motion"
-		anchorID := baseID
-		counter := 2
-		for s.NodeMap[anchorID] != nil {
-			anchorID = fmt.Sprintf("%s_%d", baseID, counter)
-			counter++
-		}
-
-		var dirStrings []string
-		for _, d := range parsedDirectives {
-			dirStrings = append(dirStrings, d.Raw)
-		}
-		label := fmt.Sprintf("%s: %s", anchorID, strings.Join(dirStrings, " "))
-		childXML := fmt.Sprintf(`<circle id="%s" cx="%.2f" cy="%.2f" r="1.5" style="fill:#38bdf8;stroke:none" inkscape:label="%s" />`,
-			svgpatch.EscapeAttrValue(anchorID), cx, cy, svgpatch.EscapeAttrValue(label))
-
-		patched, err := svgpatch.InsertChild(patchedSVG, targetNode.ID, childXML)
-		if err != nil {
-			return "", fmt.Errorf("failed to insert motion anchor element: %w", err)
-		}
-
-		s.SVGData = patched
-		s.ModifiedIDs = make(map[string]bool)
-		roots, nodeMap, err := doctree.ParseTree(s.SVGData)
-		if err != nil {
-			return "", fmt.Errorf("failed to re-parse tree: %w", err)
-		}
-		s.Roots = roots
-		s.NodeMap = nodeMap
-		if newAnchor := nodeMap[anchorID]; newAnchor != nil {
-			s.ActiveNode = newAnchor
-		}
-		resultingID = anchorID
-	} else {
-		if len(targetNode.Directives) == 0 && targetNode.LabelPrefix == "" {
-			targetNode.LabelPrefix = targetNode.ID
-		}
-		targetNode.Directives = append(targetNode.Directives, parsedDirectives...)
-		s.ModifiedIDs[targetNode.ID] = true
-		resultingID = targetNode.ID
-	}
-
-	desc := fmt.Sprintf("Paste %d motion(s) onto %s", len(parsedDirectives), targetNode.DisplayTitle())
-	if len(parsedDirectives) == 1 {
-		desc = fmt.Sprintf("Paste %s motion onto %s", parsedDirectives[0].Type, targetNode.DisplayTitle())
-	}
-	s.RecordChange(desc)
-	return resultingID, nil
-}
-
 // NewEditorState initializes the editor model from SVG data.
 func NewEditorState(data []byte, inputPath string, selectedIDs []string) (*EditorState, error) {
 	roots, nodeMap, err := doctree.ParseTree(data)
@@ -586,7 +301,6 @@ func NewEditorState(data []byte, inputPath string, selectedIDs []string) (*Edito
 		OriginalActiveID: activeID,
 		History:          nil,
 		HistoryIndex:     -1,
-		Result:           data,
 	}
 
 	return state, nil

@@ -19,12 +19,12 @@ import (
 	"golang.org/x/image/math/fixed"
 )
 
-// CustomRasterizer is an optional hook allowing platforms (such as WebAssembly in the browser)
-// to delegate single-frame rasterization to a native host renderer (e.g. Chrome/Skia).
+// CustomRasterizer is an optional hook allowing callers (such as custom GPU or platform rasterizers)
+// to delegate single-frame rasterization to a host renderer.
 var CustomRasterizer func(svgData []byte, targetW, targetH int) (*image.RGBA, error)
 
-// CustomBatchRasterizer is an optional hook allowing platforms (such as WebAssembly in the browser)
-// to delegate multi-frame batch rasterization to a native host renderer in parallel.
+// CustomBatchRasterizer is an optional hook allowing callers (such as custom GPU or platform rasterizers)
+// to delegate multi-frame batch rasterization to a host renderer in parallel.
 var CustomBatchRasterizer func(svgList [][]byte, targetW, targetH int) ([]*image.RGBA, error)
 
 // RenderSVGToRGBA renders an SVG byte buffer to an in-memory RGBA image at the requested width and height.

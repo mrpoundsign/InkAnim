@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>InkAnim — Inkscape SVG to Twitch & Discord Animated GIF Studio</title>
-  <meta name="description" content="Transform Inkscape SVGs into optimized, production-ready animated GIFs for Twitch, Discord, and the web using declarative motion syntax. Native desktop apps and in-browser WebAssembly demo.">
+  <meta name="description" content="Transform Inkscape SVGs into optimized, production-ready animated GIFs for Twitch, Discord, and the web using InkAnim Desktop Studio.">
   <link rel="canonical" href="https://mrpoundsign.com/InkAnim/">
   <link rel="icon" type="image/png" href="icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -28,17 +28,15 @@
         <li><a href="#samples" class="nav-link">Samples</a></li>
         <li><a href="#features" class="nav-link">Features</a></li>
         <li><a href="#twitch" class="nav-link">Twitch Specs</a></li>
-        <li><a href="beta/" class="nav-link">Beta (v0.5.0)</a></li>
         <li><a href="#downloads" class="nav-link">Downloads</a></li>
-        <li><a href="#cli" class="nav-link">CLI</a></li>
       </ul>
       <div class="nav-actions">
         <a href="https://github.com/mrpoundsign/InkAnim" target="_blank" rel="noopener noreferrer" class="btn btn-secondary">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
           GitHub
         </a>
-        <a href="./demo/" class="btn btn-primary">
-          <span>⚡ Try Web Demo</span>
+        <a href="#downloads" class="btn btn-primary">
+          <span>Download Studio</span>
         </a>
       </div>
     </div>
@@ -55,16 +53,16 @@
         <span class="gradient-text">Instant, Crisp, Animated.</span>
       </h1>
       <p class="hero-description">
-        Transform Inkscape SVGs into optimized, production-ready animated GIFs in seconds using declarative object motion trajectories (IAMS). Re-rendered directly from vector curves for razor-sharp edges.
+        Transform Inkscape SVGs into optimized, production-ready animated GIFs in the native Desktop Studio using timeline keyframes, canvas gizmos, and non-destructive <code>.inka</code> projects. Re-rendered directly from vector curves for razor-sharp edges.
       </p>
       <div class="hero-buttons">
-        <a href="./demo/" class="btn btn-primary btn-lg">
-          <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3" fill="currentColor"/></svg>
-          Try In-Browser Demo
-        </a>
-        <a href="#downloads" class="btn btn-secondary btn-lg">
+        <a href="#downloads" class="btn btn-primary btn-lg">
           <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
-          Download Desktop App
+          Download Desktop Studio
+        </a>
+        <a href="docs/" class="btn btn-secondary btn-lg">
+          <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+          Read Documentation
         </a>
       </div>
 
@@ -80,7 +78,7 @@
               <span class="pill">⚡ 100% Vector Crisp</span>
               <span class="pill">🎨 Smooth Dithering</span>
               <span class="pill">📐 Document / Page Boundary Modes</span>
-              <span class="pill">🔒 100% Client-Side Privacy</span>
+              <span class="pill">🔒 100% Offline Desktop Privacy</span>
             </div>
           </div>
           <div class="showcase-visual">
@@ -120,9 +118,9 @@
       <div class="features-grid">
         <div class="feature-card">
           <div class="feature-icon">✨</div>
-          <h3 class="feature-title">IAMS Object Motion Syntax</h3>
+          <h3 class="feature-title">Timeline & Canvas Gizmos</h3>
           <p class="feature-desc">
-            Animate vector art without duplicating canvases. Draw intuitive motion paths or add compact tags: trajectory slides, 360° spin, scale pulsing, opacity fades, depth reordering, and gradient sweeps.
+            Animate vector layers, groups, and shapes on a visual studio timeline with draggable spline paths, interactive placement/pivot handles, and full undo/redo history.
           </p>
         </div>
 
@@ -151,18 +149,18 @@
         </div>
 
         <div class="feature-card">
-          <div class="feature-icon">⚡</div>
-          <h3 class="feature-title">Headless Automation</h3>
+          <div class="feature-icon">🗂️</div>
+          <h3 class="feature-title">Non-Destructive .inka Projects</h3>
           <p class="feature-desc">
-            Includes <code>inkanim-cli</code>, a pure-Go CLI with zero runtime dependencies for batch scripts, CI pipelines, and automated asset conversion.
+            Link multiple external Inkscape SVGs in a single <code>.inka</code> project with automatic live file reloading as you iterate on artwork in Inkscape.
           </p>
         </div>
 
         <div class="feature-card">
           <div class="feature-icon">🔒</div>
-          <h3 class="feature-title">Complete Client-Side Privacy</h3>
+          <h3 class="feature-title">100% Local Desktop Privacy</h3>
           <p class="feature-desc">
-            The WebAssembly demo runs 100% inside your browser. Your SVGs, illustrations, and exported GIFs never touch an external server or cloud service.
+            InkAnim Desktop Studio runs natively on Windows, macOS, and Linux. Your SVGs, illustrations, and exported GIFs never leave your machine.
           </p>
         </div>
       </div>
@@ -172,7 +170,7 @@
         <div class="privacy-icon">🛡️</div>
         <div class="privacy-text">
           <h4>Zero Uploads. Zero Telemetry. 100% Private.</h4>
-          <p>InkAnim WebAssembly runs the complete Go SVG parser and GIF encoder inside your browser's WebGL sandbox. Your artwork remains entirely on your machine.</p>
+          <p>InkAnim Desktop Studio runs the complete Go SVG preprocessor, timeline engine, and GIF encoder natively offline. Your artwork remains entirely on your computer.</p>
         </div>
       </div>
 
@@ -186,7 +184,7 @@
         <div class="section-subtitle">Interactive Showcase</div>
         <h2 class="section-title">Inkscape Vector Art vs. Living Motion</h2>
         <p class="section-desc" style="max-width: 680px; margin: 0 auto; color: var(--text-muted); font-size: 1.05rem;">
-          Click any sample animation below to compare the static Inkscape vector source against the compiled animation, inspect motion syntax directives, and test directly in the Web Demo.
+          Click any sample animation below to compare the static Inkscape vector source against the compiled animation, inspect motion parameters, and download the source SVG for InkAnim Studio.
         </p>
       </div>
 
@@ -292,75 +290,42 @@
     <div class="container">
       <div class="section-header">
         <div class="section-subtitle">Get InkAnim</div>
-        <h2 class="section-title">Choose How You Animate</h2>
-      </div>
-      <!-- Beta Release Section -->
-      <div id="beta" class="beta-box">
-        <div class="beta-header">
-          <span class="beta-badge">🧪 Beta Release · v0.5.0-beta2</span>
-          <span class="beta-tag">New Inkscape Extension</span>
-        </div>
-        <div class="beta-body">
-          <div class="beta-text">
-            <h3>Inkscape Motion Studio Extension</h3>
-            <p>
-              Animate directly inside Inkscape! The new <strong>v0.5.0-beta2</strong> release expands the native cross-platform Inkscape extension for Windows, macOS, and Linux (<code>Extensions &rarr; InkAnim &rarr; Motion Editor</code>) with full bidirectional <strong>Undo/Redo</strong>, direct <strong>element deletion</strong>, <strong>Copy &amp; Paste motion directives</strong>, and intelligent <strong>object pivot decoupling</strong> alongside native GIF export.
-            </p>
-          </div>
-          <div class="beta-actions">
-            <a href="beta/" class="btn btn-primary">
-              ⚡ Explore v0.5.0-beta2
-            </a>
-            <a href="https://github.com/mrpoundsign/InkAnim/releases/tag/v0.5.0-beta2" target="_blank" rel="noopener noreferrer" class="btn btn-secondary">
-              📥 Download on GitHub
-            </a>
-          </div>
-        </div>
+        <h2 class="section-title">Download Desktop Studio</h2>
       </div>
 
       <div class="download-cards">
         <div class="download-card">
           <div>
-            <div class="download-icon">💻</div>
-            <div class="download-platform">Native Desktop App</div>
-            <div class="download-info">Standalone packages for Windows (x64 / ARM64), macOS (Apple Silicon / Intel), and Linux (x86_64 / ARM64). Includes the full studio GUI and the <code>inkanim-cli</code> tool.</div>
+            <div class="download-icon">🪟</div>
+            <div class="download-platform">Windows Desktop Studio</div>
+            <div class="download-info">Standalone native executable (<code>windows_amd64.exe</code>) with hardware-accelerated Fyne studio canvas, live SVG watcher, and GIF exporter.</div>
           </div>
-          <a href="https://github.com/mrpoundsign/InkAnim/releases/latest" target="_blank" rel="noopener noreferrer" class="btn btn-secondary">
-            Download Stable on GitHub
-          </a>
-        </div>
-
-        <div class="download-card download-card-beta">
-          <div>
-            <div class="download-icon">🧩</div>
-            <div class="download-platform">Inkscape Extension (Beta)</div>
-            <div class="download-info">Desktop plugin bundle for Inkscape on Windows, macOS, and Linux. Author IAMS motion trajectories and export Twitch GIFs directly from the canvas.</div>
-          </div>
-          <a href="https://github.com/mrpoundsign/InkAnim/releases/tag/v0.5.0-beta2" target="_blank" rel="noopener noreferrer" class="btn btn-primary">
-            Download v0.5.0-beta2
+          <a href="https://github.com/mrpoundsign/InkAnim/releases/latest" target="_blank" rel="noopener noreferrer" class="btn btn-primary">
+            Download for Windows
           </a>
         </div>
 
         <div class="download-card">
           <div>
-            <div class="download-icon">🌐</div>
-            <div class="download-platform">Interactive Web Demo</div>
-            <div class="download-info">Test-drive InkAnim directly in your browser with zero installation, zero downloads, and 100% client-side privacy.</div>
+            <div class="download-icon">🍎</div>
+            <div class="download-platform">macOS App Bundle</div>
+            <div class="download-info">Native macOS <code>InkAnim.app</code> bundle (<code>darwin_all.zip</code>) supporting Apple Silicon and Intel Macs.</div>
           </div>
-          <a href="./demo/" class="btn btn-secondary">
-            Try In-Browser Demo
+          <a href="https://github.com/mrpoundsign/InkAnim/releases/latest" target="_blank" rel="noopener noreferrer" class="btn btn-secondary">
+            Download for macOS
           </a>
         </div>
-      </div>
 
-      <!-- CLI Snippet -->
-      <div id="cli" class="cli-box">
-        <div class="cli-code">
-          <span style="color: #a1a1aa;">$</span> inkanim-cli -i character.svg -o emote.gif -square -size 512 -fps 10
+        <div class="download-card">
+          <div>
+            <div class="download-icon">🐧</div>
+            <div class="download-platform">Linux Desktop Studio</div>
+            <div class="download-info">Packaged desktop archive (<code>linux_amd64.tar.xz</code>) with X11/Wayland OpenGL canvas and full <code>.inka</code> project support.</div>
+          </div>
+          <a href="https://github.com/mrpoundsign/InkAnim/releases/latest" target="_blank" rel="noopener noreferrer" class="btn btn-secondary">
+            Download for Linux
+          </a>
         </div>
-        <button class="cli-copy" onclick="navigator.clipboard.writeText('inkanim-cli -i character.svg -o emote.gif -square -size 512 -fps 10'); this.innerText='Copied!'; setTimeout(() => this.innerText='Copy', 2000)">
-          Copy
-        </button>
       </div>
     </div>
   </section>
@@ -372,8 +337,7 @@
         <strong>InkAnim</strong> — Open source under the MIT License.
       </div>
       <ul class="footer-links">
-        <li><a href="beta/" class="footer-link">v0.5.0-beta2</a></li>
-        <li><a href="./demo/" class="footer-link">Interactive Demo</a></li>
+        <li><a href="docs/" class="footer-link">Documentation</a></li>
         <li><a href="https://github.com/mrpoundsign/InkAnim" target="_blank" rel="noopener noreferrer" class="footer-link">GitHub</a></li>
         <li><a href="https://github.com/mrpoundsign/InkAnim/issues" target="_blank" rel="noopener noreferrer" class="footer-link">Report Issue</a></li>
         <li><a href="https://github.com/mrpoundsign/InkAnim/releases" target="_blank" rel="noopener noreferrer" class="footer-link">Releases</a></li>
@@ -422,13 +386,9 @@
         </div>
       </div>
       <div class="modal-footer">
-        <a id="modal-download-link" href="#" download="" class="btn btn-secondary">
+        <a id="modal-download-link" href="#" download="" class="btn btn-primary">
           <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
           Download Source SVG
-        </a>
-        <a id="modal-demo-link" href="./demo/" class="btn btn-primary">
-          <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3" fill="currentColor"/></svg>
-          Open in Web Demo
         </a>
       </div>
     </div>
@@ -487,9 +447,6 @@
       const downloadLink = document.getElementById('modal-download-link');
       downloadLink.href = 'samples/' + data.file;
       downloadLink.download = data.file;
-
-      const demoLink = document.getElementById('modal-demo-link');
-      demoLink.href = 'demo/?sample=' + encodeURIComponent(data.file);
 
       const modal = document.getElementById('compare-modal');
       modal.classList.add('active');

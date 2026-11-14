@@ -1,5 +1,3 @@
-//go:build !wasm && !js
-
 package gif
 
 import (
@@ -9,8 +7,7 @@ import (
 	"inkanim/internal/parallel"
 )
 
-// QuantizeFrames concurrently quantizes a batch of RGBA images.
-// On Native platforms, this uses parallel.Run across CPU cores.
+// QuantizeFrames concurrently quantizes a batch of RGBA images across CPU cores.
 func QuantizeFrames(frames []*image.RGBA, palette color.Palette, alphaThreshold uint8, dither bool) ([]*image.Paletted, error) {
 	res := make([]*image.Paletted, len(frames))
 	err := parallel.Run(len(frames), func(i int) error {

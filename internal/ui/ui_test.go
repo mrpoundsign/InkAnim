@@ -697,7 +697,7 @@ func TestSpeedPresets(t *testing.T) {
 	}
 }
 
-func TestSidebarTabs(t *testing.T) {
+func TestStudioWorkspaceLayout(t *testing.T) {
 	testApp := test.NewApp()
 	defer testApp.Quit()
 
@@ -706,29 +706,15 @@ func TestSidebarTabs(t *testing.T) {
 		waitForPreview(mw)
 		mw.centerPanel.Pause()
 	}() // settle async preview builds before the next test
-	if mw.sidebarTabs == nil {
-		t.Fatal("expected sidebarTabs to be non-nil")
-	}
 
-	if len(mw.sidebarTabs.Items) != 2 {
-		t.Fatalf("expected 2 sidebar tabs, got %d", len(mw.sidebarTabs.Items))
+	if mw.topSplit == nil || mw.topSplit.Leading == nil || mw.topSplit.Trailing == nil {
+		t.Fatal("expected topSplit with leading and trailing panels")
 	}
-
-	if mw.sidebarTabs.Items[0].Text != "Layers & Motion" {
-		t.Errorf("expected first tab to be 'Layers & Motion', got %q", mw.sidebarTabs.Items[0].Text)
+	if mw.centerPanel == nil || mw.rightPanel == nil || mw.timelinePanel == nil {
+		t.Fatal("expected centerPanel, rightPanel, and timelinePanel to be non-nil")
 	}
-	if mw.sidebarTabs.Items[1].Text != "Export" {
-		t.Errorf("expected second tab to be 'Export', got %q", mw.sidebarTabs.Items[1].Text)
-	}
-
-	// Switch tabs
-	mw.sidebarTabs.SelectIndex(1)
-	if mw.sidebarTabs.SelectedIndex() != 1 {
-		t.Errorf("expected selected tab index 1, got %d", mw.sidebarTabs.SelectedIndex())
-	}
-	mw.sidebarTabs.SelectIndex(0)
-	if mw.sidebarTabs.SelectedIndex() != 0 {
-		t.Errorf("expected selected tab index 0, got %d", mw.sidebarTabs.SelectedIndex())
+	if mw.mainMenu == nil || len(mw.mainMenu.Items) != 2 {
+		t.Fatalf("expected 2 main menus (File, Edit), got %+v", mw.mainMenu)
 	}
 }
 
@@ -1502,28 +1488,38 @@ func TestProjectWorkflowAndLinkedSVGTree(t *testing.T) {
 	waitForPreview(mw)
 	mw.centerPanel.Pause()
 
-	// 3. Verify tree shows Linked File roots -> Layers -> Nested Groups -> Drawable Leaf Shapes,
+	// 3. Verify timeline tracks show Linked File roots -> Layers -> Nested Groups -> Drawable Leaf Shapes,
 	// while stripping/hiding legacy IAMS motion helper paths.
-	roots := mw.tree.ChildUIDs("")
-	if len(roots) != 2 {
-		t.Fatalf("expected 2 linked SVG root groups in tree, got %v", roots)
+	if mw.timelinePanel.collapsedNodes == nil {
+		mw.timelinePanel.collapsedNodes = make(map[string]bool)
 	}
-	for _, parentUID := range []string{"", "src_1", "src_2", "src_1__layer_hero", "src_1__g_arm", "src_2__layer_props", "src_2__g_star"} {
-		for _, child := range mw.tree.ChildUIDs(parentUID) {
-			if child == "src_1__arm_rot" {
-				t.Errorf("expected motion helper path %q to be hidden from tree under %q", child, parentUID)
-			}
+	for _, expandID := range []string{"src_1", "src_2", "src_1__layer_hero", "src_1__g_arm", "src_2__layer_props", "src_2__g_star"} {
+		mw.timelinePanel.collapsedNodes[expandID] = false
+	}
+	tracks := mw.timelinePanel.CollectTracks()
+	trackIDs := make(map[string]bool, len(tracks))
+	var rootIDs []string
+	for _, tr := range tracks {
+		trackIDs[tr.NodeID] = true
+		if tr.Depth == 0 {
+			rootIDs = append(rootIDs, tr.NodeID)
 		}
 	}
-	if children := mw.tree.ChildUIDs("src_1__g_arm"); len(children) != 1 || children[0] != "src_1__arm_rect" {
-		t.Errorf("expected drawable leaf shape src_1__arm_rect under src_1__g_arm, got %v", children)
+	if len(rootIDs) != 2 {
+		t.Fatalf("expected 2 linked SVG root tracks in timeline, got %v", rootIDs)
 	}
-	if children := mw.tree.ChildUIDs("src_2__g_star"); len(children) != 1 || children[0] != "src_2__star_circle" {
-		t.Errorf("expected drawable leaf shape src_2__star_circle under src_2__g_star, got %v", children)
+	if trackIDs["src_1__arm_rot"] {
+		t.Errorf("expected motion helper path src_1__arm_rot to be hidden from timeline tracks")
+	}
+	if !trackIDs["src_1__arm_rect"] {
+		t.Errorf("expected drawable leaf shape src_1__arm_rect in timeline tracks, got %+v", trackIDs)
+	}
+	if !trackIDs["src_2__star_circle"] {
+		t.Errorf("expected drawable leaf shape src_2__star_circle in timeline tracks, got %+v", trackIDs)
 	}
 
-	// Select nested group src_2__g_star and verify Stage Properties card is rendered in Inspector
-	mw.tree.Select("src_2__g_star")
+	// Select nested group src_2__g_star and verify ActiveNode updates
+	mw.timelinePanel.SelectTrack("src_2__g_star")
 	if mw.editorState.ActiveNode == nil || mw.editorState.ActiveNode.ID != "src_2__g_star" {
 		t.Fatalf("expected active node src_2__g_star, got %+v", mw.editorState.ActiveNode)
 	}
@@ -1622,7 +1618,7 @@ func TestTimelinePanelRulerScrubAndActionBars(t *testing.T) {
 		t.Fatalf("expected non-empty timeline tracks after loading pendulum.svg")
 	}
 	targetNodeID := tracks[0].NodeID
-	mw.tree.Select(targetNodeID)
+	tp.SelectTrack(targetNodeID)
 	tp.AddActionToActiveNode("rot")
 	waitForPreview(mw)
 
