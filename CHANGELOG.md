@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **Desktop Studio Layout & Viewport Defaults**:
+  - Compacted Studio typography, padding, timeline track heights, transport bar, and Export Settings controls for cleaner `1200×800` and `1080p` layouts, and persisted window size and maximized state across sessions.
+  - Disabled auto-play on project load and live preview re-renders, and defaulted `Scales` (`Chat Scale`) sidebar visibility to off until toggled.
+- **Website, Docs & `.inka` Sample Bundles**:
+  - Rewrote landing page and [documentation](https://mrpoundsign.com/InkAnim/docs/) around the v0.6.x `.inka` project-first Desktop Studio workflow, seconds-first timeline, and on-canvas gizmos.
+  - Migrated `complex_motion`, `star_swirl`, and `pendulum` samples to downloadable `.zip` project bundles (`.inka` + clean `.svg`).
+  - Added a Studio walkthrough video (`studio_walkthrough.mp4`) with branded intro card and CC0 background music, plus an updated `1920×1080` Studio screenshot (`inkanim_studio_preview.png`).
+
+### Fixed
+- **`.inka` Camera & Parallax Migration**: Fixed `MigrateDocumentIAMSToControlFile` and `ApplyControlFile` so root-level `CameraPath` / `camera` actions are preserved and applied when loading `.inka` projects.
+- **Small-Viewport Motion Guide Scaling**: Scaled `inkanim_motion_guides` stroke widths, dash patterns, and endpoint dots proportionally for small SVG viewports (`maxDim < 180`).
+- **Clean Chat Scale Thumbnails**: Stripped `Paths` motion-guide overlays from `Chat Scale` (`112`/`56`/`28px`) previews so they match exported GIFs.
+- **New Project Gizmo Cleanup**: Cleared active canvas gizmos and motion paths when starting a `New Project`.
+
 ## [0.6.1] - 2026-11-13
 
 ### Added
