@@ -134,12 +134,15 @@ func NewTimelinePanel(mw *MainWindow) *TimelinePanel {
 		"Fade",
 		"Color",
 		"Depth",
+		"Push",
+		"Gravity",
 		"Preset: Float",
 		"Preset: Pulse",
 		"Preset: Spin",
 		"Preset: Shake",
 		"Preset: Pop In",
 		"Preset: Fade In",
+		"Preset: Drop & Bounce",
 	}, nil)
 	tp.ActionTypeSelect.SetSelected("Move")
 
@@ -361,7 +364,7 @@ func (tp *TimelinePanel) CollectTracks() []TimelineTrackModel {
 	hasVisibleChild := func(n *doctree.DocNode) bool {
 		for _, c := range n.Children {
 			_, cCfg, cHas := tp.mw.resolveNodeObjectConfig(c)
-			if tp.mw.isVisibleTreeNode(c) || (cHas && len(cCfg.Actions) > 0) {
+			if tp.mw.isVisibleTreeNode(c) || (cHas && (len(cCfg.Actions) > 0 || cCfg.IsSolid)) {
 				return true
 			}
 		}
@@ -372,7 +375,7 @@ func (tp *TimelinePanel) CollectTracks() []TimelineTrackModel {
 	subtreeHasActiveDescendant = func(n *doctree.DocNode) bool {
 		for _, c := range n.Children {
 			_, cCfg, cHas := tp.mw.resolveNodeObjectConfig(c)
-			if cHas && (len(cCfg.Actions) > 0 || cCfg.HasDisplayWindow || cCfg.OverrideStartPos) {
+			if cHas && (len(cCfg.Actions) > 0 || cCfg.HasDisplayWindow || cCfg.OverrideStartPos || cCfg.IsSolid) {
 				return true
 			}
 			if subtreeHasActiveDescendant(c) {
@@ -393,7 +396,7 @@ func (tp *TimelinePanel) CollectTracks() []TimelineTrackModel {
 	walk = func(nodes []*doctree.DocNode, depth int) {
 		for _, n := range nodes {
 			objKey, objCfg, hasCfg := tp.mw.resolveNodeObjectConfig(n)
-			if !tp.mw.isVisibleTreeNode(n) && (!hasCfg || len(objCfg.Actions) == 0) {
+			if !tp.mw.isVisibleTreeNode(n) && (!hasCfg || (len(objCfg.Actions) == 0 && !objCfg.IsSolid)) {
 				continue
 			}
 			if objKey == "" {
@@ -415,6 +418,9 @@ func (tp *TimelinePanel) CollectTracks() []TimelineTrackModel {
 				prefix = "Shape: "
 			}
 			title := prefix + n.DisplayTitle()
+			if objCfg.IsSolid {
+				title += " [SOLID]"
+			}
 			if n.IsLayer && !n.HasDrawableContent {
 				title += " (empty)"
 			}
@@ -614,7 +620,7 @@ func (tp *TimelinePanel) Refresh() {
 
 	for _, tr := range tracks {
 		track := tr
-		hasActiveCfg := len(track.Config.Actions) > 0 || track.Config.HasDisplayWindow || track.Config.OverrideStartPos
+		hasActiveCfg := len(track.Config.Actions) > 0 || track.Config.HasDisplayWindow || track.Config.OverrideStartPos || track.Config.IsSolid
 		btn := newTimelineTrackHeaderBtn(
 			track.Title,
 			track.IsSelected,
@@ -898,6 +904,21 @@ func (tp *TimelinePanel) AddActionToActiveNode(actionType string) {
 			OpacityTo:   1.0,
 			HasOpacity:  true,
 		})
+	case "preset: drop & bounce":
+		b := 0.75
+		f := 0.15
+		newActs = append(newActs, app.ActionConfig{
+			ID:           nextActID(0),
+			Type:         "gravity",
+			StartSec:     0.0,
+			EndSec:       durSec,
+			Ease:         "linear",
+			Repeat:       1,
+			GravityScale: 1.0,
+			Bounce:       &b,
+			Friction:     &f,
+			Roll:         true,
+		})
 	default:
 		act := app.ActionConfig{
 			ID:       nextActID(0),
@@ -925,6 +946,25 @@ func (tp *TimelinePanel) AddActionToActiveNode(actionType string) {
 			act.ColorTarget = "#38BDF8"
 		case "depth":
 			act.DepthOffset = 5
+		case "push":
+			b := 0.65
+			f := 0.2
+			imp := true
+			act.Ease = "linear"
+			act.PathD = fmt.Sprintf("M %.1f %.1f L %.1f %.1f", cx, cy, cx+45.0, cy-35.0)
+			act.Power = 5.0
+			act.Bounce = &b
+			act.Friction = &f
+			act.IsImpulse = &imp
+			act.Roll = true
+		case "gravity":
+			b := 0.65
+			f := 0.2
+			act.Ease = "linear"
+			act.GravityScale = 1.0
+			act.Bounce = &b
+			act.Friction = &f
+			act.Roll = true
 		}
 		newActs = append(newActs, act)
 	}
@@ -1049,6 +1089,44 @@ func (tp *TimelinePanel) ShowTrackPropertiesModal(nodeID string) {
 	}
 	updatePivotEnables(pivotSelect.Selected)
 
+	solidCheck := widget.NewCheck("Solid Surface (Physics Collider)", nil)
+	solidCheck.Checked = objCfg.IsSolid
+
+	solidBounceInit := 0.7
+	if objCfg.SolidBounce != nil {
+		solidBounceInit = *objCfg.SolidBounce
+	}
+	solidBounceEntry := widget.NewEntry()
+	solidBounceEntry.SetText(fmt.Sprintf("%g", solidBounceInit))
+
+	solidFrictionInit := 0.2
+	if objCfg.SolidFriction != nil {
+		solidFrictionInit = *objCfg.SolidFriction
+	}
+	solidFrictionEntry := widget.NewEntry()
+	solidFrictionEntry.SetText(fmt.Sprintf("%g", solidFrictionInit))
+
+	solidGlobalCheck := widget.NewCheck("Collide Across All Layers (Global)", nil)
+	solidGlobalCheck.Checked = objCfg.SolidGlobal
+
+	hideSolidCheck := widget.NewCheck("Invisible Collider (Hide in Render)", nil)
+	hideSolidCheck.Checked = objCfg.HideSolid
+
+	updateSolidEnables := func(enabled bool) {
+		if enabled {
+			solidBounceEntry.Enable()
+			solidFrictionEntry.Enable()
+			solidGlobalCheck.Enable()
+			hideSolidCheck.Enable()
+		} else {
+			solidBounceEntry.Disable()
+			solidFrictionEntry.Disable()
+			solidGlobalCheck.Disable()
+			hideSolidCheck.Disable()
+		}
+	}
+	updateSolidEnables(objCfg.IsSolid)
+
 	initializing := true
 	liveModified := false
 	committed := false
@@ -1080,6 +1158,17 @@ func (tp *TimelinePanel) ShowTrackPropertiesModal(nodeID string) {
 				cur.PivotY = v
 			}
 		}
+		cur.IsSolid = solidCheck.Checked
+		if v, err := strconv.ParseFloat(strings.TrimSpace(solidBounceEntry.Text), 64); err == nil && v >= 0 {
+			b := math.Min(v, 1.5)
+			cur.SolidBounce = &b
+		}
+		if v, err := strconv.ParseFloat(strings.TrimSpace(solidFrictionEntry.Text), 64); err == nil && v >= 0 {
+			f := math.Min(v, 1.0)
+			cur.SolidFriction = &f
+		}
+		cur.SolidGlobal = solidGlobalCheck.Checked
+		cur.HideSolid = hideSolidCheck.Checked
 		cur.SourceID = node.SourceID
 		cur.FallbackXMLID = node.ID
 		return cur
@@ -1126,6 +1215,14 @@ func (tp *TimelinePanel) ShowTrackPropertiesModal(nodeID string) {
 		updatePivotEnables(pivType)
 		applyTrackLive()
 	}
+	solidCheck.OnChanged = func(checked bool) {
+		updateSolidEnables(checked)
+		applyTrackLive()
+	}
+	solidBounceEntry.OnChanged = func(_ string) { applyTrackLive() }
+	solidFrictionEntry.OnChanged = func(_ string) { applyTrackLive() }
+	solidGlobalCheck.OnChanged = func(_ bool) { applyTrackLive() }
+	hideSolidCheck.OnChanged = func(_ bool) { applyTrackLive() }
 	startXEntry.OnChanged = func(_ string) { applyTrackLive() }
 	startYEntry.OnChanged = func(_ string) { applyTrackLive() }
 	appearEntry.OnChanged = func(_ string) { applyTrackLive() }
@@ -1229,6 +1326,14 @@ func (tp *TimelinePanel) ShowTrackPropertiesModal(nodeID string) {
 			widget.NewLabel("Pivot X:"), pivotXEntry,
 			widget.NewLabel("Pivot Y:"), pivotYEntry,
 		),
+		widget.NewSeparator(),
+		widget.NewLabelWithStyle("Physics Collider (Solid Surface)", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		solidCheck,
+		container.NewGridWithColumns(4,
+			widget.NewLabel("Bounce (0-1.5):"), solidBounceEntry,
+			widget.NewLabel("Friction (0-1):"), solidFrictionEntry,
+		),
+		container.NewHBox(solidGlobalCheck, hideSolidCheck),
 	)
 
 	canDelete, deleteReason := tp.mw.editorState.CanDeleteElement(node.ID)
@@ -1324,7 +1429,7 @@ func (tp *TimelinePanel) ShowActionEditModal(nodeID string, actionIdx int) {
 	act := objCfg.Actions[actionIdx]
 	tp.mw.selectedActionID = act.ID
 
-	typeSelect := widget.NewSelect([]string{"move", "rot", "scale", "fade", "color", "depth"}, nil)
+	typeSelect := widget.NewSelect([]string{"move", "rot", "scale", "fade", "color", "depth", "push", "gravity"}, nil)
 	actType := strings.ToLower(act.Type)
 	if actType == "" {
 		actType = "move"
@@ -1369,7 +1474,7 @@ func (tp *TimelinePanel) ShowActionEditModal(nodeID string, actionIdx int) {
 
 	// Type-specific fields (with sensible defaults when switching action types live)
 	pathInit := act.PathD
-	if actType != "move" && strings.TrimSpace(pathInit) == "" {
+	if actType != "move" && actType != "push" && actType != "gravity" && strings.TrimSpace(pathInit) == "" {
 		cx, cy := tp.defaultNodeCenter(node.ID, objCfg)
 		pathInit = fmt.Sprintf("M %.1f %.1f L %.1f %.1f", cx, cy, cx+32.0, cy)
 	}
@@ -1377,6 +1482,44 @@ func (tp *TimelinePanel) ShowActionEditModal(nodeID string, actionIdx int) {
 	pathEntry.SetText(pathInit)
 	orientCheck := widget.NewCheck("Orient to Path", nil)
 	orientCheck.Checked = act.OrientPath
+
+	powerInit := act.Power
+	if powerInit <= 0 {
+		powerInit = 5.0
+	}
+	powerEntry := widget.NewEntry()
+	powerEntry.SetText(fmt.Sprintf("%g", powerInit))
+
+	gravScaleInit := act.GravityScale
+	if gravScaleInit == 0 {
+		gravScaleInit = 1.0
+	}
+	gravScaleEntry := widget.NewEntry()
+	gravScaleEntry.SetText(fmt.Sprintf("%g", gravScaleInit))
+
+	bounceInit := 0.65
+	if act.Bounce != nil {
+		bounceInit = *act.Bounce
+	}
+	bounceEntry := widget.NewEntry()
+	bounceEntry.SetText(fmt.Sprintf("%g", bounceInit))
+
+	frictionInit := 0.2
+	if act.Friction != nil {
+		frictionInit = *act.Friction
+	}
+	frictionEntry := widget.NewEntry()
+	frictionEntry.SetText(fmt.Sprintf("%g", frictionInit))
+
+	impInit := true
+	if act.IsImpulse != nil {
+		impInit = *act.IsImpulse
+	}
+	impulseCheck := widget.NewCheck("Instant Impulse Kick (uncheck for Continuous Thruster)", nil)
+	impulseCheck.Checked = impInit
+
+	rollCheck := widget.NewCheck("Roll on Slopes", nil)
+	rollCheck.Checked = act.Roll
 
 	degInit := act.RotationAngle
 	if actType != "rot" && degInit == 0 {
@@ -1466,6 +1609,36 @@ func (tp *TimelinePanel) ShowActionEditModal(nodeID string, actionIdx int) {
 		case "move":
 			cur.PathD = strings.TrimSpace(pathEntry.Text)
 			cur.OrientPath = orientCheck.Checked
+		case "push":
+			cur.PathD = strings.TrimSpace(pathEntry.Text)
+			if v, err := strconv.ParseFloat(strings.TrimSpace(powerEntry.Text), 64); err == nil && v > 0 {
+				cur.Power = v
+			}
+			if v, err := strconv.ParseFloat(strings.TrimSpace(bounceEntry.Text), 64); err == nil && v >= 0 {
+				b := math.Min(v, 1.5)
+				cur.Bounce = &b
+			}
+			if v, err := strconv.ParseFloat(strings.TrimSpace(frictionEntry.Text), 64); err == nil && v >= 0 {
+				f := math.Min(v, 1.0)
+				cur.Friction = &f
+			}
+			imp := impulseCheck.Checked
+			cur.IsImpulse = &imp
+			cur.Roll = rollCheck.Checked
+		case "gravity":
+			cur.PathD = strings.TrimSpace(pathEntry.Text)
+			if v, err := strconv.ParseFloat(strings.TrimSpace(gravScaleEntry.Text), 64); err == nil {
+				cur.GravityScale = v
+			}
+			if v, err := strconv.ParseFloat(strings.TrimSpace(bounceEntry.Text), 64); err == nil && v >= 0 {
+				b := math.Min(v, 1.5)
+				cur.Bounce = &b
+			}
+			if v, err := strconv.ParseFloat(strings.TrimSpace(frictionEntry.Text), 64); err == nil && v >= 0 {
+				f := math.Min(v, 1.0)
+				cur.Friction = &f
+			}
+			cur.Roll = rollCheck.Checked
 		case "rot":
 			if v, err := strconv.ParseFloat(strings.TrimSpace(degEntry.Text), 64); err == nil {
 				cur.RotationAngle = v
@@ -1545,7 +1718,7 @@ func (tp *TimelinePanel) ShowActionEditModal(nodeID string, actionIdx int) {
 		tp.mw.schedulePreviewUpdate()
 	}
 
-	editOnCanvasBtn := widget.NewButtonWithIcon("Edit Path on Canvas Gizmo", theme.VisibilityIcon(), func() {
+	editOnCanvasBtn := widget.NewButtonWithIcon("Edit Path / Force Vector on Canvas Gizmo", theme.VisibilityIcon(), func() {
 		if liveModified {
 			act = collectAction(act)
 			objCfg.Actions[actionIdx] = act
@@ -1581,6 +1754,39 @@ func (tp *TimelinePanel) ShowActionEditModal(nodeID string, actionIdx int) {
 				orientCheck,
 				widget.NewLabel("Motion Path (SVG d):"),
 				pathEntry,
+			}
+		case "push":
+			if strings.TrimSpace(pathEntry.Text) == "" {
+				cx, cy := tp.defaultNodeCenter(node.ID, objCfg)
+				wasInit := initializing
+				initializing = true
+				pathEntry.SetText(fmt.Sprintf("M %.1f %.1f L %.1f %.1f", cx, cy, cx+45.0, cy-35.0))
+				initializing = wasInit
+			}
+			specificBox.Objects = []fyne.CanvasObject{
+				editOnCanvasBtn,
+				impulseCheck,
+				rollCheck,
+				container.NewGridWithColumns(4,
+					widget.NewLabel("Power:"), powerEntry,
+					widget.NewLabel("Bounce (0-1.5):"), bounceEntry,
+				),
+				container.NewGridWithColumns(4,
+					widget.NewLabel("Friction (0-1):"), frictionEntry,
+					widget.NewLabel("Force Vector (d):"), pathEntry,
+				),
+			}
+		case "gravity":
+			specificBox.Objects = []fyne.CanvasObject{
+				rollCheck,
+				container.NewGridWithColumns(4,
+					widget.NewLabel("Gravity Scale:"), gravScaleEntry,
+					widget.NewLabel("Bounce (0-1.5):"), bounceEntry,
+				),
+				container.NewGridWithColumns(4,
+					widget.NewLabel("Friction (0-1):"), frictionEntry,
+					widget.NewLabel("Custom Vector (d):"), pathEntry,
+				),
 			}
 		case "rot":
 			specificBox.Objects = []fyne.CanvasObject{
@@ -1638,6 +1844,12 @@ func (tp *TimelinePanel) ShowActionEditModal(nodeID string, actionIdx int) {
 	pivotSelect.OnChanged = func(_ string) { applyLive() }
 	pathEntry.OnChanged = func(_ string) { applyLive() }
 	orientCheck.OnChanged = func(_ bool) { applyLive() }
+	powerEntry.OnChanged = func(_ string) { applyLive() }
+	gravScaleEntry.OnChanged = func(_ string) { applyLive() }
+	bounceEntry.OnChanged = func(_ string) { applyLive() }
+	frictionEntry.OnChanged = func(_ string) { applyLive() }
+	impulseCheck.OnChanged = func(_ bool) { applyLive() }
+	rollCheck.OnChanged = func(_ bool) { applyLive() }
 	degEntry.OnChanged = func(_ string) { applyLive() }
 	rotDirSelect.OnChanged = func(_ string) { applyLive() }
 	scaleFromXEntry.OnChanged = func(_ string) { applyLive() }
@@ -2418,6 +2630,10 @@ func actionClipColor(actionType string) color.RGBA {
 		return color.RGBA{R: 244, G: 63, B: 94, A: 230} // Rose (#F43F5E)
 	case "depth":
 		return color.RGBA{R: 99, G: 102, B: 241, A: 230} // Indigo (#6366F1)
+	case "push":
+		return color.RGBA{R: 251, G: 146, B: 60, A: 230} // Tangerine Orange (#FB923C)
+	case "gravity":
+		return color.RGBA{R: 45, G: 212, B: 191, A: 230} // Cyan/Teal (#2DD4BF)
 	default:
 		return color.RGBA{R: 148, G: 163, B: 184, A: 230}
 	}
@@ -2474,19 +2690,31 @@ var tinyGlyph5x7 = map[rune][7]uint8{
 	'-': {0x00, 0x00, 0x00, 0x1F, 0x00, 0x00, 0x00},
 	's': {0x00, 0x00, 0x0F, 0x10, 0x0E, 0x01, 0x1E},
 	'A': {0x0E, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11},
+	'B': {0x1E, 0x11, 0x11, 0x1E, 0x11, 0x11, 0x1E},
 	'C': {0x0E, 0x11, 0x10, 0x10, 0x10, 0x11, 0x0E},
 	'D': {0x1E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x1E},
 	'E': {0x1F, 0x10, 0x10, 0x1E, 0x10, 0x10, 0x1F},
 	'F': {0x1F, 0x10, 0x10, 0x1E, 0x10, 0x10, 0x10},
+	'G': {0x0E, 0x11, 0x10, 0x17, 0x11, 0x11, 0x0F},
 	'H': {0x11, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11},
+	'I': {0x0E, 0x04, 0x04, 0x04, 0x04, 0x04, 0x0E},
+	'J': {0x07, 0x02, 0x02, 0x02, 0x12, 0x12, 0x0C},
+	'K': {0x11, 0x12, 0x14, 0x18, 0x14, 0x12, 0x11},
 	'L': {0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x1F},
 	'M': {0x11, 0x1B, 0x15, 0x15, 0x11, 0x11, 0x11},
+	'N': {0x11, 0x19, 0x15, 0x13, 0x11, 0x11, 0x11},
 	'O': {0x0E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E},
 	'P': {0x1E, 0x11, 0x11, 0x1E, 0x10, 0x10, 0x10},
+	'Q': {0x0E, 0x11, 0x11, 0x11, 0x15, 0x12, 0x0D},
 	'R': {0x1E, 0x11, 0x11, 0x1E, 0x14, 0x12, 0x11},
 	'S': {0x0F, 0x10, 0x10, 0x0E, 0x01, 0x01, 0x1E},
 	'T': {0x1F, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04},
+	'U': {0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E},
 	'V': {0x11, 0x11, 0x11, 0x11, 0x11, 0x0A, 0x04},
+	'W': {0x11, 0x11, 0x11, 0x15, 0x15, 0x1B, 0x11},
+	'X': {0x11, 0x11, 0x0A, 0x04, 0x0A, 0x11, 0x11},
+	'Y': {0x11, 0x11, 0x0A, 0x04, 0x04, 0x04, 0x04},
+	'Z': {0x1F, 0x01, 0x02, 0x04, 0x08, 0x10, 0x1F},
 }
 
 func drawTinyLabel(img *image.RGBA, startX, startY int, text string, c color.RGBA) {

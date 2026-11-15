@@ -509,6 +509,11 @@ func (g *CanvasGizmoOverlay) viewportTransform(viewW, viewH float64) (svgToView 
 	return s2v, v2s, true
 }
 
+func isEditablePathAction(act app.ActionConfig) bool {
+	t := strings.ToLower(act.Type)
+	return t == "move" || t == "push" || (t == "gravity" && strings.TrimSpace(act.PathD) != "")
+}
+
 func (g *CanvasGizmoOverlay) activeSelection() (nodeID, objKey string, objCfg app.ObjectConfig, hasObj bool, moveActIdx int, moveSegs []GizmoSegment) {
 	moveActIdx = -1
 	if g.mw == nil || g.mw.session == nil || g.mw.session.Document == nil || g.mw.editorState == nil {
@@ -536,7 +541,7 @@ func (g *CanvasGizmoOverlay) activeSelection() (nodeID, objKey string, objCfg ap
 						objKey = k
 						objCfg = cfg
 						hasObj = true
-						if strings.EqualFold(act.Type, "move") {
+						if isEditablePathAction(act) {
 							loadMoveSegs(idx, act)
 						}
 						return
@@ -557,7 +562,7 @@ func (g *CanvasGizmoOverlay) activeSelection() (nodeID, objKey string, objCfg ap
 					objKey = k
 					objCfg = cfg
 					hasObj = true
-					if strings.EqualFold(act.Type, "move") {
+					if isEditablePathAction(act) {
 						loadMoveSegs(idx, act)
 					}
 					return
@@ -566,7 +571,7 @@ func (g *CanvasGizmoOverlay) activeSelection() (nodeID, objKey string, objCfg ap
 		}
 	}
 
-	// 2. Otherwise inspect ActiveNode (Track selection mode: Stage Placement, Pivot, and active track's Move path)
+	// 2. Otherwise inspect ActiveNode (Track selection mode: Stage Placement, Pivot, and active track's Move/Push path)
 	if state.ActiveNode != nil {
 		nodeID = state.ActiveNode.ID
 		objKey, objCfg, hasObj = g.mw.resolveNodeObjectConfig(state.ActiveNode)
@@ -575,8 +580,7 @@ func (g *CanvasGizmoOverlay) activeSelection() (nodeID, objKey string, objCfg ap
 		}
 		if hasObj {
 			for idx, act := range slices.Backward(objCfg.Actions) {
-
-				if strings.EqualFold(act.Type, "move") {
+				if isEditablePathAction(act) {
 					loadMoveSegs(idx, act)
 					break
 				}
@@ -670,10 +674,15 @@ func (g *CanvasGizmoOverlay) draw(w, h int) image.Image {
 				y0, y1 = y1, y0
 			}
 			boxCol := color.RGBA{R: 56, G: 189, B: 248, A: 200} // #38BDF8
-			if objCfg.OverrideStartPos || g.dragMode == gizmoDragStagePos {
+			if objCfg.IsSolid {
+				boxCol = color.RGBA{R: 16, G: 185, B: 129, A: 245} // Solid Emerald Collider #10B981
+			} else if objCfg.OverrideStartPos || g.dragMode == gizmoDragStagePos {
 				boxCol = color.RGBA{R: 52, G: 211, B: 153, A: 230} // Emerald when overridden
 			}
 			drawGizmoDashedRect(img, x0, y0, x1, y1, boxCol)
+			if objCfg.IsSolid {
+				drawGizmoDashedRect(img, x0-1, y0-1, x1+1, y1+1, boxCol)
+			}
 
 			// Stage position handle at top-left corner of bounding box
 			drawGizmoSquareHandle(img, x0, y0, int(math.Round(5*scaleX)), boxCol, color.RGBA{R: 15, G: 23, B: 42, A: 240})
@@ -688,8 +697,14 @@ func (g *CanvasGizmoOverlay) draw(w, h int) image.Image {
 		}
 	}
 
-	// 2. Draw Interactive Motion Path Line / Cubic Bézier Spline Gizmo
+	// 2. Draw Interactive Motion Path Line / Cubic Bézier Spline / Physics Force Vector Gizmo
 	if moveActIdx >= 0 && len(moveSegs) > 0 {
+		actType := "move"
+		if moveActIdx < len(objCfg.Actions) {
+			actType = strings.ToLower(objCfg.Actions[moveActIdx].Type)
+		}
+		isForceVector := actType == "push" || actType == "gravity"
+
 		pathCasing := color.RGBA{R: 15, G: 23, B: 42, A: 220}
 		pathStroke := color.RGBA{R: 56, G: 189, B: 248, A: 245}    // Electric Sky Blue #38BDF8
 		tangentCol := color.RGBA{R: 244, G: 114, B: 182, A: 200}   // Pink/Magenta #F472B6
@@ -698,6 +713,15 @@ func (g *CanvasGizmoOverlay) draw(w, h int) image.Image {
 		startFill := color.RGBA{R: 34, G: 197, B: 94, A: 255}      // Green #22C55E
 		endFill := color.RGBA{R: 56, G: 189, B: 248, A: 255}       // Sky Blue #38BDF8
 		midFill := color.RGBA{R: 250, G: 204, B: 21, A: 255}       // Gold waypoint
+
+		switch actType {
+		case "push":
+			pathStroke = color.RGBA{R: 251, G: 146, B: 60, A: 250} // Tangerine Orange #FB923C
+			endFill = color.RGBA{R: 251, G: 146, B: 60, A: 255}
+		case "gravity":
+			pathStroke = color.RGBA{R: 45, G: 212, B: 191, A: 250} // Cyan/Teal #2DD4BF
+			endFill = color.RGBA{R: 45, G: 212, B: 191, A: 255}
+		}
 
 		// Draw curve / line segments
 		for _, seg := range moveSegs {
@@ -723,14 +747,26 @@ func (g *CanvasGizmoOverlay) draw(w, h int) image.Image {
 				drawGizmoLine(img, ax1, ay1, c2x, c2y, tangentCol)
 				drawGizmoDiamond(img, c1x, c1y, int(math.Round(5*scaleX)), ctrlFill, pathCasing)
 				drawGizmoDiamond(img, c2x, c2y, int(math.Round(5*scaleX)), ctrlFill, pathCasing)
-			} else {
+			} else if !isForceVector {
 				// On straight line segments, show subtle curve handles at 1/3 and 2/3 so the user can drag them to bend into a curve
 				drawGizmoDiamond(img, c1x, c1y, int(math.Round(4*scaleX)), lineCtrlFill, pathCasing)
 				drawGizmoDiamond(img, c2x, c2y, int(math.Round(4*scaleX)), lineCtrlFill, pathCasing)
 			}
 		}
 
-		// Draw anchor nodes (Start = green, intermediate = gold, End = sky blue)
+		if isForceVector {
+			lastSeg := moveSegs[len(moveSegs)-1]
+			ex, ey := toPx(lastSeg.EndX, lastSeg.EndY)
+			tx, ty := toPx(lastSeg.StartX, lastSeg.StartY)
+			if lastSeg.IsCurve {
+				u9 := 0.9
+				px9, py9 := lastSeg.EvaluateAt(u9)
+				tx, ty = toPx(px9, py9)
+			}
+			drawGizmoArrowhead(img, tx, ty, ex, ey, int(math.Round(11*scaleX)), pathStroke, pathCasing)
+		}
+
+		// Draw anchor nodes (Start = green, intermediate = gold, End = sky blue / orange)
 		rAnchor := int(math.Round(6 * scaleX))
 		sx0, sy0 := toPx(moveSegs[0].StartX, moveSegs[0].StartY)
 		drawGizmoCircle(img, sx0, sy0, rAnchor, startFill, pathCasing)
@@ -1307,4 +1343,35 @@ func drawGizmoCrosshair(img *image.RGBA, cx, cy, r int, c color.RGBA) {
 		setGizmoPixel(img, cx, cy+i, c)
 	}
 	drawGizmoCircle(img, cx, cy, r/2+1, color.RGBA{0, 0, 0, 0}, c)
+}
+
+func drawGizmoArrowhead(img *image.RGBA, fromX, fromY, tipX, tipY, length int, fill, casing color.RGBA) {
+	dx := float64(tipX - fromX)
+	dy := float64(tipY - fromY)
+	dist := math.Hypot(dx, dy)
+	if dist < 2 {
+		return
+	}
+	if length < 6 {
+		length = 6
+	}
+	ux, uy := dx/dist, dy/dist
+	px, py := -uy, ux
+	halfW := float64(length) * 0.55
+
+	bx := float64(tipX) - ux*float64(length)
+	by := float64(tipY) - uy*float64(length)
+
+	lx := int(math.Round(bx + px*halfW))
+	ly := int(math.Round(by + py*halfW))
+	rx := int(math.Round(bx - px*halfW))
+	ry := int(math.Round(by - py*halfW))
+
+	drawGizmoThickLine(img, tipX, tipY, lx, ly, 2, casing)
+	drawGizmoThickLine(img, tipX, tipY, rx, ry, 2, casing)
+	drawGizmoThickLine(img, lx, ly, rx, ry, 2, casing)
+
+	drawGizmoThickLine(img, tipX, tipY, lx, ly, 1, fill)
+	drawGizmoThickLine(img, tipX, tipY, rx, ry, 1, fill)
+	drawGizmoThickLine(img, lx, ly, rx, ry, 1, fill)
 }

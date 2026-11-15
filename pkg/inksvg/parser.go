@@ -78,6 +78,16 @@ func ParseSVG(data []byte) (*SVGDocument, error) {
 				}
 
 				for i, cfg := range parseMotionConfigs(label) {
+					if cfg.IsSolid && id != "" {
+						st := doc.StageObjects[id]
+						st.GroupID = id
+						st.IsSolid = true
+						st.SolidBounce = cfg.Bounce
+						st.SolidFriction = cfg.Friction
+						st.SolidGlobal = cfg.SolidGlobal
+						st.HideSolid = cfg.HideSolid
+						doc.StageObjects[id] = st
+					}
 					mpID := fmt.Sprintf("%s_gmotion_%d", id, i)
 					if cfg.HasParallax && i == 0 {
 						mpID = id + "_dist"
@@ -202,6 +212,16 @@ func ParseSVG(data []byte) (*SVGDocument, error) {
 						}
 					}
 					for i, cfg := range cfgs {
+						if cfg.IsSolid && id != "" {
+							st := doc.StageObjects[id]
+							st.GroupID = id
+							st.IsSolid = true
+							st.SolidBounce = cfg.Bounce
+							st.SolidFriction = cfg.Friction
+							st.SolidGlobal = cfg.SolidGlobal
+							st.HideSolid = cfg.HideSolid
+							doc.StageObjects[id] = st
+						}
 						mpID := id
 						if mpID == "" {
 							mpID = fmt.Sprintf("mp_%d", len(doc.MotionPaths)+1)
@@ -217,10 +237,12 @@ func ParseSVG(data []byte) (*SVGDocument, error) {
 						}
 						if len(activeGroups) > 0 {
 							mp.GroupID = activeGroups[len(activeGroups)-1]
+						} else if cfg.IsSolid {
+							mp.GroupID = id
 						}
 						if cfg.IsCamera {
 							doc.CameraPath = &mp
-						} else if len(activeGroups) > 0 {
+						} else if len(activeGroups) > 0 || cfg.IsSolid {
 							doc.MotionPaths = append(doc.MotionPaths, mp)
 						}
 					}
@@ -425,6 +447,8 @@ func ParseSVG(data []byte) (*SVGDocument, error) {
 	if tpl, err := parseTimelineTemplate(processedData); err == nil {
 		doc.timelineTpl = tpl
 	}
+
+	doc.PrecomputePhysics()
 
 	return doc, nil
 }
@@ -816,7 +840,7 @@ func parseDimension(s string) float64 {
 	return v * scale
 }
 
-var directiveRe = regexp.MustCompile(`(?i)\b(move|rot|scale|scal|fade|show|hide|depth|camera|distance|dist|color)\s*\{`)
+var directiveRe = regexp.MustCompile(`(?i)\b(move|rot|scale|scal|fade|show|hide|depth|camera|distance|dist|color|push|gravity|grav|solid)\s*\{`)
 
 func parseMotionConfigs(label string) []MotionConfig {
 	if !strings.Contains(label, "{") {
@@ -838,6 +862,8 @@ func parseMotionConfigs(label string) []MotionConfig {
 			configType = "scale"
 		case "distance":
 			configType = "dist"
+		case "grav":
+			configType = "gravity"
 		default:
 			configType = rawType
 		}
@@ -899,6 +925,26 @@ func parseMotionConfigs(label string) []MotionConfig {
 				config.HasParallax = true
 				continue
 			}
+			if part == "roll" {
+				config.Roll = true
+				continue
+			}
+			if part == "impulse" {
+				config.IsImpulse = true
+				continue
+			}
+			if part == "continuous" {
+				config.IsImpulse = false
+				continue
+			}
+			if part == "global" {
+				config.SolidGlobal = true
+				continue
+			}
+			if part == "hide" || part == "ghost" {
+				config.HideSolid = true
+				continue
+			}
 			kv := strings.SplitN(part, ":", 2)
 			if len(kv) != 2 {
 				continue
@@ -912,6 +958,32 @@ func parseMotionConfigs(label string) []MotionConfig {
 				config.Type = v
 			case "pingpong":
 				config.IsPingPong = (v == "true" || v == "1" || v == "yes")
+			case "bounce", "restitution":
+				if vFloat, err := strconv.ParseFloat(v, 64); err == nil {
+					config.Bounce = vFloat
+				}
+			case "friction":
+				if vFloat, err := strconv.ParseFloat(v, 64); err == nil {
+					config.Friction = vFloat
+				}
+			case "power", "force":
+				if vFloat, err := strconv.ParseFloat(v, 64); err == nil {
+					config.Power = vFloat
+				}
+			case "g", "gravity-scale", "gravity_scale":
+				if vFloat, err := strconv.ParseFloat(v, 64); err == nil {
+					config.GravityScale = vFloat
+				}
+			case "impulse":
+				config.IsImpulse = (v == "true" || v == "1" || v == "yes")
+			case "continuous":
+				config.IsImpulse = v != "true" && v != "1" && v != "yes"
+			case "roll":
+				config.Roll = (v == "true" || v == "1" || v == "yes")
+			case "global":
+				config.SolidGlobal = (v == "true" || v == "1" || v == "yes")
+			case "hide", "ghost":
+				config.HideSolid = (v == "true" || v == "1" || v == "yes")
 			case "target":
 				vLower := strings.ToLower(v)
 				if vLower == "stroke" || vLower == "all" {

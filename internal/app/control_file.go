@@ -28,7 +28,7 @@ type LinkedSVG struct {
 	File string `json:"file"`
 }
 
-// ObjectConfig holds stage placement, display timing, pivot, and timeline actions for a group/layer.
+// ObjectConfig holds stage placement, display timing, pivot, collider, and timeline actions for a group/layer.
 type ObjectConfig struct {
 	SourceID         string         `json:"source_id,omitempty"`
 	LabelPath        string         `json:"label_path,omitempty"`
@@ -48,10 +48,15 @@ type ObjectConfig struct {
 	PivotNodeID      string         `json:"pivot_node_id,omitempty"`
 	PivotX           float64        `json:"pivot_x,omitempty"`
 	PivotY           float64        `json:"pivot_y,omitempty"`
+	IsSolid          bool           `json:"is_solid,omitempty"`
+	SolidBounce      *float64       `json:"solid_bounce,omitempty"`
+	SolidFriction    *float64       `json:"solid_friction,omitempty"`
+	SolidGlobal      bool           `json:"solid_global,omitempty"`
+	HideSolid        bool           `json:"hide_solid,omitempty"`
 	Actions          []ActionConfig `json:"actions,omitempty"`
 }
 
-// ActionConfig holds a single timeline action (Move, Rot, Scale, Fade, Color, Depth, Camera, etc.) in seconds.
+// ActionConfig holds a single timeline action (Move, Rot, Scale, Fade, Color, Depth, Camera, Push, Gravity, etc.) in seconds.
 type ActionConfig struct {
 	ID               string      `json:"id"`
 	Type             string      `json:"type"`
@@ -90,6 +95,12 @@ type ActionConfig struct {
 	HasColorAngle    bool        `json:"has_color_angle,omitempty"`
 	FillURL          string      `json:"fill_url,omitempty"`
 	Bounds           inksvg.Rect `json:"bounds"`
+	Power            float64     `json:"power,omitempty"`
+	GravityScale     float64     `json:"gravity_scale,omitempty"`
+	Bounce           *float64    `json:"bounce,omitempty"`
+	Friction         *float64    `json:"friction,omitempty"`
+	IsImpulse        *bool       `json:"is_impulse,omitempty"`
+	Roll             bool        `json:"roll,omitempty"`
 }
 
 // ControlFile represents the persisted project settings and timeline actions stored in a companion .inka file.
@@ -537,6 +548,7 @@ func ApplyObjectsToDocument(doc *inksvg.SVGDocument, objects map[string]ObjectCo
 		doc.StageObjects = make(map[string]inksvg.StageObject)
 	}
 	if len(objects) == 0 {
+		doc.PrecomputePhysics()
 		return
 	}
 
@@ -567,8 +579,17 @@ func ApplyObjectsToDocument(doc *inksvg.SVGDocument, objects map[string]ObjectCo
 		}
 
 		hasWin := obj.HasDisplayWindow || obj.StartTimeSec > 0 || obj.EndTimeSec > 0
-		if hasWin {
+		if hasWin || obj.IsSolid {
 			hasAnimatedStageObj = true
+		}
+
+		solidBounce := 0.7
+		if obj.SolidBounce != nil {
+			solidBounce = *obj.SolidBounce
+		}
+		solidFriction := 0.2
+		if obj.SolidFriction != nil {
+			solidFriction = *obj.SolidFriction
 		}
 
 		doc.StageObjects[resolvedID] = inksvg.StageObject{
@@ -588,6 +609,11 @@ func ApplyObjectsToDocument(doc *inksvg.SVGDocument, objects map[string]ObjectCo
 			PivotNodeID:      obj.PivotNodeID,
 			PivotX:           obj.PivotX,
 			PivotY:           obj.PivotY,
+			IsSolid:          obj.IsSolid,
+			SolidBounce:      solidBounce,
+			SolidFriction:    solidFriction,
+			SolidGlobal:      obj.SolidGlobal,
+			HideSolid:        obj.HideSolid,
 		}
 
 		for i, act := range obj.Actions {
@@ -618,6 +644,8 @@ func ApplyObjectsToDocument(doc *inksvg.SVGDocument, objects map[string]ObjectCo
 			}
 		}
 	}
+
+	doc.PrecomputePhysics()
 }
 
 func resolveObjectXMLID(key string, obj ObjectConfig, lookup map[string]string) string {
@@ -717,6 +745,25 @@ func actionConfigToMotionPath(act ActionConfig, actID, groupID string) inksvg.Mo
 		cfg.ColorAngle = act.ColorAngle
 		cfg.HasColorAngle = act.HasColorAngle
 	}
+	if cfg.Type == "push" || cfg.Type == "gravity" {
+		cfg.IsPhysics = true
+		if act.Power > 0 {
+			cfg.Power = act.Power
+		}
+		if act.GravityScale != 0 {
+			cfg.GravityScale = act.GravityScale
+		}
+		if act.Bounce != nil {
+			cfg.Bounce = *act.Bounce
+		}
+		if act.Friction != nil {
+			cfg.Friction = *act.Friction
+		}
+		if act.IsImpulse != nil {
+			cfg.IsImpulse = *act.IsImpulse
+		}
+		cfg.Roll = act.Roll
+	}
 
 	return inksvg.MotionPath{
 		ID:       actID,
@@ -775,6 +822,44 @@ func MigrateDocumentIAMSToControlFile(doc *inksvg.SVGDocument, sourceID string, 
 	}
 
 	migratedCount := 0
+	for groupID, stObj := range doc.StageObjects {
+		if !stObj.IsSolid {
+			continue
+		}
+		meta, hasMeta := metaByXMLID[groupID]
+		labelPath := meta.LabelPath
+		if !hasMeta || labelPath == "" {
+			labelPath = groupID
+		}
+		srcID := sourceID
+		if hasMeta && meta.SourceID != "" {
+			srcID = meta.SourceID
+		}
+		objKey := labelPath
+		if srcID != "" && labelPath != srcID {
+			objKey = srcID + "/" + labelPath
+		}
+		obj, exists := ctrl.Objects[objKey]
+		if !exists {
+			obj = ObjectConfig{
+				SourceID:      srcID,
+				LabelPath:     labelPath,
+				FallbackXMLID: groupID,
+			}
+		}
+		if !obj.IsSolid {
+			b := stObj.SolidBounce
+			f := stObj.SolidFriction
+			obj.IsSolid = true
+			obj.SolidBounce = &b
+			obj.SolidFriction = &f
+			obj.SolidGlobal = stObj.SolidGlobal
+			obj.HideSolid = stObj.HideSolid
+			ctrl.Objects[objKey] = obj
+			migratedCount++
+		}
+	}
+
 	for i, mp := range allPaths {
 		groupID := mp.GroupID
 		if groupID == "" && !mp.Config.IsCamera {
@@ -861,6 +946,17 @@ func MigrateDocumentIAMSToControlFile(doc *inksvg.SVGDocument, sourceID string, 
 			endSec = frameToSec(mp.Config.EndFrame)
 		}
 
+		var bouncePtr, frictionPtr *float64
+		var impulsePtr *bool
+		if mp.Config.IsPhysics {
+			b := mp.Config.Bounce
+			f := mp.Config.Friction
+			imp := mp.Config.IsImpulse
+			bouncePtr = &b
+			frictionPtr = &f
+			impulsePtr = &imp
+		}
+
 		act := ActionConfig{
 			ID:               actID,
 			Type:             mp.Config.Type,
@@ -899,6 +995,12 @@ func MigrateDocumentIAMSToControlFile(doc *inksvg.SVGDocument, sourceID string, 
 			HasColorAngle:    mp.Config.HasColorAngle,
 			FillURL:          mp.FillURL,
 			Bounds:           mp.Bounds,
+			Power:            mp.Config.Power,
+			GravityScale:     mp.Config.GravityScale,
+			Bounce:           bouncePtr,
+			Friction:         frictionPtr,
+			IsImpulse:        impulsePtr,
+			Roll:             mp.Config.Roll,
 		}
 		obj.Actions = append(obj.Actions, act)
 		ctrl.Objects[objKey] = obj

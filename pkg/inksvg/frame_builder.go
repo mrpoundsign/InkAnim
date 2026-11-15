@@ -841,14 +841,16 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 		switch elem := token.(type) {
 		case xml.StartElement:
 			elem.Attr = append([]xml.Attr(nil), elem.Attr...)
-			// Hide the motion paths or markers themselves
+			// Hide the motion paths or markers themselves (unless it is a visible Solid collider)
 			if elem.Name.Local == "path" || elem.Name.Local == "circle" || elem.Name.Local == "rect" || elem.Name.Local == "ellipse" || elem.Name.Local == "line" || elem.Name.Local == "polygon" || elem.Name.Local == "polyline" {
 				var isMotionPath bool
 				for _, attr := range elem.Attr {
 					if attr.Name.Local == "label" && strings.Contains(attr.Value, "{") {
-						if _, ok := parseMotionConfig(attr.Value); ok {
-							isMotionPath = true
-							break
+						if cfg, ok := parseMotionConfig(attr.Value); ok {
+							if !cfg.IsSolid || cfg.HideSolid {
+								isMotionPath = true
+								break
+							}
 						}
 					}
 				}
@@ -918,10 +920,11 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 						}
 					}
 				}
+				physPose, hasPhysPose := doc.InterpolatePhysicsPose(lookupID, curTimeSec)
 				hasPaths := len(paths) > 0
-				applyCamera := isGroup && cameraActive && parallaxActiveDepth == 0 && (!isSourceWrapper || hasPaths)
+				applyCamera := isGroup && cameraActive && parallaxActiveDepth == 0 && (!isSourceWrapper || hasPaths || hasPhysPose)
 
-				if hasPaths || hasStageObj || applyCamera {
+				if hasPaths || hasStageObj || applyCamera || hasPhysPose {
 					factor := 1.0
 					for _, mp := range paths {
 						if mp.Config.HasParallax {
@@ -941,6 +944,11 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 					var isShown bool
 					var hasHideRules bool
 					var isHidden bool
+
+					if hasStageObj && stObj.IsSolid && stObj.HideSolid {
+						isHidden = true
+						hasHideRules = true
+					}
 
 					if hasStageObj && stObj.HasDisplayWindow {
 						switch {
@@ -1194,6 +1202,24 @@ func serializeNodeTokens(encoder *xml.Encoder, tokens []xml.Token, doc *SVGDocum
 							currOpacity = math.Max(0.0, math.Min(1.0, currOpacity))
 							totalOpacity *= currOpacity
 							hasActiveFade = true
+						}
+					}
+
+					if hasPhysPose {
+						totalDx += physPose.DX
+						totalDy += physPose.DY
+						if physPose.DRot != 0 {
+							totalRot += physPose.DRot
+							if !rotPivotDetermined {
+								rotPivotDetermined = true
+								if hasStageObj {
+									rotPivotX, rotPivotY = resolveStageObjectPivot(doc, lookupID, stObj)
+								} else {
+									rect := doc.GetElementRect(lookupID)
+									rotPivotX = rect.X + rect.Width/2.0
+									rotPivotY = rect.Y + rect.Height/2.0
+								}
+							}
 						}
 					}
 

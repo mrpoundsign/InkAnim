@@ -242,7 +242,7 @@ func (mw *MainWindow) isVisibleTreeNode(n *doctree.DocNode) bool {
 	if n == nil {
 		return false
 	}
-	if _, cfg, ok := mw.resolveNodeObjectConfig(n); ok && (len(cfg.Actions) > 0 || cfg.HasDisplayWindow || cfg.OverrideStartPos) {
+	if _, cfg, ok := mw.resolveNodeObjectConfig(n); ok && (len(cfg.Actions) > 0 || cfg.HasDisplayWindow || cfg.OverrideStartPos || cfg.IsSolid) {
 		return true
 	}
 	if n.IsHidden {

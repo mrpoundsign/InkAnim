@@ -114,6 +114,23 @@ type MotionConfig struct {
 	HasColorAngle    bool    // true if angle specified for Color
 	ColorAngle       float64 // degrees for gradient sweep
 	ColorTarget      string  // "fill", "stroke", or "all" (default "fill")
+	IsPhysics        bool    // true if Push or Gravity directive parsed
+	IsSolid          bool    // true if Solid directive parsed
+	Power            float64 // force multiplier for Push (default 5.0)
+	GravityScale     float64 // gravity multiplier for Gravity (default 1.0)
+	Bounce           float64 // restitution 0.0 - 1.5 (default 0.65)
+	Friction         float64 // surface sliding friction 0.0 - 1.0 (default 0.2)
+	IsImpulse        bool    // true if Push applies an instant velocity kick at StartSec (default true)
+	Roll             bool    // true if tangential travel induces rolling rotation
+	SolidGlobal      bool    // true if Solid collides across all layers/linked SVGs
+	HideSolid        bool    // true if Solid collider is hidden in rendered frames
+}
+
+// PhysicsPose represents the precomputed 2D physics displacement and rotation delta at a sample timestamp.
+type PhysicsPose struct {
+	DX   float64
+	DY   float64
+	DRot float64
 }
 
 // StageObject holds base stage placement, display timing, and pivot properties for a group or layer.
@@ -134,6 +151,11 @@ type StageObject struct {
 	PivotNodeID      string
 	PivotX           float64
 	PivotY           float64
+	IsSolid          bool
+	SolidBounce      float64 // restitution (default 0.7)
+	SolidFriction    float64 // friction (default 0.2)
+	SolidGlobal      bool    // collide across all layers/linked SVGs
+	HideSolid        bool    // hide solid surface in rendered output
 }
 
 // LayerRenderOrder tracks the document and effective Z-index for frame reordering.
@@ -161,6 +183,11 @@ func DefaultMotionConfig(configType string) MotionConfig {
 		ColorTarget:    "fill",
 		ColorRepeat:    1,
 		Repeat:         1,
+		Power:          5.0,
+		GravityScale:   1.0,
+		Bounce:         0.65,
+		Friction:       0.2,
+		IsImpulse:      true,
 	}
 	switch configType {
 	case "camera":
@@ -184,6 +211,17 @@ func DefaultMotionConfig(configType string) MotionConfig {
 		cfg.IsColor = true
 		cfg.ColorTarget = "fill"
 		cfg.ColorRepeat = 1
+	case "push":
+		cfg.IsPhysics = true
+		cfg.IsImpulse = true
+	case "gravity", "grav":
+		cfg.Type = "gravity"
+		cfg.IsPhysics = true
+		cfg.IsImpulse = false
+	case "solid":
+		cfg.IsSolid = true
+		cfg.Bounce = 0.7
+		cfg.Friction = 0.2
 	}
 	return cfg
 }
@@ -213,23 +251,24 @@ type MotionPath struct {
 
 // SVGDocument holds parsed SVG metadata and elements.
 type SVGDocument struct {
-	RawContent       []byte
-	Width            float64
-	Height           float64
-	ViewBoxX         float64
-	ViewBoxY         float64
-	ViewBoxW         float64
-	ViewBoxH         float64
-	DrawingRect      Rect
-	Frames           []Frame
-	Pages            []Page
-	MotionPaths      []MotionPath
-	CameraPath       *MotionPath
-	StageObjects     map[string]StageObject
-	TotalDurationSec float64
-	Gradients        map[string]SVGGradient
-	DefaultMode      FrameMode
-	ElementRects     map[string]Rect
+	RawContent          []byte
+	Width               float64
+	Height              float64
+	ViewBoxX            float64
+	ViewBoxY            float64
+	ViewBoxW            float64
+	ViewBoxH            float64
+	DrawingRect         Rect
+	Frames              []Frame
+	Pages               []Page
+	MotionPaths         []MotionPath
+	CameraPath          *MotionPath
+	StageObjects        map[string]StageObject
+	PhysicsSamples      map[string][]PhysicsPose
+	TotalDurationSec    float64
+	Gradients           map[string]SVGGradient
+	DefaultMode         FrameMode
+	ElementRects        map[string]Rect
 	Migrations          []MigrationHit
 	ShowMotionLines     bool
 	drawingRectComputed bool
@@ -254,23 +293,24 @@ func (d *SVGDocument) CloneWithoutMotionLines() *SVGDocument {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 	return &SVGDocument{
-		RawContent:       d.RawContent,
-		Width:            d.Width,
-		Height:           d.Height,
-		ViewBoxX:         d.ViewBoxX,
-		ViewBoxY:         d.ViewBoxY,
-		ViewBoxW:         d.ViewBoxW,
-		ViewBoxH:         d.ViewBoxH,
-		DrawingRect:      d.DrawingRect,
-		Frames:           d.Frames,
-		Pages:            d.Pages,
-		MotionPaths:      d.MotionPaths,
-		CameraPath:       d.CameraPath,
-		StageObjects:     d.StageObjects,
-		TotalDurationSec: d.TotalDurationSec,
-		Gradients:        d.Gradients,
-		DefaultMode:      d.DefaultMode,
-		ElementRects:     d.ElementRects,
+		RawContent:          d.RawContent,
+		Width:               d.Width,
+		Height:              d.Height,
+		ViewBoxX:            d.ViewBoxX,
+		ViewBoxY:            d.ViewBoxY,
+		ViewBoxW:            d.ViewBoxW,
+		ViewBoxH:            d.ViewBoxH,
+		DrawingRect:         d.DrawingRect,
+		Frames:              d.Frames,
+		Pages:               d.Pages,
+		MotionPaths:         d.MotionPaths,
+		CameraPath:          d.CameraPath,
+		StageObjects:        d.StageObjects,
+		PhysicsSamples:      d.PhysicsSamples,
+		TotalDurationSec:    d.TotalDurationSec,
+		Gradients:           d.Gradients,
+		DefaultMode:         d.DefaultMode,
+		ElementRects:        d.ElementRects,
 		Migrations:          d.Migrations,
 		ShowMotionLines:     false,
 		drawingRectComputed: d.drawingRectComputed,
