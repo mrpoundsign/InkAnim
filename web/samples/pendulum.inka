@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "svg_file": "pendulum.svg",
+  "sources": [
+    {
+      "id": "src_1",
+      "file": "pendulum.svg"
+    }
+  ],
+  "timing": {
+    "duration_sec": 2,
+    "fps": 20,
+    "ping_pong": true,
+    "loop": true
+  },
+  "crop": {
+    "boundary_mode": "page",
+    "page_index": 0
+  },
+  "export": {
+    "preset": "Twitch Emote (512x512 Square)",
+    "export_square": true,
+    "square_size": 128,
+    "target_width": 128,
+    "target_height": 128,
+    "num_colors": 256,
+    "dither": true
+  },
+  "preview": {
+    "background": "Checkerboard",
+    "show_guides": true,
+    "show_paths": true,
+    "show_scales": true
+  },
+  "objects": {
+    "src_1/Pendulum Arm": {
+      "source_id": "src_1",
+      "label_path": "Pendulum Arm",
+      "fallback_xml_id": "layer_pendulum_arm",
+      "start_time_sec": 0,
+      "actions": [
+        {
+          "id": "pendulum_rot_guide",
+          "type": "rot",
+          "start_sec": 0,
+          "end_sec": 2,
+          "ease": "in-out",
+          "repeat": 1,
+          "path_d": "M 128,44 L 128,44",
+          "pivot_type": "node",
+          "pivot_node_id": "pivot_mount",
+          "rotation_angle": 48,
+          "rotation_dir": "ccw",
+          "scale_from_x": 1,
+          "scale_from_y": 1,
+          "scale_to_x": 1,
+          "scale_to_y": 1,
+          "opacity_from": 1,
+          "opacity_to": 1,
+          "parallax_factor": 1,
+          "color_target": "fill",
+          "bounds": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          }
+        }
+      ]
+    }
+  }
+}
