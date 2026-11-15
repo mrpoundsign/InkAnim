@@ -31,7 +31,7 @@ type GroupMetadata struct {
 
 var (
 	urlRefRe       = regexp.MustCompile(`url\(\s*['"]?#([^)'"\s]+)['"]?\s*\)`)
-	directiveCutRe = regexp.MustCompile(`(?i)\b(move|rot|scale|scal|fade|show|hide|depth|camera|distance|dist|color)\s*\{[^}]*\}`)
+	directiveCutRe = regexp.MustCompile(`(?i)\b(move|rot|scale|scal|fade|show|hide|depth|camera|distance|dist|color|push|gravity|grav|solid)\s*\{[^}]*\}`)
 )
 
 // CleanGroupLabel strips IAMS motion directives and separator pipes from an inkscape:label,
@@ -98,17 +98,30 @@ func StripIAMSFromSVG(svgData []byte) ([]byte, error) {
 
 			if gDepth > 0 && isMotionShapeElement(name) {
 				var label string
-				for _, attr := range elem.Attr {
+				var labelIdx = -1
+				for i, attr := range elem.Attr {
 					if attr.Name.Local == "label" {
 						label = attr.Value
+						labelIdx = i
 						break
 					}
 				}
-				if len(parseMotionConfigs(label)) > 0 {
-					if err := decoder.Skip(); err != nil {
-						return nil, err
+				if cfgs := parseMotionConfigs(label); len(cfgs) > 0 {
+					hasSolid := false
+					for _, c := range cfgs {
+						if c.IsSolid {
+							hasSolid = true
+							break
+						}
 					}
-					continue
+					if hasSolid && labelIdx >= 0 {
+						elem.Attr[labelIdx].Value = CleanGroupLabel(label)
+					} else {
+						if err := decoder.Skip(); err != nil {
+							return nil, err
+						}
+						continue
+					}
 				}
 			}
 
@@ -242,7 +255,7 @@ func ExtractGroupHierarchy(svgData []byte) ([]GroupMetadata, map[string]string) 
 					continue
 				}
 				if strings.Contains(rawLabel, "{") {
-					if _, ok := parseMotionConfig(rawLabel); ok {
+					if cfg, ok := parseMotionConfig(rawLabel); ok && !cfg.IsSolid {
 						continue
 					}
 				}

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **2D Arcade Physics Engine (`Push`, `Gravity`, and `Solid` Surface Colliders)**:
+  - Added a deterministic **120 Hz fixed-timestep pre-baked physics solver** (`PrecomputePhysics`) in `pkg/inksvg` that integrates trajectories in continuous seconds (`0.0s .. TotalDurationSec`), keeping bounce heights and collision timing 100% FPS-independent across 10 FPS to 60 FPS presets ([#150](https://github.com/mrpoundsign/InkAnim/issues/150)).
+  - Added `Push` (impulse kick or continuous thruster force vector), `Gravity` (scaled downward or custom-angled pull), and `Preset: Drop & Bounce` timeline actions, complete with interactive on-canvas force vector gizmos with directional arrowheads ([#150](https://github.com/mrpoundsign/InkAnim/issues/150)).
+  - Added **Solid Surface Colliders** (`IsSolid`, `Bounce`, `Friction`, `Global / All Layers`, `Invisible Collider / Hide in Render`) in Track Properties, supporting swept segment collision detection against SVG shapes (`<line>`, `<rect>`, `<circle>`, `<ellipse>`, `<polygon>`, `<polyline>`, `<path>`), moving kinematic platforms, and slope rolling (`Roll: true`) ([#150](https://github.com/mrpoundsign/InkAnim/issues/150)).
+
 ### Changed
 - **Desktop Studio Layout & Viewport Defaults**:
   - Compacted Studio typography, padding, timeline track heights, transport bar, and Export Settings controls for cleaner `1200×800` and `1080p` layouts, and persisted window size and maximized state across sessions.

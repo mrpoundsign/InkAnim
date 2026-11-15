@@ -214,3 +214,80 @@ func TestControlFileMultiLinkedSourcesAndIAMSMigration(t *testing.T) {
 		t.Errorf("expected 10 rendered frames (1.0s @ 10 FPS), got %d", len(sess.RenderedFrames))
 	}
 }
+
+func TestControlFilePhysicsRoundTripAndSimulation(t *testing.T) {
+	svgXML := `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" viewBox="0 0 200 200">
+  <g inkscape:groupmode="layer" id="layer1" inkscape:label="Main">
+    <g id="crate" inkscape:label="Crate">
+      <rect x="90" y="20" width="20" height="20" fill="#FB923C" />
+    </g>
+    <g id="ground" inkscape:label="Ground">
+      <rect x="0" y="150" width="200" height="10" fill="#10B981" />
+    </g>
+  </g>
+</svg>`
+
+	doc, err := inksvg.ParseSVG([]byte(svgXML))
+	if err != nil {
+		t.Fatalf("ParseSVG failed: %v", err)
+	}
+
+	bounce := 0.8
+	friction := 0.15
+	imp := true
+	objects := map[string]ObjectConfig{
+		"Main/Ground": {
+			LabelPath:     "Main/Ground",
+			FallbackXMLID: "ground",
+			IsSolid:       true,
+			SolidBounce:   &bounce,
+			SolidFriction: &friction,
+			SolidGlobal:   true,
+			HideSolid:     false,
+		},
+		"Main/Crate": {
+			LabelPath:     "Main/Crate",
+			FallbackXMLID: "crate",
+			Actions: []ActionConfig{
+				{
+					ID:        "crate_push",
+					Type:      "push",
+					StartSec:  0.0,
+					EndSec:    1.5,
+					PathD:     "M 100 30 L 125 20",
+					Power:     3.0,
+					Bounce:    &bounce,
+					Friction:  &friction,
+					IsImpulse: &imp,
+					Roll:      true,
+				},
+				{
+					ID:           "crate_grav",
+					Type:         "gravity",
+					StartSec:     0.0,
+					EndSec:       1.5,
+					GravityScale: 1.0,
+					Bounce:       &bounce,
+					Friction:     &friction,
+					Roll:         true,
+				},
+			},
+		},
+	}
+
+	ApplyObjectsToDocument(doc, objects, 1.5)
+	stGround, ok := doc.StageObjects["ground"]
+	if !ok || !stGround.IsSolid || !stGround.SolidGlobal {
+		t.Fatalf("expected ground StageObject to have IsSolid=true, SolidGlobal=true; got %+v", stGround)
+	}
+
+	pose, hasPose := doc.InterpolatePhysicsPose("crate", 0.75)
+	if !hasPose {
+		t.Fatalf("expected precomputed physics pose for crate")
+	}
+	if pose.DX <= 5.0 || pose.DY <= 15.0 {
+		t.Fatalf("expected crate to move right and fall under push+gravity, got DX=%f DY=%f", pose.DX, pose.DY)
+	}
+}
+
