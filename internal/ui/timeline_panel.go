@@ -28,8 +28,8 @@ const (
 	timelineIndentStepPx    = float32(14)
 	timelineDisclosureWidth = float32(28)
 	timelineRulerHeight     = float32(30)
-	timelineTrackRowHeight  = float32(34)
-	timelineActionSubRowPx  = float32(24)
+	timelineTrackRowHeight  = float32(28)
+	timelineActionSubRowPx  = float32(20)
 	timelineEdgeGripPx      = float32(14)
 )
 

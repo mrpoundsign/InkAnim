@@ -63,6 +63,18 @@ func (m *StudioTheme) Size(name fyne.ThemeSizeName) float32 {
 	switch name {
 	case theme.SizeNameSeparatorThickness:
 		return 3.0 // Bold, high-visibility 3px active tab indicator line
+	case theme.SizeNameText:
+		return 12.0
+	case theme.SizeNameCaptionText:
+		return 10.0
+	case theme.SizeNameSubHeadingText:
+		return 14.0
+	case theme.SizeNameHeadingText:
+		return 18.0
+	case theme.SizeNameInnerPadding:
+		return 5.0
+	case theme.SizeNamePadding:
+		return 3.0
 	default:
 		return theme.DefaultTheme().Size(name)
 	}

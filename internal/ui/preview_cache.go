@@ -21,6 +21,7 @@ type previewSnapshot struct {
 	numColors      int
 	alphaThreshold uint8
 	dither         bool
+	renderClean    func() []*image.RGBA
 }
 
 // progressFunc reports build progress. total == 0 means the stage is indeterminate.
@@ -42,28 +43,31 @@ func (p *CenterPreviewPanel) snapshotLocked() previewSnapshot {
 		s.images[i] = f.Image
 		s.activeRects[i] = p.session.GetActiveBoundaryRect(i)
 	}
+	if p.session.ShowMotionLines && p.session.Document != nil {
+		sess := p.session
+		s.renderClean = func() []*image.RGBA {
+			imgs, err := sess.RenderCleanPreviewFrames()
+			if err != nil {
+				return nil
+			}
+			return imgs
+		}
+	}
 	return s
 }
 
-// buildPreviewCache produces the display frames (with/without crop guides) and the
-// Twitch scale-inspector thumbnails for every frame. It is pure: it only reads the
-// snapshot, so it is safe to run on a background goroutine.
-func buildPreviewCache(s previewSnapshot, progress progressFunc) []cachedPreviewFrame {
-	tTotal := time.Now()
-	n := len(s.images)
-	out := make([]cachedPreviewFrame, n)
-	if n == 0 {
-		return out
-	}
-
+func prepareDisplayImages(images []*image.RGBA, s previewSnapshot, progress progressFunc) []*image.RGBA {
+	n := len(images)
 	displayImgs := make([]*image.RGBA, n)
-	for i, img := range s.images {
+	for i, img := range images {
 		if img == nil {
 			continue
 		}
 		if s.exportSquare {
 			displayImgs[i] = gif.MakeSquare(img, 0)
-			progress("Preparing frames", i+1, n)
+			if progress != nil {
+				progress("Preparing frames", i+1, n)
+			}
 		} else {
 			displayImgs[i] = img
 		}
@@ -80,12 +84,16 @@ func buildPreviewCache(s previewSnapshot, progress progressFunc) []cachedPreview
 			alphaThreshold = 128
 		}
 
-		progress("Building palette…", 0, 0)
+		if progress != nil {
+			progress("Building palette…", 0, 0)
+		}
 		tPal := time.Now()
 		palette := gif.GeneratePalette(displayImgs, numColors, alphaThreshold)
 		prof.Since(tPal, "L6a GeneratePalette (%d frames)", n)
 
-		progress("Quantizing colors…", 0, 0)
+		if progress != nil {
+			progress("Quantizing colors…", 0, 0)
+		}
 		tQuant := time.Now()
 		palettedList, _ := gif.QuantizeFrames(displayImgs, palette, alphaThreshold, s.dither)
 		prof.Since(tQuant, "L6b QuantizeFrames (%d frames, dither=%v)", n, s.dither)
@@ -95,9 +103,32 @@ func buildPreviewCache(s previewSnapshot, progress progressFunc) []cachedPreview
 			if pal != nil {
 				displayImgs[i] = gif.PalettedToRGBA(pal)
 			}
-			progress("Applying palette", i+1, len(palettedList))
+			if progress != nil {
+				progress("Applying palette", i+1, len(palettedList))
+			}
 		}
 		prof.Since(tPalToRGBA, "L6c PalettedToRGBA (%d frames)", len(palettedList))
+	}
+	return displayImgs
+}
+
+// buildPreviewCache produces the display frames (with/without crop guides) and the
+// Twitch scale-inspector thumbnails for every frame. It is pure: it only reads the
+// snapshot, so it is safe to run on a background goroutine.
+func buildPreviewCache(s previewSnapshot, progress progressFunc) []cachedPreviewFrame {
+	tTotal := time.Now()
+	n := len(s.images)
+	out := make([]cachedPreviewFrame, n)
+	if n == 0 {
+		return out
+	}
+
+	displayImgs := prepareDisplayImages(s.images, s, progress)
+	cleanDisplayImgs := displayImgs
+	if s.renderClean != nil {
+		if cleanImgs := s.renderClean(); len(cleanImgs) == n {
+			cleanDisplayImgs = prepareDisplayImages(cleanImgs, s, nil)
+		}
 	}
 
 	tPreviews := time.Now()
@@ -116,6 +147,10 @@ func buildPreviewCache(s previewSnapshot, progress progressFunc) []cachedPreview
 		cropRect := image.Rect(cropX0, cropY0, cropX0+cropW, cropY0+cropH)
 
 		displayImg := displayImgs[i]
+		cleanImg := cleanDisplayImgs[i]
+		if cleanImg == nil {
+			cleanImg = displayImg
+		}
 		var contentRect image.Rectangle
 		if s.exportSquare {
 			origB := img.Bounds()
@@ -127,7 +162,7 @@ func buildPreviewCache(s previewSnapshot, progress progressFunc) []cachedPreview
 			contentRect = cropRect
 		}
 
-		croppedForTwitch := cropImage(displayImg, contentRect)
+		croppedForTwitch := cropImage(cleanImg, contentRect)
 
 		var twitchDisplayImg *image.RGBA
 		if s.exportSquare {

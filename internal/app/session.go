@@ -549,7 +549,28 @@ func (s *Session) UpdateFrameDurations() {
 
 // renderFramesForBoundary rasterizes the active frames into preview frames at the specified boundary rectangle.
 func (s *Session) renderFramesForBoundary(boundaryRect inksvg.Rect) ([]inksvg.RenderedFrame, error) {
-	if s.Document == nil {
+	return s.renderFramesForDoc(s.Document, boundaryRect)
+}
+
+// RenderCleanPreviewFrames rasterizes preview frames with motion guides stripped,
+// matching what will be exported when ShowMotionLines is enabled.
+func (s *Session) RenderCleanPreviewFrames() ([]*image.RGBA, error) {
+	if s.Document == nil || !s.ShowMotionLines {
+		return nil, nil
+	}
+	frames, err := s.renderFramesForDoc(s.Document.CloneWithoutMotionLines(), s.GetPreviewBoundaryRect())
+	if err != nil {
+		return nil, err
+	}
+	imgs := make([]*image.RGBA, len(frames))
+	for i, f := range frames {
+		imgs[i] = f.Image
+	}
+	return imgs, nil
+}
+
+func (s *Session) renderFramesForDoc(doc *inksvg.SVGDocument, boundaryRect inksvg.Rect) ([]inksvg.RenderedFrame, error) {
+	if doc == nil {
 		return nil, nil
 	}
 
@@ -598,7 +619,7 @@ func (s *Session) renderFramesForBoundary(boundaryRect inksvg.Rect) ([]inksvg.Re
 		for i, j := range jobs {
 			var frameSVG []byte
 			kfPos := inksvg.KeyframePosition(j.docFrameIdx, totalOutFrames, keyframeCount)
-			frameSVG, buildErr = inksvg.BuildTimelineFrameSVGAt(s.Document, kfPos, boundaryRect)
+			frameSVG, buildErr = inksvg.BuildTimelineFrameSVGAt(doc, kfPos, boundaryRect)
 			if buildErr != nil {
 				return nil, fmt.Errorf("failed to build frame %d: %w", j.frameIdx+1, buildErr)
 			}
@@ -634,7 +655,7 @@ func (s *Session) renderFramesForBoundary(boundaryRect inksvg.Rect) ([]inksvg.Re
 		j := jobs[idx]
 
 		kfPos := inksvg.KeyframePosition(j.docFrameIdx, totalOutFrames, keyframeCount)
-		frameSVG, err := inksvg.BuildTimelineFrameSVGAt(s.Document, kfPos, boundaryRect)
+		frameSVG, err := inksvg.BuildTimelineFrameSVGAt(doc, kfPos, boundaryRect)
 		if err != nil {
 			return fmt.Errorf("failed to build frame %d: %w", j.frameIdx+1, err)
 		}

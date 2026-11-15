@@ -553,6 +553,16 @@ func ApplyObjectsToDocument(doc *inksvg.SVGDocument, objects map[string]ObjectCo
 		obj := objects[key]
 		resolvedID := resolveObjectXMLID(key, obj, lookup)
 		if resolvedID == "" {
+			for i, act := range obj.Actions {
+				if strings.EqualFold(act.Type, "camera") {
+					actID := act.ID
+					if actID == "" {
+						actID = fmt.Sprintf("camera_act_%d", i+1)
+					}
+					mp := actionConfigToMotionPath(act, actID, "")
+					doc.CameraPath = &mp
+				}
+			}
 			continue
 		}
 
@@ -758,16 +768,26 @@ func MigrateDocumentIAMSToControlFile(doc *inksvg.SVGDocument, sourceID string, 
 		return math.Round(sec*1000) / 1000
 	}
 
+	allPaths := make([]inksvg.MotionPath, 0, len(doc.MotionPaths)+1)
+	allPaths = append(allPaths, doc.MotionPaths...)
+	if doc.CameraPath != nil {
+		allPaths = append(allPaths, *doc.CameraPath)
+	}
+
 	migratedCount := 0
-	for i, mp := range doc.MotionPaths {
+	for i, mp := range allPaths {
 		groupID := mp.GroupID
-		if groupID == "" {
+		if groupID == "" && !mp.Config.IsCamera {
 			continue
 		}
 		meta, hasMeta := metaByXMLID[groupID]
 		labelPath := meta.LabelPath
 		if !hasMeta || labelPath == "" {
-			labelPath = groupID
+			if mp.Config.IsCamera && groupID == "" {
+				labelPath = "Camera"
+			} else {
+				labelPath = groupID
+			}
 		}
 		srcID := sourceID
 		if hasMeta && meta.SourceID != "" {
@@ -782,7 +802,8 @@ func MigrateDocumentIAMSToControlFile(doc *inksvg.SVGDocument, sourceID string, 
 		obj, exists := ctrl.Objects[objKey]
 		if !exists {
 			for k, existingObj := range ctrl.Objects {
-				if k == groupID || existingObj.FallbackXMLID == groupID {
+				if (groupID != "" && (k == groupID || existingObj.FallbackXMLID == groupID)) ||
+					(mp.Config.IsCamera && k == objKey) {
 					objKey = k
 					obj = existingObj
 					exists = true
@@ -791,10 +812,14 @@ func MigrateDocumentIAMSToControlFile(doc *inksvg.SVGDocument, sourceID string, 
 			}
 		}
 		if !exists {
+			fallbackID := groupID
+			if fallbackID == "" {
+				fallbackID = mp.ID
+			}
 			obj = ObjectConfig{
 				SourceID:      srcID,
 				LabelPath:     labelPath,
-				FallbackXMLID: groupID,
+				FallbackXMLID: fallbackID,
 			}
 		}
 
