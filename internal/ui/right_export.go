@@ -255,18 +255,17 @@ func NewRightExportPanel(sess *app.Session, win fyne.Window, onOptionsChange fun
 	})
 	p.exportBtn.Importance = widget.HighImportance
 
+	p.cropBoundaryRadio.Horizontal = true
+
 	form := container.NewVBox(
 		header,
-		widget.NewLabel("Crop Boundary:"),
-		p.cropBoundaryRadio,
+		container.NewBorder(nil, nil, widget.NewLabel("Crop:"), nil, p.cropBoundaryRadio),
 		p.cropPageSelect,
 		widget.NewSeparator(),
-		widget.NewLabel("Export Preset:"),
-		p.presetSelect,
+		container.NewBorder(nil, nil, widget.NewLabel("Preset:"), nil, p.presetSelect),
 		p.customResContainer,
 		widget.NewSeparator(),
-		widget.NewLabel("Max Colors:"),
-		p.colorsSelect,
+		container.NewBorder(nil, nil, widget.NewLabel("Colors:"), nil, p.colorsSelect),
 		p.customColorsRow,
 		p.ditherCheck,
 		widget.NewSeparator(),

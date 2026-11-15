@@ -420,7 +420,7 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 			p.container.Refresh()
 		}
 	})
-	p.inspectorCheck.Checked = true
+	p.inspectorCheck.Checked = false
 
 	p.wysiwygCheck = widget.NewCheck("WYSIWYG", func(checked bool) {
 		p.mu.Lock()
@@ -488,25 +488,22 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 		widget.NewSeparator(),
 	)
 
-	transportRow := container.NewHBox(
+	controlsRow := container.NewHBox(
 		prevBtn,
 		p.playPauseBtn,
 		nextBtn,
 		p.loopCheck,
 		p.pingPongCheck,
-	)
-
-	timingRow := container.NewHBox(
-		container.New(&fixedWidthLayout{width: 220}, p.durationInput.Container),
+		widget.NewSeparator(),
+		container.New(&fixedWidthLayout{width: 190}, p.durationInput.Container),
 		widget.NewLabel("FPS:"),
-		container.New(&fixedWidthLayout{width: 165}, p.fpsSelect),
+		container.New(&fixedWidthLayout{width: 155}, p.fpsSelect),
 	)
 
 	playbackControls := container.NewVBox(
 		widget.NewSeparator(),
 		p.frameLabel,
-		container.NewCenter(transportRow),
-		container.NewCenter(timingRow),
+		container.NewCenter(controlsRow),
 	)
 
 	// Twitch Scale Emulation Dock: 3 sizes (112px, 56px, 28px) on Dark & Light backgrounds
@@ -569,6 +566,7 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 		nil,
 		container.NewVScroll(container.NewPadded(inspectorContent)),
 	)
+	p.twitchEmulationBox.Hide()
 
 	middleColumn := container.NewBorder(
 		topViewBar,

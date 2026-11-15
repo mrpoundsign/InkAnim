@@ -686,7 +686,7 @@ func BuildTimelineFrameSVGAt(doc *SVGDocument, kfPos float64, boundary Rect) ([]
 	}
 
 	if doc.ShowMotionLines {
-		if err := serializeMotionGuides(encoder, doc); err != nil {
+		if err := serializeMotionGuides(encoder, doc, boundary); err != nil {
 			return nil, err
 		}
 	}
@@ -1417,9 +1417,23 @@ func resolvePivot(doc *SVGDocument, groupID string, config MotionConfig, pathDat
 	}
 }
 
-func serializeMotionGuides(encoder *xml.Encoder, doc *SVGDocument) error {
+func serializeMotionGuides(encoder *xml.Encoder, doc *SVGDocument, boundary Rect) error {
 	if len(doc.MotionPaths) == 0 {
 		return nil
+	}
+
+	casingWidth := "3.5"
+	guideWidth := "2"
+	dashArray := "6,4"
+	dotRadius := "3.5"
+	dotStroke := "1.5"
+	if maxDim := max(boundary.Width, boundary.Height); maxDim > 0 && maxDim < 180.0 {
+		scale := max(maxDim/256.0, 0.05)
+		casingWidth = fmt.Sprintf("%.2f", 3.5*scale)
+		guideWidth = fmt.Sprintf("%.2f", 2.0*scale)
+		dashArray = fmt.Sprintf("%.2f,%.2f", 6.0*scale, 4.0*scale)
+		dotRadius = fmt.Sprintf("%.2f", 3.5*scale)
+		dotStroke = fmt.Sprintf("%.2f", 1.5*scale)
 	}
 
 	guidesGroup := xml.StartElement{
@@ -1448,7 +1462,7 @@ func serializeMotionGuides(encoder *xml.Encoder, doc *SVGDocument) error {
 					{Name: xml.Name{Local: "d"}, Value: mp.PathData},
 					{Name: xml.Name{Local: "fill"}, Value: "none"},
 					{Name: xml.Name{Local: "stroke"}, Value: "#0f172a"},
-					{Name: xml.Name{Local: "stroke-width"}, Value: "3.5"},
+					{Name: xml.Name{Local: "stroke-width"}, Value: casingWidth},
 					{Name: xml.Name{Local: "stroke-linecap"}, Value: "round"},
 					{Name: xml.Name{Local: "stroke-linejoin"}, Value: "round"},
 					{Name: xml.Name{Local: "opacity"}, Value: "0.6"},
@@ -1468,8 +1482,8 @@ func serializeMotionGuides(encoder *xml.Encoder, doc *SVGDocument) error {
 					{Name: xml.Name{Local: "d"}, Value: mp.PathData},
 					{Name: xml.Name{Local: "fill"}, Value: "none"},
 					{Name: xml.Name{Local: "stroke"}, Value: "#38BDF8"},
-					{Name: xml.Name{Local: "stroke-width"}, Value: "2"},
-					{Name: xml.Name{Local: "stroke-dasharray"}, Value: "6,4"},
+					{Name: xml.Name{Local: "stroke-width"}, Value: guideWidth},
+					{Name: xml.Name{Local: "stroke-dasharray"}, Value: dashArray},
 					{Name: xml.Name{Local: "stroke-linecap"}, Value: "round"},
 					{Name: xml.Name{Local: "stroke-linejoin"}, Value: "round"},
 					{Name: xml.Name{Local: "opacity"}, Value: "0.95"},
@@ -1489,10 +1503,10 @@ func serializeMotionGuides(encoder *xml.Encoder, doc *SVGDocument) error {
 					Attr: []xml.Attr{
 						{Name: xml.Name{Local: "cx"}, Value: fmt.Sprintf("%.2f", sx)},
 						{Name: xml.Name{Local: "cy"}, Value: fmt.Sprintf("%.2f", sy)},
-						{Name: xml.Name{Local: "r"}, Value: "3.5"},
+						{Name: xml.Name{Local: "r"}, Value: dotRadius},
 						{Name: xml.Name{Local: "fill"}, Value: "#38BDF8"},
 						{Name: xml.Name{Local: "stroke"}, Value: "#0f172a"},
-						{Name: xml.Name{Local: "stroke-width"}, Value: "1.5"},
+						{Name: xml.Name{Local: "stroke-width"}, Value: dotStroke},
 					},
 				}
 				if err := encoder.EncodeToken(startDot); err != nil {

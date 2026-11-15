@@ -27,7 +27,9 @@ import (
 
 // MainWindow builds and manages the primary Fyne application window.
 type MainWindow struct {
+	appInstance        fyne.App
 	window             fyne.Window
+	startMaximized     bool
 	session            *app.Session
 	centerPanel        *CenterPreviewPanel
 	rightPanel         *RightExportPanel
@@ -68,11 +70,23 @@ type MainWindow struct {
 // NewMainWindow creates and initializes the studio interface.
 func NewMainWindow(appInstance fyne.App) *MainWindow {
 	win := appInstance.NewWindow("InkAnim — Inkscape SVG to Animated GIF Studio")
-	win.Resize(fyne.NewSize(1200, 750))
+	prefs := appInstance.Preferences()
+	winW := float32(prefs.FloatWithFallback("window.width", 1200))
+	winH := float32(prefs.FloatWithFallback("window.height", 800))
+	if winW < 800 {
+		winW = 1200
+	}
+	if winH < 600 {
+		winH = 800
+	}
+	win.Resize(fyne.NewSize(winW, winH))
+	startMaximized := prefs.BoolWithFallback("window.maximized", true)
 
 	sess := app.NewSession()
 	mw := &MainWindow{
+		appInstance:        appInstance,
 		window:             win,
+		startMaximized:     startMaximized,
 		session:            sess,
 		currentFilename:    "Untitled Project",
 		pendingSourcePaths: make(map[string]string),
@@ -158,10 +172,10 @@ func NewMainWindow(appInstance fyne.App) *MainWindow {
 	)
 
 	mw.topSplit = container.NewHSplit(mw.centerPanel.Container(), mw.rightPanel.Container())
-	mw.topSplit.SetOffset(0.68)
+	mw.topSplit.SetOffset(0.72)
 
 	workspaceSplit := container.NewVSplit(mw.topSplit, mw.timelinePanel.Container())
-	workspaceSplit.SetOffset(0.68)
+	workspaceSplit.SetOffset(0.60)
 
 	root := container.NewBorder(
 		container.NewVBox(container.New(&nonExpandingWidthLayout{}, topToolbar), widget.NewSeparator()),
@@ -288,6 +302,19 @@ func NewMainWindow(appInstance fyne.App) *MainWindow {
 
 	win.SetCloseIntercept(mw.handleCloseRequest)
 	win.SetOnClosed(func() {
+		if mw.appInstance != nil {
+			prefs := mw.appInstance.Preferences()
+			maximized := isWindowMaximized(win)
+			prefs.SetBool("window.maximized", maximized)
+			if !maximized {
+				sz := win.Canvas().Size()
+				if sz.Width >= 800 && sz.Height >= 600 {
+					prefs.SetFloat("window.width", float64(sz.Width))
+					prefs.SetFloat("window.height", float64(sz.Height))
+				}
+			}
+		}
+
 		mw.previewMu.Lock()
 		mw.closed = true
 		if mw.previewTimer != nil {
@@ -309,7 +336,11 @@ func NewMainWindow(appInstance fyne.App) *MainWindow {
 // ShowAndRun displays the window.
 func (mw *MainWindow) ShowAndRun() {
 	CheckStartupUpdate(mw.window, app.Version)
-	mw.window.ShowAndRun()
+	mw.window.Show()
+	if mw.startMaximized {
+		maximizeWindow(mw.window)
+	}
+	mw.appInstance.Run()
 }
 
 // Save saves the current project or modified SVG back to disk.
@@ -388,6 +419,7 @@ func (mw *MainWindow) NewProject() {
 	}
 	if mw.centerPanel != nil {
 		mw.centerPanel.Refresh()
+		mw.centerPanel.RefreshGizmos()
 	}
 	if mw.rightPanel != nil {
 		mw.rightPanel.Refresh()
@@ -1019,10 +1051,6 @@ func (mw *MainWindow) loadDataWithOptions(data []byte, filename string, ctrl *ap
 	if mw.timelinePanel != nil {
 		mw.timelinePanel.Refresh()
 	}
-
-	if len(mw.session.RenderedFrames) > 1 {
-		mw.centerPanel.Play()
-	}
 }
 
 func (mw *MainWindow) captureStudioSnapshot() StudioSnapshot {
@@ -1227,6 +1255,7 @@ func (mw *MainWindow) ApplyDurationChangeWithObjects(oldSec, newSec float64, bas
 	}
 	if mw.centerPanel != nil {
 		mw.centerPanel.Refresh()
+		mw.centerPanel.RefreshGizmos()
 	}
 	if mw.rightPanel != nil {
 		mw.rightPanel.validateTwitch()

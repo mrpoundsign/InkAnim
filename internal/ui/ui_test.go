@@ -99,6 +99,7 @@ func TestAsyncPreviewBuildAndInspectorFollowsPlayback(t *testing.T) {
 	}
 
 	// Inspector must update on every frame step, including while playing (regression).
+	p.inspectorCheck.Checked = true
 	p.isPlaying = true
 	for step := range 3 {
 		p.currentIdx = step + 1
@@ -733,32 +734,20 @@ func TestScaleInspectorToggle(t *testing.T) {
 		t.Fatal("expected inspectorCheck to be non-nil")
 	}
 
-	// Initially visible
-	if !mw.centerPanel.inspectorCheck.Checked {
-		t.Errorf("expected inspectorCheck to be checked by default")
+	// Initially hidden
+	if mw.centerPanel.inspectorCheck.Checked {
+		t.Errorf("expected inspectorCheck to be unchecked by default")
 	}
-	if !mw.centerPanel.twitchEmulationBox.Visible() {
-		t.Errorf("expected twitchEmulationBox to be visible by default")
+	if mw.centerPanel.twitchEmulationBox.Visible() {
+		t.Errorf("expected twitchEmulationBox to be hidden by default")
 	}
 
 	// Resize window to layout objects
-	mw.window.Resize(fyne.NewSize(1200, 750))
-	mw.window.Content().Resize(fyne.NewSize(1200, 750))
-	wWithInspector := mw.centerPanel.mainCanvasImage.Size().Width
-
-	// Hide inspector
-	mw.centerPanel.inspectorCheck.SetChecked(false)
-	if mw.centerPanel.twitchEmulationBox.Visible() {
-		t.Errorf("expected twitchEmulationBox to be hidden after unchecking")
-	}
-
+	mw.window.Resize(fyne.NewSize(1200, 800))
+	mw.window.Content().Resize(fyne.NewSize(1200, 800))
 	wWithoutInspector := mw.centerPanel.mainCanvasImage.Size().Width
-	t.Logf("Main canvas width: with inspector=%.0f, without inspector=%.0f (+%.0f px)", wWithInspector, wWithoutInspector, wWithoutInspector-wWithInspector)
-	if wWithoutInspector <= wWithInspector {
-		t.Errorf("expected main canvas to expand width when inspector hidden: with=%f, without=%f", wWithInspector, wWithoutInspector)
-	}
 
-	// Show inspector via helper
+	// Show inspector
 	mw.centerPanel.SetInspectorVisible(true)
 	if !mw.centerPanel.inspectorCheck.Checked {
 		t.Errorf("expected inspectorCheck to be checked after SetInspectorVisible(true)")
@@ -766,8 +755,20 @@ func TestScaleInspectorToggle(t *testing.T) {
 	if !mw.centerPanel.twitchEmulationBox.Visible() {
 		t.Errorf("expected twitchEmulationBox to be visible after SetInspectorVisible(true)")
 	}
-	if mw.centerPanel.mainCanvasImage.Size().Width != wWithInspector {
-		t.Errorf("expected main canvas to restore width when inspector shown: got %f, want %f", mw.centerPanel.mainCanvasImage.Size().Width, wWithInspector)
+
+	wWithInspector := mw.centerPanel.mainCanvasImage.Size().Width
+	t.Logf("Main canvas width: with inspector=%.0f, without inspector=%.0f (+%.0f px)", wWithInspector, wWithoutInspector, wWithoutInspector-wWithInspector)
+	if wWithoutInspector <= wWithInspector {
+		t.Errorf("expected main canvas to expand width when inspector hidden: with=%f, without=%f", wWithInspector, wWithoutInspector)
+	}
+
+	// Hide inspector again
+	mw.centerPanel.inspectorCheck.SetChecked(false)
+	if mw.centerPanel.twitchEmulationBox.Visible() {
+		t.Errorf("expected twitchEmulationBox to be hidden after unchecking")
+	}
+	if mw.centerPanel.mainCanvasImage.Size().Width != wWithoutInspector {
+		t.Errorf("expected main canvas to restore width when inspector hidden: got %f, want %f", mw.centerPanel.mainCanvasImage.Size().Width, wWithoutInspector)
 	}
 }
 

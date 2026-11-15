@@ -228,9 +228,6 @@ func (mw *MainWindow) runPreviewUpdateForGen(gen int) {
 
 		if mw.centerPanel != nil {
 			mw.centerPanel.Refresh()
-			if len(sess.RenderedFrames) > 1 && !mw.centerPanel.IsPlaying() {
-				mw.centerPanel.Play()
-			}
 		}
 		if mw.timelinePanel != nil {
 			mw.timelinePanel.refreshGuidesOnly()
