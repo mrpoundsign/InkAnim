@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "svg_file": "star_swirl.svg",
+  "sources": [
+    {
+      "id": "src_1",
+      "file": "star_swirl.svg"
+    }
+  ],
+  "timing": {
+    "duration_sec": 1.5,
+    "fps": 20,
+    "ping_pong": false,
+    "loop": true
+  },
+  "crop": {
+    "boundary_mode": "page",
+    "page_index": 0
+  },
+  "export": {
+    "preset": "custom",
+    "export_square": true,
+    "square_size": 256,
+    "target_width": 256,
+    "target_height": 256,
+    "num_colors": 256,
+    "dither": true
+  },
+  "preview": {
+    "background": "checker",
+    "show_guides": true,
+    "show_paths": true,
+    "show_scales": true
+  },
+  "objects": {
+    "src_1/Layer 1": {
+      "source_id": "src_1",
+      "label_path": "Layer 1",
+      "fallback_xml_id": "layer1",
+      "start_time_sec": 0,
+      "actions": [
+        {
+          "id": "path2",
+          "type": "move",
+          "start_sec": 0,
+          "end_sec": 1.5,
+          "ease": "linear",
+          "repeat": 1,
+          "path_d": "m 97.663527,81.284219 c 3.024223,-1.752657 6.793663,-0.05042 8.305963,2.884968 2.159,4.190648 -0.19873,9.220533 -4.27124,11.151236 -5.471716,2.59404 -11.89026,-0.493759 -14.264694,-5.823066 -3.055827,-6.858663 0.829314,-14.782197 7.524572,-17.62483 8.344312,-3.542779 17.880262,1.20151 21.214652,9.363715 4.05358,9.922691 -1.60736,21.171428 -11.33095,25.020268 C 93.253086,110.84363 80.196943,104.21202 75.811791,92.838043 70.66936,79.499879 78.322738,64.546563 91.431529,59.603997 106.34834,53.979731 123.0552,62.326673 128.81055,76.893464",
+          "pivot_type": "center",
+          "rotation_dir": "cw",
+          "scale_from_x": 1,
+          "scale_from_y": 1,
+          "scale_to_x": 1,
+          "scale_to_y": 1,
+          "opacity_from": 1,
+          "opacity_to": 1,
+          "parallax_factor": 1,
+          "color_target": "fill",
+          "bounds": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          }
+        }
+      ]
+    }
+  }
+}

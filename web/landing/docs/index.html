@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Documentation — Inkscape Animation & Motion System (IAMS) | InkAnim</title>
-  <meta name="description" content="Comprehensive guide to authoring flat vector motion graphics, emote slide-ins, orbits, and frame animations in Inkscape using InkAnim's IAMS syntax.">
+  <title>Documentation — InkAnim Desktop Studio &amp; .inka Projects | InkAnim</title>
+  <meta name="description" content="Guide to creating non-destructive .inka animation projects from Inkscape SVGs using InkAnim Desktop Studio's timeline, canvas gizmos, and Twitch/Discord GIF exporter.">
   <link rel="icon" type="image/png" href="../icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -26,8 +26,9 @@
       <ul class="nav-links">
         <li><a href="../" class="nav-link">Home</a></li>
         <li><a href="#overview" class="nav-link">Overview</a></li>
-        <li><a href="#authoring" class="nav-link">Inkscape Guide</a></li>
-        <li><a href="#syntax" class="nav-link">Syntax</a></li>
+        <li><a href="#workflow" class="nav-link">.inka Workflow</a></li>
+        <li><a href="#timeline" class="nav-link">Timeline &amp; Actions</a></li>
+        <li><a href="#gizmos" class="nav-link">Canvas Gizmos</a></li>
         <li><a href="#sample" class="nav-link">Sample</a></li>
         <li><a href="#exporting" class="nav-link">Exporting</a></li>
       </ul>
@@ -47,13 +48,13 @@
   <header style="padding: 48px 0 16px; border-bottom: 1px solid var(--border-color); background: rgba(18, 18, 22, 0.4);">
     <div class="container">
       <div class="hero-badge" style="margin-bottom: 12px;">
-        <span>📖 Motion & Staging Specification</span>
+        <span>📖 Desktop Studio Guide</span>
       </div>
       <h1 style="font-size: 2.4rem; font-weight: 800; color: #fff; margin-bottom: 8px;">
-        Inkscape Animation & Motion System <span class="gradient-text">(IAMS)</span>
+        InkAnim Studio &amp; <span class="gradient-text">.inka Projects</span>
       </h1>
       <p style="color: var(--text-muted); font-size: 1.15rem; max-width: 800px;">
-        A lightweight, friction-free way to animate flat vector graphics, emote slide-ins, and text in Inkscape using intuitive trajectory paths.
+        Animate clean Inkscape SVGs non-destructively using visual timeline tracks, interactive canvas gizmos, and co-located <code>.inka</code> project files.
       </p>
     </div>
   </header>
@@ -64,15 +65,14 @@
     <aside class="docs-sidebar">
       <div class="docs-sidebar-title">Documentation</div>
       <ul class="docs-nav-list">
-        <li><a href="#overview" class="docs-nav-link">Overview & Concept</a></li>
-        <li><a href="#hierarchy" class="docs-nav-link">Layers & Groups Structure</a></li>
-        <li><a href="#authoring" class="docs-nav-link">Authoring in Inkscape</a></li>
-        <li><a href="#syntax" class="docs-nav-link">Syntax Reference</a></li>
-        <li><a href="#easing" class="docs-nav-link">Easing Curves</a></li>
-        <li><a href="#reverse" class="docs-nav-link">The "rev" Modifier</a></li>
-        <li><a href="#recipes" class="docs-nav-link">Common Recipes</a></li>
+        <li><a href="#overview" class="docs-nav-link">Overview &amp; Concept</a></li>
+        <li><a href="#workflow" class="docs-nav-link">.inka Project Workflow</a></li>
+        <li><a href="#timeline" class="docs-nav-link">Timeline &amp; Actions</a></li>
+        <li><a href="#gizmos" class="docs-nav-link">On-Canvas Gizmos</a></li>
+        <li><a href="#easing" class="docs-nav-link">Easing &amp; Looping</a></li>
         <li><a href="#sample" class="docs-nav-link">Live Sample (Star Swirl)</a></li>
         <li><a href="#exporting" class="docs-nav-link">Exporting in InkAnim</a></li>
+        <li><a href="#migration" class="docs-nav-link">Legacy SVG Migration</a></li>
       </ul>
     </aside>
 
@@ -80,415 +80,169 @@
     <article class="docs-body">
       <!-- Section: Overview -->
       <section id="overview" class="docs-section">
-        <h2>✨ Overview & Concept</h2>
+        <h2>✨ Overview &amp; Concept</h2>
         <p>
-          Traditional hand-drawn vector animation often requires duplicating entire layers dozens of times across canvas artboards and manually nudging coordinates frame-by-frame. For emotes, badges, and stream alerts (which typically cap at 15–60 frames), this is tedious and error-prone.
-        </p>
-        <p>
-          The <strong>InkAnim Animation & Motion System (IAMS)</strong> allows you to keep your artwork in a single resting position and simply draw a **visual motion path** in Inkscape indicating where and how that object should move over time.
+          InkAnim keeps your vector artwork clean in Inkscape and stores all animation data separately in a human-readable <code>.inka</code> project file. You never have to duplicate artboards or clutter your SVG layer labels with hand-typed commands.
         </p>
         <div class="callout tip">
-          <div class="callout-title">💡 Pure Vector Preservation</div>
+          <div class="callout-title">💡 Pure Vector Preservation &amp; Live Reload</div>
           <p>
-            InkAnim never rasterizes or modifies your original SVG on disk. Motion guide paths are evaluated dynamically in memory, transforming vector coordinates on the fly and hiding the trajectory paths during final render.
+            InkAnim never modifies your source <code>.svg</code> files on disk. Whenever you save updates to your artwork in Inkscape (<kbd>Ctrl+S</kbd>), InkAnim automatically detects the change and reloads the updated vector geometry onto your existing animation timeline.
           </p>
         </div>
       </section>
 
-      <!-- Section: Hierarchy -->
-      <section id="hierarchy" class="docs-section">
-        <h2>📁 Layers & Groups Structure</h2>
+      <!-- Section: .inka Project Workflow -->
+      <section id="workflow" class="docs-section">
+        <h2>🗂️ The .inka Project Workflow</h2>
         <p>
-          IAMS operates on Inkscape layers and groups:
-        </p>
-        <ul>
-          <li><strong>The Animated Group/Layer</strong>: An Inkscape group (<code>&lt;g&gt;</code>) or layer containing the graphic elements you want to animate together (text, stars, character art).</li>
-          <li><strong>The Motion Path</strong>: An open path element (<code>&lt;path&gt;</code>) placed directly inside that group with its label set to <code>Move {...}</code>.</li>
-        </ul>
-        <div class="code-card">
-          <div class="code-header"><span>SVG Document Structure</span><span>XML</span></div>
-          <pre class="code-content"><code>&lt;<span class="hl-keyword">g</span> <span class="hl-prop">inkscape:label</span>=<span class="hl-val">"Star Layer"</span> <span class="hl-prop">inkscape:groupmode</span>=<span class="hl-val">"layer"</span> <span class="hl-prop">id</span>=<span class="hl-val">"layer1"</span>&gt;
-  &lt;!-- The Visible Artwork --&gt;
-  &lt;<span class="hl-keyword">path</span> <span class="hl-prop">id</span>=<span class="hl-val">"star_graphic"</span> <span class="hl-prop">d</span>=<span class="hl-val">"..."</span> <span class="hl-prop">style</span>=<span class="hl-val">"fill:#facc15;"</span> /&gt;
-
-  &lt;!-- The Motion Guide (Trajectory) --&gt;
-  &lt;<span class="hl-keyword">path</span> <span class="hl-prop">id</span>=<span class="hl-val">"orbit_guide"</span> 
-        <span class="hl-prop">inkscape:label</span>=<span class="hl-val">"Move {f:1-20 ease:out rev}"</span> 
-        <span class="hl-prop">d</span>=<span class="hl-val">"..."</span> 
-        <span class="hl-prop">style</span>=<span class="hl-val">"stroke:#ff0000;fill:none;"</span> /&gt;
-&lt;/<span class="hl-keyword">g</span>&gt;</code></pre>
-        </div>
-      </section>
-
-      <!-- Section: Authoring in Inkscape -->
-      <section id="authoring" class="docs-section">
-        <h2>🎨 Authoring in Inkscape</h2>
-        <p>
-          You can author motion paths using any of Inkscape's standard drawing tools:
+          A <code>.inka</code> file is a lightweight JSON project manifest placed in the same folder as your SVG artwork:
         </p>
         <ol>
-          <li><strong>Bézier / Pen Tool (<kbd>B</kbd>)</strong>: For linear slides, curved arcs, and organic s-curves.</li>
-          <li><strong>Spiral Tool (<kbd>F9</kbd>)</strong>: For dramatic orbit, vortex, or spin-in effects.</li>
-          <li><strong>Straight Lines</strong>: For clean edge-to-center slides or marquee traversals.</li>
+          <li><strong>Create or Open a Project</strong>: Use <strong>File → New Project</strong> or <strong>File → Open Project...</strong> (<kbd>Ctrl+O</kbd>) to open an existing <code>.inka</code> file (or drag-and-drop an <code>.svg</code> / <code>.inka</code> into the Studio window).</li>
+          <li><strong>Link One or More SVGs</strong>: Use <strong>Add / Import SVG...</strong> to link one or multiple co-located Inkscape SVGs into the same project.</li>
+          <li><strong>1:1 Layer &amp; Group Hierarchy</strong>: InkAnim mirrors your Inkscape layers and groups directly in the timeline panel so you can target any element without renaming it.</li>
         </ol>
 
-        <h3>Setting Path Labels in Inkscape</h3>
-        <p>
-          There are two convenient places to set the <code>Move {...}</code> label in Inkscape:
-        </p>
-
-        <h4>Method 1: Layers and Objects Panel (<kbd>Ctrl+Shift+L</kbd>)</h4>
-        <p>
-          The fastest and cleanest method is using the <strong>Layers and Objects</strong> dock. You can see all your layers, graphics, and motion paths in one organized tree. Simply select the path and rename its label directly in the list:
-        </p>
-
         <figure class="doc-figure">
-          <img src="img/inkscape_layers_panel.png" alt="Inkscape Layers and Objects Panel showing Move label">
+          <img src="img/inkanim_studio_preview.png" alt="InkAnim Desktop Studio workspace">
           <figcaption class="doc-caption">
-            <strong>Figure 1</strong>: The Layers and Objects panel (<kbd>Ctrl+Shift+L</kbd>) showing <code>Move {f:1-20}</code> guide path and artwork nested under Layer 1.
-          </figcaption>
-        </figure>
-
-        <h4>Method 2: Object Properties Dialog (<kbd>Shift+Ctrl+O</kbd>)</h4>
-        <p>
-          Alternatively, right-click any path and select <strong>Object Properties</strong> (or press <kbd>Shift+Ctrl+O</kbd>). Type your configuration into the <strong>Label</strong> field and click <strong>Set</strong>:
-        </p>
-
-        <figure class="doc-figure">
-          <img src="img/inkscape_object_properties.png" alt="Inkscape Object Properties dialog showing Move label">
-          <figcaption class="doc-caption">
-            <strong>Figure 2</strong>: Object Properties panel with the <strong>Label</strong> field set to <code>Move {f:1-20}</code> on a spiral trajectory.
-          </figcaption>
-        </figure>
-
-        <h3>Instant Preview in InkAnim Studio</h3>
-        <p>
-          Save your SVG (<kbd>Ctrl+S</kbd>) and load it directly into InkAnim (or drag-and-drop it into the application window). InkAnim automatically parses the motion path, synthesizes the 20 animation frames, and excludes the guide line from the canvas and final GIF:
-        </p>
-
-        <figure class="doc-figure">
-          <img src="img/inkanim_studio_preview.png" alt="InkAnim Studio previewing star_swirl.svg">
-          <figcaption class="doc-caption">
-            <strong>Figure 3</strong>: InkAnim Studio running <code>star_swirl.svg</code>. The spiral trajectory is hidden, and the 20 motion frames are immediately playable, inspectable across Twitch chat scales (112px, 56px, 28px) in both dark and light modes, and ready for 1-click GIF export.
+            <strong>Figure 1</strong>: InkAnim Desktop Studio showing the Layers &amp; Timeline tracks, live canvas preview with gizmos, Twitch scale previews, and Export settings.
           </figcaption>
         </figure>
       </section>
 
-      <!-- Section: Syntax Reference -->
-      <section id="syntax" class="docs-section">
-        <h2>⚙️ Syntax Reference</h2>
+      <!-- Section: Timeline & Actions -->
+      <section id="timeline" class="docs-section">
+        <h2>⏱️ Seconds-First Timeline &amp; Actions</h2>
         <p>
-          The syntax is compact and space-separated. Available commands include:
+          InkAnim’s timeline lets you scrub in seconds (with optional frame readouts), adjust total <strong>Duration (s)</strong> and <strong>FPS</strong> freely, and stack multiple simultaneous actions on any layer or group:
         </p>
-        <div class="code-card">
-          <div class="code-header"><span>IAMS Syntax Format</span><span>Format</span></div>
-          <pre class="code-content"><code>Move   {f:&lt;range&gt; [ease:&lt;curve&gt;] [rev] [pingpong:true] [orient:true] [angle:&lt;deg&gt;] [dir:cw|ccw] [pivot:&lt;origin&gt;]}
-Rot    {f:&lt;range&gt; [ease:&lt;curve&gt;] [rev] [pingpong:true] angle:&lt;deg&gt; [dir:cw|ccw] [pivot:&lt;origin&gt;]}
-Scale  {f:&lt;range&gt; [ease:&lt;curve&gt;] [rev] [pingpong:true] [scale:&lt;multiplier&gt;] [scale-x:&lt;val&gt;] [scale-y:&lt;val&gt;] [from:&lt;val&gt;] [to:&lt;val&gt;] [pivot:&lt;origin&gt;]}
-Fade   {f:&lt;range&gt; [ease:&lt;curve&gt;] [from:&lt;val&gt;] [to:&lt;val&gt;] [opacity:&lt;val&gt;]}
-Show   {f:&lt;range&gt;}
-Hide   {f:&lt;range&gt;}
-Depth  {f:&lt;range&gt; z:&lt;signed-int&gt;}
-Camera {f:&lt;range&gt; [ease:&lt;curve&gt;] [rev]}
-Dist   {factor:&lt;multiplier&gt; | depth:&lt;distance&gt; | fixed}
-Color  {f:&lt;range&gt; [pingpong:true] [r:&lt;count&gt;] [target:fill|stroke|all] [angle:&lt;deg&gt;]}</code></pre>
-        </div>
 
         <div class="docs-table-wrapper">
           <table class="docs-table">
             <thead>
               <tr>
-                <th>Parameter / Modifier</th>
-                <th>Example</th>
-                <th>Description</th>
+                <th>Action Type</th>
+                <th>What It Animates</th>
+                <th>Key Options</th>
               </tr>
             </thead>
             <tbody>
               <tr>
-                <td><code>f:&lt;start&gt;-&lt;end&gt;</code></td>
-                <td><span class="badge badge-purple">f:1-15</span></td>
-                <td>Defines active frame window (1-based index). The object is hidden outside this range (unless Show/Hide rules specify otherwise).</td>
+                <td><span class="badge badge-purple">Move</span></td>
+                <td>Translates an object along a straight line or cubic Bézier spline path.</td>
+                <td>Easing, Reverse, Ping-Pong, Tangent Orient (<code>orient_path</code>)</td>
               </tr>
               <tr>
-                <td><code>f:all</code></td>
-                <td><span class="badge badge-purple">f:all</span></td>
-                <td>Active across the entire timeline duration (defaults to 15 frames if all motions omit frame counts).</td>
+                <td><span class="badge badge-purple">Rot</span></td>
+                <td>Rotates an object clockwise or counter-clockwise around its pivot.</td>
+                <td>Angle (degrees), Direction (CW/CCW), Pivot, Easing, Repeat</td>
               </tr>
               <tr>
-                <td><code>ease:&lt;curve&gt;</code></td>
-                <td><span class="badge badge-cyan">ease:out</span></td>
-                <td>Acceleration/deceleration curve: <code>linear</code>, <code>in</code>, <code>out</code>, <code>in-out</code>. Defaults to <code>linear</code>.</td>
+                <td><span class="badge badge-purple">Scale</span></td>
+                <td>Scales an object uniformly or independently on X and Y axes.</td>
+                <td><code>scale_from_x/y</code>, <code>scale_to_x/y</code>, Pivot, Easing, Ping-Pong</td>
               </tr>
               <tr>
-                <td><code>pingpong</code>, <code>pingpong:true</code></td>
-                <td><span class="badge badge-amber">pingpong:true</span></td>
-                <td>Oscillates animation forward and backward smoothly (0 → 1 → 0) across the active frame range.</td>
+                <td><span class="badge badge-purple">Fade</span></td>
+                <td>Interpolates object opacity over time.</td>
+                <td><code>opacity_from</code>, <code>opacity_to</code>, Easing</td>
               </tr>
               <tr>
-                <td><code>r:&lt;count&gt;</code>, <code>repeat:&lt;count&gt;</code></td>
-                <td><span class="badge badge-amber">r:4</span></td>
-                <td>Repeats the modifier animation cycle <em>N</em> times evenly across the specified frame range.</td>
+                <td><span class="badge badge-purple">Color</span></td>
+                <td>Shifts fill/stroke colors across gradient stops or sweeps a linear highlight.</td>
+                <td>Target (<code>fill</code>, <code>stroke</code>, <code>all</code>), Angle, Repeat, Ping-Pong</td>
               </tr>
               <tr>
-                <td><code>Color {f:...}</code></td>
-                <td><span class="badge badge-purple">Color {f:1-30 pingpong:true}</span></td>
-                <td>Color modifier attached to a dummy gradient shape inside a group (shape is hidden during render). Mode 1 interpolates solid color across gradient stops. Mode 2 (with <code>angle:&lt;deg&gt;</code>) generates an angular linear gradient highlight sweep.</td>
+                <td><span class="badge badge-cyan">Depth</span></td>
+                <td>Shifts Z-index stacking order during a time window for 2.5D orbits.</td>
+                <td>Signed integer <code>depth_offset</code> (e.g. <code>-1</code> or <code>+1</code>)</td>
               </tr>
               <tr>
-                <td><code>target:&lt;target&gt;</code></td>
-                <td><span class="badge badge-cyan">target:fill</span>, <span class="badge badge-cyan">target:stroke</span></td>
-                <td>Specifies which SVG properties receive <code>Color</code> styling: <code>fill</code> (default), <code>stroke</code>, or <code>all</code>.</td>
-              </tr>
-              <tr>
-                <td><code>scale:&lt;val&gt;</code></td>
-                <td><span class="badge badge-cyan">scale:1.5</span></td>
-                <td>Uniform scale target multiplier (scales both X and Y from 1.0 to multiplier).</td>
-              </tr>
-              <tr>
-                <td><code>scale-x:&lt;val&gt;</code>, <code>scale-y:&lt;val&gt;</code></td>
-                <td><span class="badge badge-cyan">scale-x:1.2</span></td>
-                <td>Independent horizontal and vertical scale multipliers (also aliased as <code>x:</code> and <code>y:</code>).</td>
-              </tr>
-              <tr>
-                <td><code>from:&lt;val&gt;</code>, <code>to:&lt;val&gt;</code></td>
-                <td><span class="badge badge-cyan">from:0.5 to:1.5</span></td>
-                <td>Scale or opacity range interpolation (supports percentages <code>0-100%</code> or fractions <code>0.0-1.0</code> for Fade).</td>
-              </tr>
-              <tr>
-                <td><code>opacity:&lt;val&gt;</code></td>
-                <td><span class="badge badge-cyan">opacity:50%</span></td>
-                <td>Target or constant opacity for <code>Fade</code> (accepts <code>0-100%</code> or <code>0.0-1.0</code> alpha).</td>
-              </tr>
-              <tr>
-                <td><code>z:&lt;val&gt;</code>, <code>depth:&lt;val&gt;</code></td>
-                <td><span class="badge badge-cyan">z:-1</span>, <span class="badge badge-cyan">z:+1</span></td>
-                <td>Relative signed integer modifier applied to layer/group rendering order (e.g. <code>z:-1</code> renders behind earlier layers, <code>z:+1</code> pulls forward on top).</td>
-              </tr>
-              <tr>
-                <td><code>angle:&lt;deg&gt;</code></td>
-                <td><span class="badge badge-cyan">angle:360</span>, <span class="badge badge-cyan">angle:-45</span></td>
-                <td>Degrees of rotation for <code>Rot</code>, or directional sweep angle for <code>Color</code> gradient sweeps.</td>
-              </tr>
-              <tr>
-                <td><code>dir:&lt;cw|ccw&gt;</code></td>
-                <td><span class="badge badge-cyan">dir:ccw</span></td>
-                <td>Direction of rotation: clockwise (<code>cw</code>, default) or counter-clockwise (<code>ccw</code>).</td>
-              </tr>
-              <tr>
-                <td><code>orient:true</code></td>
-                <td><span class="badge badge-cyan">orient:true</span></td>
-                <td>Auto-orients object along the curve of the motion path using the path's tangent angle.</td>
-              </tr>
-              <tr>
-                <td><code>pivot:&lt;origin&gt;</code></td>
-                <td><span class="badge badge-amber">pivot:180</span></td>
-                <td>Rotation & scale anchor: <code>center</code> (bounding box center), clock degrees (<code>0</code>=top, <code>90</code>=right, <code>180</code>=bottom, <code>270</code>=left), element ID (<code>#pin</code>), or <code>path-start</code>.</td>
-              </tr>
-              <tr>
-                <td><code>rev</code> / <code>reverse</code></td>
-                <td><span class="badge badge-amber">rev</span></td>
-                <td>Reverses motion direction. Starts offset at trajectory end and arrives at the resting artwork position.</td>
-              </tr>
-              <tr>
-                <td><code>Show {f:...}</code></td>
-                <td><span class="badge badge-purple">Show {f:10-50}</span></td>
-                <td>Visibility window: group is strictly visible during specified frames and hidden during all other frames.</td>
-              </tr>
-              <tr>
-                <td><code>Hide {f:...}</code></td>
-                <td><span class="badge badge-purple">Hide {f:1-10}</span></td>
-                <td>Inverted visibility: group is strictly hidden during specified frames and visible during all other frames.</td>
-              </tr>
-              <tr>
-                <td><code>Camera {f:... ease:...}</code></td>
-                <td><span class="badge badge-purple">Camera {f:1-20}</span></td>
-                <td>Global viewport camera trajectory path. Camera motion translates scene objects in the inverse direction according to each group's parallax distance factor.</td>
-              </tr>
-              <tr>
-                <td><code>Dist {factor:...}</code>, <code>Dist {depth:...}</code></td>
-                <td><span class="badge badge-cyan">Dist {factor:0.2}</span></td>
-                <td>Multi-plane parallax factor relative to Camera. Defaults to <code>1.0</code> (focal plane). Use <code>factor:0.1</code> for distant stars/mountains, <code>factor:1.5</code> for foreground, or <code>fixed</code> / <code>factor:0</code> for static HUD overlays.</td>
+                <td><span class="badge badge-cyan">Camera</span></td>
+                <td>Pans the global viewport across the scene with multi-plane parallax.</td>
+                <td>Spline path, Easing, Reverse</td>
               </tr>
             </tbody>
           </table>
         </div>
       </section>
 
-      <!-- Section: Easing -->
-      <section id="easing" class="docs-section">
-        <h2>📈 Easing Curves</h2>
+      <!-- Section: On-Canvas Gizmos -->
+      <section id="gizmos" class="docs-section">
+        <h2>🎯 Interactive On-Canvas Gizmos</h2>
         <p>
-          InkAnim includes four built-in easing curves for natural vector motion:
+          Rather than guessing coordinates, you can author motion directly on the Studio canvas:
+        </p>
+        <ul>
+          <li><strong>Stage Placement</strong>: Drag an object's initial stage offset directly on the canvas.</li>
+          <li><strong>Custom Pivot Crosshair</strong>: Drag the rotation/scale pivot handle to any point, or snap it to bounding-box edges or a named SVG element ID (such as <code>#pivot_mount</code>).</li>
+          <li><strong>Bézier Motion Splines</strong>: Drag <code>Move</code> endpoints and bend trajectories into smooth cubic Bézier curves using the <code>Ctrl1</code> and <code>Ctrl2</code> tangent handles.</li>
+          <li><strong>15° Angle Snapping</strong>: Hold <kbd>Ctrl</kbd> while dragging motion path endpoints or waypoints to snap cleanly to 15-degree increments.</li>
+        </ul>
+      </section>
+
+      <!-- Section: Easing & Looping -->
+      <section id="easing" class="docs-section">
+        <h2>📈 Easing &amp; Looping</h2>
+        <p>
+          Every timeline action supports built-in easing curves and looping modes:
         </p>
         <div class="docs-table-wrapper">
           <table class="docs-table">
             <thead>
               <tr>
-                <th>Curve</th>
-                <th>Formula</th>
-                <th>Visual Feel</th>
+                <th>Curve / Mode</th>
+                <th>Behavior</th>
               </tr>
             </thead>
             <tbody>
               <tr>
                 <td><span class="badge badge-cyan">linear</span></td>
-                <td>\(t\)</td>
-                <td>Constant speed throughout. Ideal for continuous spinning or steady scrolling banners.</td>
+                <td>Constant speed throughout. Ideal for continuous spinning or steady loops.</td>
               </tr>
               <tr>
                 <td><span class="badge badge-cyan">in</span></td>
-                <td>\(t^2\)</td>
-                <td>Slow start, rapid acceleration. Great for launch, rocket, or sudden exit effects.</td>
+                <td>Slow start, rapid acceleration. Great for launches or exits.</td>
               </tr>
               <tr>
                 <td><span class="badge badge-cyan">out</span></td>
-                <td>\(t(2 - t)\)</td>
-                <td>Fast start, smooth deceleration to a stop. Perfect for slide-in emotes and landings.</td>
+                <td>Fast start, smooth deceleration to a stop. Ideal for slide-ins and landings.</td>
               </tr>
               <tr>
                 <td><span class="badge badge-cyan">in-out</span></td>
-                <td>Piecewise S-curve</td>
-                <td>Slow start, rapid middle speed, and smooth landing. Best for natural organic movement.</td>
+                <td>Smooth S-curve acceleration and deceleration for natural organic motion.</td>
+              </tr>
+              <tr>
+                <td><span class="badge badge-amber">Ping-Pong</span></td>
+                <td>Oscillates smoothly forward and backward without duplicating turnaround frames.</td>
               </tr>
             </tbody>
           </table>
         </div>
       </section>
 
-      <!-- Section: Reverse Modifier -->
-      <section id="reverse" class="docs-section">
-        <h2>🔄 The "rev" Modifier: Inward Entrances</h2>
-        <p>
-          By default, motion starts at the first vertex of your path (\(t = 0.0\)) where \(\Delta = (0, 0)\) and moves toward the endpoint. This means your drawn artwork starts in place and flies away.
-        </p>
-        <p>
-          When you add <span class="badge badge-amber">rev</span>, the direction is inverted:
-        </p>
-        <ul>
-          <li><strong>Frame 1 (\(t = 1.0\))</strong>: The object starts offset along the line (e.g. offscreen or at the outer spiral).</li>
-          <li><strong>Final Frame (\(t = 0.0\))</strong>: The object decelerates into \(\Delta = (0, 0)\), resting squarely at your designed SVG artwork position!</li>
-        </ul>
-        <div class="callout tip">
-          <div class="callout-title">💡 Artist Best Practice</div>
-          <p>
-            Draw your finished emote artwork exactly where you want it to look best in chat. Then draw a path starting from where it should arrive from, and add <code>rev</code>. You never have to manually calculate reverse coordinates!
-          </p>
-        </div>
-      </section>
-
-      <!-- Section: Common Recipes -->
-      <section id="recipes" class="docs-section">
-        <h2>🍳 Common Animation Recipes</h2>
-
-        <h3>1. The Emote "Slide-In Lurk"</h3>
-        <p>
-          A character peeks up from the bottom of the emote canvas and stops at the center:
-        </p>
-        <div class="code-card">
-          <div class="code-header"><span>Slide-In Recipe</span><span>Label</span></div>
-          <pre class="code-content"><code>Move {f:1-12 ease:out rev}</code></pre>
-        </div>
-
-        <h3>2. The Spiral Dance</h3>
-        <p>
-          An icon spins inwards along a spiral trajectory into its central resting place:
-        </p>
-        <div class="code-card">
-          <div class="code-header"><span>Spiral Orbit Recipe</span><span>Label</span></div>
-          <pre class="code-content"><code>Move {f:1-20 ease:in-out rev}</code></pre>
-        </div>
-
-        <h3>3. Continuous Fly-By</h3>
-        <p>
-          An object traverses from offscreen left to offscreen right throughout the entire emote loop:
-        </p>
-        <div class="code-card">
-          <div class="code-header"><span>Fly-By Recipe</span><span>Label</span></div>
-          <pre class="code-content"><code>Move {f:all ease:linear}</code></pre>
-        </div>
-
-        <h3>4. Squash-and-Stretch Bounce</h3>
-        <p>
-          An animated object compresses upon ground impact and stretches upwards, anchored to its bottom edge:
-        </p>
-        <div class="code-card">
-          <div class="code-header"><span>Squash-and-Stretch Recipe</span><span>Label</span></div>
-          <pre class="code-content"><code>Scale {f:1-15 ease:in-out from-x:1.4 to-x:0.8 from-y:0.6 to-y:1.25 pivot:180}</code></pre>
-        </div>
-
-        <h3>5. Twinkling & Blinking Stars</h3>
-        <p>
-          Create smooth pulsating fades and visibility pop-ins by combining <code>Fade</code>, <code>Show</code>, and <code>Hide</code>:
-        </p>
-        <div class="code-card">
-          <div class="code-header"><span>Twinkle & Blink Recipes</span><span>Label</span></div>
-          <pre class="code-content"><code>Fade {f:1-10 ease:in-out from:100 to:20}
-Hide {f:9-13}</code></pre>
-        </div>
-
-        <h3>6. 2.5D Orbit & Depth Shifting</h3>
-        <p>
-          Solve the classic 2.5D animation challenge (e.g. an orbiting moon or character walking behind an object and then in front) by shifting Z-index stacking order across specific frame windows:
-        </p>
-        <div class="code-card">
-          <div class="code-header"><span>2.5D Orbit Stacking Recipe</span><span>Label</span></div>
-          <pre class="code-content"><code>Depth {f:1-10 z:-1}
-Depth {f:11-20 z:+1}</code></pre>
-        </div>
-
-        <h3>7. Multi-Plane Parallax & Camera Pan</h3>
-        <p>
-          Pan the global viewport across a multi-depth landscape or space scene without animating each object manually. Distant layers drift subtly while foreground elements pass swiftly:
-        </p>
-        <div class="code-card">
-          <div class="code-header"><span>Global Camera & Parallax Recipes</span><span>Label</span></div>
-          <pre class="code-content"><code>&lt;!-- Camera Pan (Root or Guide Layer) --&gt;
-Camera {f:1-20 ease:in-out}
-
-&lt;!-- Distant Stars / Clouds Layer --&gt;
-Dist {factor:0.1}
-
-&lt;!-- Midground Planet / Mountains Layer --&gt;
-Dist {factor:0.5}
-
-&lt;!-- Fixed HUD Overlay --&gt;
-Dist {fixed}</code></pre>
-        </div>
-
-        <h3>8. Color Shifting & Specular Gradient Sweeps</h3>
-        <p>
-          Add a dummy vector element (such as a <code>&lt;rect&gt;</code> or <code>&lt;path&gt;</code>) inside any group and fill it with a linear gradient. The dummy shape is automatically hidden from the render, and its colors are applied to sibling elements:
-        </p>
-        <div class="code-card">
-          <div class="code-header"><span>Color Shifting Recipes</span><span>Label</span></div>
-          <pre class="code-content"><code>&lt;!-- Mode 1: Solid Color Shifting (Interpolates across gradient stops) --&gt;
-Color {f:1-30 pingpong:true target:fill}
-
-&lt;!-- Mode 2: Directional Gradient Sweep / Shimmer along angle --&gt;
-Color {f:1-60 angle:-45 r:4 target:stroke}</code></pre>
-        </div>
-      </section>
-
       <!-- Section: Live Sample Showcase -->
       <section id="sample" class="docs-section">
-        <h2>🌟 Live Example: The Star Swirl</h2>
+        <h2>🌟 Live Example: Star Swirl</h2>
         <p>
-          Below is a complete, working example built in Inkscape and exported directly in InkAnim Desktop Studio:
+          Download the <code>star_swirl.zip</code> project bundle (containing <code>star_swirl.inka</code> and <code>star_swirl.svg</code>), unzip it, and open <code>star_swirl.inka</code> in InkAnim Desktop Studio:
         </p>
 
         <div class="sample-showcase">
           <div class="sample-gif-frame">
             <img src="img/star_swirl.gif" alt="Exported star_swirl.gif animated result" width="180" height="180">
-            <div class="sample-gif-caption">star_swirl.gif • 20 Frames • 51.7 KB</div>
+            <div class="sample-gif-caption">star_swirl.gif • 1.5s @ 20 FPS</div>
           </div>
           <div class="sample-details">
             <h3 style="color: #fff; font-size: 1.25rem;">Star Swirl (Twitch Emote Ready)</h3>
             <p style="font-size: 0.95rem; color: var(--text-muted); margin-bottom: 12px;">
-              Authored in Inkscape using a single 5-pointed star and an inward spiral path labeled <code>Move {f:1-20}</code>. Open or link the SVG in InkAnim Studio to scrub the timeline, inspect Twitch chat scales, and export in one click.
+              Clean vector star artwork in <code>star_swirl.svg</code> paired with a spiral <code>Move</code> spline action in <code>star_swirl.inka</code>. Scrub the timeline, inspect Twitch chat scales, and export in one click.
             </p>
             <div class="sample-actions">
-              <a href="../samples/star_swirl.svg" download="star_swirl.svg" class="btn btn-secondary" style="font-size: 0.85rem; padding: 8px 14px;">
-                📥 Download star_swirl.svg
+              <a href="../samples/star_swirl.zip" download="star_swirl.zip" class="btn btn-secondary" style="font-size: 0.85rem; padding: 8px 14px;">
+                📥 Download star_swirl.zip (.inka + .svg)
               </a>
               <a href="img/star_swirl.gif" download="star_swirl.gif" class="btn btn-secondary" style="font-size: 0.85rem; padding: 8px 14px;">
                 📥 Download star_swirl.gif
@@ -503,29 +257,31 @@ Color {f:1-60 angle:-45 r:4 target:stroke}</code></pre>
 
       <!-- Section: Exporting in InkAnim -->
       <section id="exporting" class="docs-section">
-        <h2>🎬 Previewing & Exporting in InkAnim</h2>
+        <h2>🎬 Previewing &amp; Exporting in InkAnim</h2>
         <p>
-          Once your SVG file has its graphics and motion trajectories configured, InkAnim makes previewing, verifying, and exporting the animation effortless:
+          Once your timeline actions are dialed in, InkAnim makes verifying and exporting effortless:
         </p>
 
-        <h3>1. In-Studio Playback & Twitch Scale Inspector</h3>
+        <h3>1. In-Studio Playback &amp; Twitch Scale Inspector</h3>
         <ul>
-          <li><strong>Playback Controls</strong>: Use <kbd>Space</kbd> or click <strong>Pause/Play</strong> to test timing in real time. Use <strong>Step ◀ / ▶</strong> to inspect individual animation frames.</li>
-          <li><strong>Global Speed</strong>: Change playback speed (e.g. 10 FPS, 15 FPS, 20 FPS) with a single dropdown selection.</li>
-          <li><strong>Looping Modes</strong>: Check <strong>Ping-Pong</strong> for oscillating back-and-forth animations or standard <strong>Loop</strong> for repeating cycles.</li>
-          <li><strong>Twitch Chat Inspector</strong>: Check the bottom panel to see your emote previewed simultaneously at actual Twitch chat dimensions (112×112, 56×56, and 28×28 pixels) on both dark (<code>#18181B</code>) and light (<code>#FFFFFF</code>) backgrounds.</li>
+          <li><strong>Playback Controls</strong>: Use <kbd>Space</kbd> or click <strong>Play/Pause</strong> to preview in real time, and scrub the timeline ruler to inspect any timestamp.</li>
+          <li><strong>Twitch Chat Inspector</strong>: Preview your animation simultaneously at actual Twitch chat dimensions (112×112, 56×56, and 28×28 pixels) on both dark (<code>#18181B</code>) and light (<code>#FFFFFF</code>) backgrounds.</li>
         </ul>
 
         <h3>2. 1-Click GIF Export</h3>
-        <p>
-          Switch to the <strong>Export</strong> tab in the right-hand panel:
-        </p>
         <ul>
-          <li><strong>Auto-Square Padding</strong>: Automatically centers your artwork on a 1:1 square canvas with transparent padding, fulfilling Twitch emote submission rules without stretching.</li>
-          <li><strong>Target Resolution</strong>: Export at standard emote resolutions (512×512, 112×112) or custom dimensions.</li>
-          <li><strong>Color Quantization & Dithering</strong>: Select your palette depth (2 to 256 colors) and toggle Bayer 8×8 dithering for smooth color gradients.</li>
-          <li><strong>Size Validator</strong>: InkAnim automatically verifies that the output GIF complies with Twitch's 1.0 MB file size limit.</li>
+          <li><strong>Auto-Square Padding</strong>: Centers your artwork on a 1:1 square canvas with transparent padding, fulfilling Twitch emote submission rules without stretching.</li>
+          <li><strong>Color Quantization &amp; Dithering</strong>: Select palette depth (2 to 256 colors) and toggle Bayer 8×8 dithering for smooth gradients.</li>
+          <li><strong>Size Validator</strong>: Automatically verifies that the output GIF complies with Twitch's 1.0 MB file size limit.</li>
         </ul>
+      </section>
+
+      <!-- Section: Legacy SVG Migration -->
+      <section id="migration" class="docs-section">
+        <h2>🔄 Migrating Legacy IAMS SVGs</h2>
+        <p>
+          If you have older SVGs containing embedded IAMS labels (such as <code>Move {f:1-20}</code>, <code>Rot {angle:360}</code>, or <code>Movement {...}</code>), simply open the <code>.svg</code> in InkAnim Studio. InkAnim automatically migrates those directives into <code>.inka</code> timeline actions and gives you the option to keep or strip the legacy labels and guide paths from your source SVG.
+        </p>
       </section>
     </article>
   </main>

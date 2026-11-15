@@ -108,6 +108,25 @@
     </div>
   </header>
 
+  <!-- Studio Walkthrough Video Section -->
+  <section id="studio-walkthrough" class="section studio-walkthrough-section">
+    <div class="container">
+      <div class="section-header">
+        <div class="section-subtitle">InkAnim Studio in Action</div>
+        <h2 class="section-title">Visual Timeline &amp; On-Canvas Spline Gizmos</h2>
+        <p class="section-desc">
+          Load clean Inkscape SVGs into an <code>.inka</code> project, scrub the seconds-first timeline, drag B&eacute;zier motion paths directly on the canvas, and preview Twitch chat scales in real time.
+        </p>
+      </div>
+      <div class="video-showcase-card">
+        <video class="studio-video" controls muted loop playsinline preload="metadata" poster="docs/img/inkanim_studio_preview.png">
+          <source src="studio_walkthrough.mp4" type="video/mp4">
+          Your browser does not support HTML5 video.
+        </video>
+      </div>
+    </div>
+  </section>
+
   <!-- Features Section -->
   <section id="features" class="section">
     <div class="container">
@@ -184,7 +203,7 @@
         <div class="section-subtitle">Interactive Showcase</div>
         <h2 class="section-title">Inkscape Vector Art vs. Living Motion</h2>
         <p class="section-desc" style="max-width: 680px; margin: 0 auto; color: var(--text-muted); font-size: 1.05rem;">
-          Click any sample animation below to compare the static Inkscape vector source against the compiled animation, inspect motion parameters, and download the source SVG for InkAnim Studio.
+          Click any sample animation below to compare the static Inkscape vector source against the compiled animation, inspect timeline actions, and download the <code>.inka</code> + <code>.svg</code> project bundle for InkAnim Studio.
         </p>
       </div>
 
@@ -192,16 +211,16 @@
         <!-- 1. Complex Motion (First!) -->
         <div class="sample-card" onclick="openSampleModal('complex_motion')">
           <div class="sample-card-header">
-            <span class="sample-badge featured">🪐 Featured IAMS</span>
-            <span style="font-size: 0.75rem; color: var(--text-dim); font-family: var(--font-mono);">60 Frames</span>
+            <span class="sample-badge featured">🪐 Featured Project</span>
+            <span style="font-size: 0.75rem; color: var(--text-dim); font-family: var(--font-mono);">3.0s @ 20 FPS</span>
           </div>
           <div class="sample-thumb-box">
             <img src="samples/complex_motion.gif" alt="Complex Motion Preview" loading="lazy">
           </div>
           <h3 class="sample-title">Complex Motion</h3>
-          <div class="sample-meta">complex_motion.svg • 256 × 256</div>
+          <div class="sample-meta">complex_motion.zip (.inka + .svg) • 256 × 256</div>
           <p class="sample-desc">
-            All-in-one motion showcase featuring spacecraft orbit trajectory, continuous spin, Mode 2 gradient sweep across orbital rings, and multi-plane parallax depth.
+            All-in-one motion showcase featuring spacecraft orbit trajectory, continuous spin, gradient sweep across orbital rings, and multi-plane parallax depth.
           </p>
           <div class="sample-action">
             <span>Inspect & Compare</span>
@@ -213,15 +232,15 @@
         <div class="sample-card" onclick="openSampleModal('star_swirl')">
           <div class="sample-card-header">
             <span class="sample-badge">✨ Spline Motion</span>
-            <span style="font-size: 0.75rem; color: var(--text-dim); font-family: var(--font-mono);">30 Frames</span>
+            <span style="font-size: 0.75rem; color: var(--text-dim); font-family: var(--font-mono);">1.5s @ 20 FPS</span>
           </div>
           <div class="sample-thumb-box">
             <img src="samples/star_swirl.gif" alt="Star Swirl Motion Preview" loading="lazy">
           </div>
           <h3 class="sample-title">Star Swirl & Trajectory</h3>
-          <div class="sample-meta">star_swirl.svg • 256 × 256</div>
+          <div class="sample-meta">star_swirl.zip (.inka + .svg) • 256 × 256</div>
           <p class="sample-desc">
-            Curved spline path motion with constant arc-length velocity, automatic tangent orientation (<code>orient: true</code>), and continuous axial rotation.
+            Curved spiral spline motion with constant arc-length velocity, smooth easing, and clean vector star artwork driven by a <code>.inka</code> timeline.
           </p>
           <div class="sample-action">
             <span>Inspect & Compare</span>
@@ -233,15 +252,15 @@
         <div class="sample-card" onclick="openSampleModal('pendulum')">
           <div class="sample-card-header">
             <span class="sample-badge">🕰️ Ping-Pong</span>
-            <span style="font-size: 0.75rem; color: var(--text-dim); font-family: var(--font-mono);">10 Frames</span>
+            <span style="font-size: 0.75rem; color: var(--text-dim); font-family: var(--font-mono);">0.5s @ 20 FPS</span>
           </div>
           <div class="sample-thumb-box">
             <img src="samples/pendulum.gif" alt="Harmonic Pendulum Preview" loading="lazy">
           </div>
           <h3 class="sample-title">Harmonic Pendulum</h3>
-          <div class="sample-meta">pendulum.svg • 128 × 128</div>
+          <div class="sample-meta">pendulum.zip (.inka + .svg) • 128 × 128</div>
           <p class="sample-desc">
-            Smooth harmonic oscillation utilizing Ping-Pong bounce looping ($2N-2$ sequence) with zero turnaround frame duplication.
+            Smooth harmonic oscillation using a custom pivot mount, <code>in-out</code> rotation easing, and Ping-Pong bounce looping with zero frame duplication.
           </p>
           <div class="sample-action">
             <span>Inspect & Compare</span>
@@ -381,14 +400,14 @@
 
         <!-- Details Box -->
         <div class="compare-details-box">
-          <div class="details-title">Directives & Animation Parameters</div>
+          <div class="details-title">Timeline Actions & Project Settings</div>
           <div id="modal-pills" class="details-pills"></div>
         </div>
       </div>
       <div class="modal-footer">
         <a id="modal-download-link" href="#" download="" class="btn btn-primary">
           <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
-          Download Source SVG
+          Download Project (.zip)
         </a>
       </div>
     </div>
@@ -398,30 +417,30 @@
     const sampleData = {
       complex_motion: {
         title: "🪐 Complex Motion",
-        file: "complex_motion.svg",
+        file: "complex_motion.zip",
         inkscapeImg: "samples/complex_motion_inkscape.png",
         animImg: "samples/complex_motion.gif",
-        inkscapeDesc: "Static layout in Inkscape showing all vector objects: central sphere, orbital rings, spacecraft, trajectory spline, and background stars.",
-        animDesc: "Dynamic multi-directive animation evaluating Mode 2 gradient sweep across the orbital rings, spacecraft spline orbit with orient, and multi-plane depth parallax.",
-        pills: ["Move path: #orbit", "Rot angle: 360", "Color mode: 2", "Camera dist: 0.5", "Depth dynamic Z", "60 Frames", "256 × 256"]
+        inkscapeDesc: "Clean Inkscape vector artwork: central sphere, orbital rings, spacecraft, and background stars.",
+        animDesc: "Multi-track .inka timeline evaluating orbital Move splines, continuous Rot, gradient Color sweeps, Camera pan, and multi-plane Depth/Dist parallax.",
+        pills: ["Move Spline", "Rot 360°", "Color Sweep", "Camera & Parallax", "3.0s @ 20 FPS", "256 × 256"]
       },
       star_swirl: {
         title: "✨ Star Swirl & Trajectory",
-        file: "star_swirl.svg",
+        file: "star_swirl.zip",
         inkscapeImg: "samples/star_swirl_inkscape.png",
         animImg: "samples/star_swirl.gif",
-        inkscapeDesc: "Vector star icon and guide spline curve as authored in Inkscape.",
-        animDesc: "Star smoothly traversing the motion spline at continuous velocity while maintaining tangent alignment (orient: true) and continuous axial rotation.",
-        pills: ["Move path: #path1", "Rot angle: 360 dir: cw", "orient: true", "30 Frames", "256 × 256"]
+        inkscapeDesc: "Clean vector star artwork authored in Inkscape.",
+        animDesc: "Star smoothly traversing a spiral Move spline stored in star_swirl.inka at constant arc-length velocity.",
+        pills: ["Move Spline", "Linear Easing", "1.5s @ 20 FPS", "256 × 256"]
       },
       pendulum: {
         title: "🕰️ Harmonic Pendulum",
-        file: "pendulum.svg",
+        file: "pendulum.zip",
         inkscapeImg: "samples/pendulum_inkscape.png",
         animImg: "samples/pendulum.gif",
-        inkscapeDesc: "Vector pendulum resting position and bounding guides in Inkscape.",
-        animDesc: "10-frame pendulum swinging sequence compiled with Ping-Pong looping (bounces seamlessly without repeating turnaround frames).",
-        pills: ["Ping-Pong Loop", "10 Keyframes (18-step bounce)", "128 × 128", "Twitch Compliant"]
+        inkscapeDesc: "Vector pendulum resting position and pivot mount in Inkscape.",
+        animDesc: "Pendulum swinging 48° CCW around #pivot_mount with in-out easing and Ping-Pong looping.",
+        pills: ["Rot 48° CCW", "Pivot: #pivot_mount", "Ping-Pong Loop", "0.5s @ 20 FPS", "128 × 128"]
       }
     };
 

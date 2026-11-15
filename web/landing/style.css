@@ -283,6 +283,29 @@ body {
   background: linear-gradient(90deg, transparent, var(--accent-purple), var(--accent-cyan), transparent);
 }
 
+.studio-walkthrough-section {
+  padding-top: 20px;
+}
+
+.video-showcase-card {
+  background: var(--bg-card);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  box-shadow: var(--shadow-card), var(--shadow-glow);
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.studio-video {
+  width: 100%;
+  display: block;
+  border-radius: var(--radius-md);
+  background: #0b0f17;
+  aspect-ratio: 16 / 9;
+}
+
 .showcase-grid {
   display: grid;
   grid-template-columns: 1.2fr 1fr;
