@@ -301,6 +301,7 @@ body {
 .studio-video {
   width: 100%;
   display: block;
+  border: 0;
   border-radius: var(--radius-md);
   background: #0b0f17;
   aspect-ratio: 16 / 9;
