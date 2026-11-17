@@ -79,6 +79,11 @@ type TimelinePanel struct {
 	hoverFrame  int
 
 	snapToFrames bool
+
+	dragSourceLane      *timelineTrackLane
+	dragTargetLane      *timelineTrackLane
+	dragTargetInsertIdx int
+	dragGhostAction     *app.ActionConfig
 }
 
 // NewTimelinePanel creates the interactive studio timeline panel.
@@ -2016,6 +2021,198 @@ func (tp *TimelinePanel) MoveAction(nodeID string, actionIdx, delta int) bool {
 	return true
 }
 
+// MoveActionToTrack transfers an action from srcNodeID[srcActionIdx] to dstNodeID at dstInsertIdx,
+// re-anchoring any PathD geometry to the destination object's center and recording a studio undo snapshot.
+func (tp *TimelinePanel) MoveActionToTrack(srcNodeID string, srcActionIdx int, dstNodeID string, dstInsertIdx int, updatedAct app.ActionConfig) bool {
+	if tp == nil || tp.mw == nil || tp.mw.editorState == nil || tp.mw.session == nil {
+		return false
+	}
+	if srcNodeID == dstNodeID {
+		return false
+	}
+	srcNode := tp.mw.editorState.NodeMap[srcNodeID]
+	dstNode := tp.mw.editorState.NodeMap[dstNodeID]
+	if srcNode == nil || dstNode == nil {
+		return false
+	}
+	srcKey, srcCfg, srcHas := tp.mw.resolveNodeObjectConfig(srcNode)
+	if !srcHas || srcActionIdx < 0 || srcActionIdx >= len(srcCfg.Actions) {
+		return false
+	}
+	dstKey, dstCfg, _ := tp.mw.resolveNodeObjectConfig(dstNode)
+	if dstKey == "" {
+		dstKey = dstNode.ID
+	}
+	dstCfg.SourceID = dstNode.SourceID
+	dstCfg.FallbackXMLID = dstNode.ID
+
+	if strings.TrimSpace(updatedAct.PathD) != "" {
+		oldCX, oldCY := tp.defaultNodeCenter(srcNode.ID, srcCfg)
+		newCX, newCY := tp.defaultNodeCenter(dstNode.ID, dstCfg)
+		dx, dy := newCX-oldCX, newCY-oldCY
+		if dx != 0 || dy != 0 {
+			if segs := ParseGizmoPath(updatedAct.PathD); len(segs) > 0 {
+				for i := range segs {
+					segs[i].StartX += dx
+					segs[i].StartY += dy
+					segs[i].Ctrl1X += dx
+					segs[i].Ctrl1Y += dy
+					segs[i].Ctrl2X += dx
+					segs[i].Ctrl2Y += dy
+					segs[i].EndX += dx
+					segs[i].EndY += dy
+				}
+				updatedAct.PathD = FormatGizmoPath(segs)
+			}
+			if updatedAct.PivotType == "custom" {
+				updatedAct.PivotX += dx
+				updatedAct.PivotY += dy
+			}
+		}
+	}
+
+	srcCfg.Actions = slices.Delete(slices.Clone(srcCfg.Actions), srcActionIdx, srcActionIdx+1)
+
+	dstActions := slices.Clone(dstCfg.Actions)
+	if dstInsertIdx < 0 {
+		dstInsertIdx = 0
+	}
+	if dstInsertIdx > len(dstActions) {
+		dstInsertIdx = len(dstActions)
+	}
+	dstCfg.Actions = slices.Insert(dstActions, dstInsertIdx, updatedAct)
+
+	tp.mw.consolidateNodeObjectConfig(srcNode.ID, srcKey, srcCfg)
+	tp.mw.consolidateNodeObjectConfig(dstNode.ID, dstKey, dstCfg)
+
+	tp.mw.selectedActionID = updatedAct.ID
+	tp.mw.editorState.ActiveNode = dstNode
+	tp.mw.RecordStudioChange(fmt.Sprintf("Move %s action to %s", strings.ToUpper(updatedAct.Type), dstNode.DisplayTitle()))
+	if tp.mw.updateUndoRedo != nil {
+		tp.mw.updateUndoRedo()
+	}
+	tp.mw.updateStatus()
+	tp.Refresh()
+	if tp.mw.centerPanel != nil {
+		tp.mw.centerPanel.RefreshGizmos()
+	}
+	tp.mw.schedulePreviewUpdate()
+	return true
+}
+
+func (tp *TimelinePanel) clearCrossDragPreview() {
+	if tp == nil {
+		return
+	}
+	tp.dragSourceLane = nil
+	tp.dragTargetLane = nil
+	tp.dragTargetInsertIdx = 0
+	tp.dragGhostAction = nil
+}
+
+// resolveDropTargetLane maps a vertical drag coordinate in srcLane's local coordinates
+// to the target lane and sub-row index/insertion slot.
+func (tp *TimelinePanel) resolveDropTargetLane(srcLane *timelineTrackLane, localY float32) (*timelineTrackLane, int) {
+	if tp == nil || srcLane == nil || len(tp.lanes) == 0 {
+		return nil, 0
+	}
+	srcIdx := slices.Index(tp.lanes, srcLane)
+	if srcIdx < 0 {
+		return nil, 0
+	}
+
+	nLanes := len(tp.lanes)
+	rowTops := make([]float32, nLanes)
+	rowHeights := make([]float32, nLanes)
+
+	useLaidOutRows := tp.tracksVBox != nil &&
+		len(tp.tracksVBox.Objects) == nLanes &&
+		tp.tracksVBox.Objects[srcIdx].Size().Height > 0 &&
+		(nLanes == 1 || tp.tracksVBox.Objects[1].Position().Y > tp.tracksVBox.Objects[0].Position().Y)
+
+	if useLaidOutRows {
+		srcRowTop := tp.tracksVBox.Objects[srcIdx].Position().Y
+		for i := range nLanes {
+			rowTops[i] = tp.tracksVBox.Objects[i].Position().Y - srcRowTop
+			rowHeights[i] = tp.tracksVBox.Objects[i].Size().Height
+		}
+	} else {
+		laneH := func(l *timelineTrackLane) float32 {
+			return max(l.Size().Height, l.MinSize().Height)
+		}
+		for i := range nLanes {
+			rowHeights[i] = laneH(tp.lanes[i])
+		}
+		rowTops[srcIdx] = 0
+		for i := srcIdx - 1; i >= 0; i-- {
+			rowTops[i] = rowTops[i+1] - rowHeights[i]
+		}
+		for i := srcIdx + 1; i < nLanes; i++ {
+			rowTops[i] = rowTops[i-1] + rowHeights[i-1]
+		}
+	}
+
+	targetIdx := srcIdx
+	switch {
+	case localY < rowTops[0]:
+		targetIdx = 0
+	case localY > rowTops[nLanes-1]+rowHeights[nLanes-1]:
+		targetIdx = nLanes - 1
+	default:
+		for i := range nLanes {
+			top := rowTops[i]
+			bot := top + rowHeights[i]
+			if localY >= top && localY <= bot {
+				targetIdx = i
+				break
+			}
+			if i+1 < nLanes && localY > bot && localY < rowTops[i+1] {
+				if localY-bot < rowTops[i+1]-localY {
+					targetIdx = i
+				} else {
+					targetIdx = i + 1
+				}
+				break
+			}
+		}
+	}
+
+	targetLane := tp.lanes[targetIdx]
+	targetLocalY := localY - rowTops[targetIdx]
+	targetH := rowHeights[targetIdx]
+	nActs := len(targetLane.track.Config.Actions)
+
+	if targetLane == srcLane {
+		if nActs <= 1 {
+			return srcLane, 0
+		}
+		bestIdx := 0
+		bestDist := float32(math.MaxFloat32)
+		for k := range nActs {
+			y1, y2 := targetLane.actionSubRowBounds(k, nActs, targetH)
+			mid := (y1 + y2) / 2
+			dist := float32(math.Abs(float64(targetLocalY - mid)))
+			if dist < bestDist {
+				bestDist = dist
+				bestIdx = k
+			}
+		}
+		return srcLane, bestIdx
+	}
+
+	if nActs == 0 {
+		return targetLane, 0
+	}
+	for k := range nActs {
+		y1, y2 := targetLane.actionSubRowBounds(k, nActs, targetH)
+		mid := (y1 + y2) / 2
+		if targetLocalY < mid {
+			return targetLane, k
+		}
+	}
+	return targetLane, nActs
+}
+
 // CommitTrackConfig persists an updated ObjectConfig from a timeline drag/resize or modal operation.
 func (tp *TimelinePanel) CommitTrackConfig(nodeID, objKey string, cfg app.ObjectConfig) {
 	if tp.mw == nil || tp.mw.session == nil {
@@ -2195,10 +2392,13 @@ type timelineTrackLane struct {
 	cursorMode     desktop.Cursor
 	dragMode       timelineDragMode
 	dragActionIdx  int
+	origActionIdx  int
+	origActions    []app.ActionConfig
 	dragStartX     float32
 	origStartSec   float64
 	origEndSec     float64
 	activeDragmake bool
+	dragMovedOrder bool
 }
 
 func newTimelineTrackLane(tp *TimelinePanel, track TimelineTrackModel) *timelineTrackLane {
@@ -2383,10 +2583,13 @@ func (l *timelineTrackLane) Dragged(ev *fyne.DragEvent) {
 
 	if !l.activeDragmake {
 		l.activeDragmake = true
+		l.dragMovedOrder = false
 		l.dragStartX = ev.Position.X - ev.Dragged.DX
 		startY := ev.Position.Y - ev.Dragged.DY
 		idx, mode := l.hitTestAction(l.dragStartX, startY, w, h)
 		l.dragActionIdx = idx
+		l.origActionIdx = idx
+		l.origActions = slices.Clone(l.track.Config.Actions)
 		l.dragMode = mode
 		if idx >= 0 && idx < len(l.track.Config.Actions) {
 			act := l.track.Config.Actions[idx]
@@ -2396,9 +2599,12 @@ func (l *timelineTrackLane) Dragged(ev *fyne.DragEvent) {
 				l.origEndSec = dur
 			}
 			l.origEndSec = clampFloat(l.origEndSec, l.origStartSec, dur)
-			l.tp.SelectTrack(l.track.NodeID)
-			if l.tp.mw != nil {
+			if l.tp.mw != nil && l.tp.mw.editorState != nil {
+				if node := l.tp.mw.editorState.NodeMap[l.track.NodeID]; node != nil {
+					l.tp.mw.editorState.ActiveNode = node
+				}
 				l.tp.mw.selectedActionID = act.ID
+				l.tp.mw.updateStatus()
 				if l.tp.mw.centerPanel != nil {
 					l.tp.mw.centerPanel.RefreshGizmos()
 				}
@@ -2430,7 +2636,41 @@ func (l *timelineTrackLane) Dragged(ev *fyne.DragEvent) {
 			l.track.Config.Actions[l.dragActionIdx].StartSec = newStart
 			l.track.Config.Actions[l.dragActionIdx].EndSec = math.Round((newStart+span)*1000.0) / 1000.0
 			l.track.Config.Actions[l.dragActionIdx].IsAll = false
-			l.Refresh()
+
+			targetLane, insertIdx := l.tp.resolveDropTargetLane(l, ev.Position.Y)
+			if targetLane == nil || targetLane == l {
+				prevTarget := l.tp.dragTargetLane
+				l.tp.clearCrossDragPreview()
+				if prevTarget != nil {
+					prevTarget.Refresh()
+				}
+				if insertIdx >= 0 && insertIdx < len(l.track.Config.Actions) && insertIdx != l.dragActionIdx {
+					moved := l.track.Config.Actions[l.dragActionIdx]
+					acts := slices.Delete(slices.Clone(l.track.Config.Actions), l.dragActionIdx, l.dragActionIdx+1)
+					acts = slices.Insert(acts, insertIdx, moved)
+					l.track.Config.Actions = acts
+					l.dragActionIdx = insertIdx
+					l.dragMovedOrder = true
+				}
+				l.Refresh()
+			} else {
+				actCopy := l.track.Config.Actions[l.dragActionIdx]
+				if len(l.origActions) > 0 && l.origActionIdx >= 0 && l.origActionIdx < len(l.origActions) {
+					l.track.Config.Actions = slices.Clone(l.origActions)
+					l.dragActionIdx = l.origActionIdx
+					l.dragMovedOrder = false
+				}
+				prevTarget := l.tp.dragTargetLane
+				l.tp.dragSourceLane = l
+				l.tp.dragTargetLane = targetLane
+				l.tp.dragTargetInsertIdx = insertIdx
+				l.tp.dragGhostAction = &actCopy
+				if prevTarget != nil && prevTarget != targetLane {
+					prevTarget.Refresh()
+				}
+				l.Refresh()
+				targetLane.Refresh()
+			}
 		}
 	case dragActionResizeStart:
 		if l.dragActionIdx >= 0 && l.dragActionIdx < len(l.track.Config.Actions) {
@@ -2493,12 +2733,31 @@ func (l *timelineTrackLane) DragEnd() {
 		return
 	}
 	mode := l.dragMode
+	origActIdx := l.origActionIdx
+	movedOrder := l.dragMovedOrder
+	dstLane := l.tp.dragTargetLane
+	insertIdx := l.tp.dragTargetInsertIdx
+	ghostAct := l.tp.dragGhostAction
+
 	l.activeDragmake = false
+	l.dragMovedOrder = false
 	l.dragMode = dragNone
 	l.dragActionIdx = -1
+	l.origActionIdx = -1
+	l.origActions = nil
+	l.tp.clearCrossDragPreview()
+
+	if mode == dragActionMove && dstLane != nil && dstLane != l && ghostAct != nil && origActIdx >= 0 {
+		if l.tp.MoveActionToTrack(l.track.NodeID, origActIdx, dstLane.track.NodeID, insertIdx, *ghostAct) {
+			return
+		}
+	}
 
 	if mode != dragNone && mode != dragScrubPlayhead {
 		l.tp.CommitTrackConfig(l.track.NodeID, l.track.ObjectKey, l.track.Config)
+		if movedOrder {
+			l.tp.Refresh()
+		}
 	}
 }
 
@@ -2513,6 +2772,11 @@ func (l *timelineTrackLane) draw(w, h int) image.Image {
 		bg = color.RGBA{R: 26, G: 34, B: 48, A: 255}
 	}
 	fillRectRGBA(img, 0, 0, w, h, bg)
+	isDropTarget := l.tp.dragTargetLane == l && l.tp.dragGhostAction != nil
+	if isDropTarget {
+		fillRectRGBA(img, 0, 0, w, h, color.RGBA{R: 56, G: 189, B: 248, A: 42})
+		drawRectBorderRGBA(img, 0, 0, w, h, color.RGBA{R: 56, G: 189, B: 248, A: 210})
+	}
 
 	durSec := l.tp.TotalDurationSec()
 	totalFrames := l.tp.FrameCount()
@@ -2572,6 +2836,10 @@ func (l *timelineTrackLane) draw(w, h int) image.Image {
 				ay2 = ay1 + 10
 			}
 			barColor := actionClipColor(act.Type)
+			isDraggedOut := l.tp.dragSourceLane == l && l.tp.dragTargetLane != nil && l.tp.dragTargetLane != l && idx == l.dragActionIdx
+			if isDraggedOut {
+				barColor.A = 75
+			}
 			fillRectRGBA(img, ax1, ay1, ax2, ay2, barColor)
 
 			// Left & Right resize grip handles (6px wide caps with vertical grip notch)
@@ -2579,6 +2847,9 @@ func (l *timelineTrackLane) draw(w, h int) image.Image {
 			if l.tp.mw != nil && l.tp.mw.selectedActionID == act.ID {
 				gripColor = color.RGBA{R: 255, G: 255, B: 255, A: 255}
 				drawRectBorderRGBA(img, ax1, ay1, ax2, ay2, gripColor)
+			}
+			if isDraggedOut {
+				gripColor.A = 80
 			}
 			fillRectRGBA(img, ax1, ay1, min(ax1+6, ax2), ay2, gripColor)
 			fillRectRGBA(img, max(ax2-6, ax1), ay1, ax2, ay2, gripColor)
@@ -2593,6 +2864,61 @@ func (l *timelineTrackLane) draw(w, h int) image.Image {
 				labelY := ay1 + max(1, (ay2-ay1-7)/2)
 				drawTinyLabel(img, ax1+9, labelY, lbl, color.RGBA{R: 15, G: 17, B: 21, A: 255})
 			}
+		}
+
+		if isDropTarget {
+			ghost := *l.tp.dragGhostAction
+			sSec := ghost.StartSec
+			eSec := ghost.EndSec
+			if eSec <= sSec {
+				eSec = durSec
+			}
+			visStart := clampFloat(sSec, 0, durSec)
+			visEnd := clampFloat(eSec, visStart, durSec)
+			gx1 := int(math.Round((visStart / durSec) * float64(w-1)))
+			gx2 := int(math.Round((visEnd / durSec) * float64(w-1)))
+			if gx1 > w-12 {
+				gx1 = max(0, w-12)
+			}
+			if gx2-gx1 < 12 {
+				gx2 = min(w-1, gx1+12)
+			}
+			if gx2 >= w {
+				gx2 = w - 1
+			}
+
+			var lineY, gy1, gy2 int
+			if totalActions == 0 {
+				gy1 = 5
+				gy2 = max(15, h-5)
+				lineY = gy1
+			} else {
+				ins := l.tp.dragTargetInsertIdx
+				switch {
+				case ins <= 0:
+					y1, _ := l.actionSubRowBounds(0, totalActions, float32(h))
+					lineY = max(1, int(math.Round(float64(y1)))-1)
+					gy1 = lineY
+					gy2 = min(h-2, gy1+14)
+				case ins >= totalActions:
+					_, y2 := l.actionSubRowBounds(totalActions-1, totalActions, float32(h))
+					lineY = min(h-2, int(math.Round(float64(y2)))+1)
+					gy2 = lineY
+					gy1 = max(1, gy2-14)
+				default:
+					_, prevY2 := l.actionSubRowBounds(ins-1, totalActions, float32(h))
+					nextY1, _ := l.actionSubRowBounds(ins, totalActions, float32(h))
+					lineY = int(math.Round(float64(prevY2+nextY1) / 2.0))
+					gy1 = max(1, lineY-7)
+					gy2 = min(h-2, lineY+7)
+				}
+			}
+
+			ghostCol := actionClipColor(ghost.Type)
+			ghostCol.A = 165
+			fillRectRGBA(img, gx1, gy1, gx2, gy2, ghostCol)
+			drawRectBorderRGBA(img, gx1, gy1, gx2, gy2, color.RGBA{R: 255, G: 255, B: 255, A: 240})
+			fillRectRGBA(img, 0, max(0, lineY-1), w, min(h, lineY+1), color.RGBA{R: 56, G: 189, B: 248, A: 255})
 		}
 	}
 
