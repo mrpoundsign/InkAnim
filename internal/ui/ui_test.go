@@ -3022,3 +3022,118 @@ func TestTimelineDragReorderAndCrossTrackMove(t *testing.T) {
 		t.Errorf("expected Rot (%s) to be moved onto layer2, got %+v", rotID, l2Final.Actions)
 	}
 }
+
+func TestScrollableMainCanvasZoomAndOffscreenSplines(t *testing.T) {
+	fyneApp := test.NewApp()
+	defer fyneApp.Quit()
+
+	mw := NewMainWindow(fyneApp)
+	defer func() {
+		waitForPreview(mw)
+		mw.centerPanel.Pause()
+	}()
+
+	svgPath, err := filepath.Abs("../../testdata/pendulum.svg")
+	if err != nil {
+		t.Fatalf("failed to resolve pendulum.svg: %v", err)
+	}
+	loadAndWait(mw, svgPath)
+	mw.centerPanel.Pause()
+
+	mw.window.Resize(fyne.NewSize(1200, 800))
+	mw.window.Content().Resize(fyne.NewSize(1200, 800))
+
+	p := mw.centerPanel
+	if p.stageScroll == nil || p.zoomSelect == nil {
+		t.Fatalf("expected stageScroll and zoomSelect to be initialized")
+	}
+	if p.zoomSelect.Selected != "Fit" {
+		t.Errorf("expected default zoom 'Fit', got %q", p.zoomSelect.Selected)
+	}
+
+	vp := p.stageScroll.Size()
+	if vp.Width <= 0 || vp.Height <= 0 {
+		t.Fatalf("expected non-zero stageScroll viewport size, got %v", vp)
+	}
+
+	// 1. Zooming to 200% expands stageStack.MinSize() beyond the viewport so scrollbars activate
+	p.zoomSelect.SetSelected("200%")
+	if p.zoomFactor != 2.0 {
+		t.Errorf("expected zoomFactor == 2.0, got %g", p.zoomFactor)
+	}
+	minZoomed := p.stageStack.MinSize()
+	if minZoomed.Width <= vp.Width || minZoomed.Height <= vp.Height {
+		t.Errorf("expected 200%% zoom stageStack.MinSize() (%v) to exceed viewport (%v)", minZoomed, vp)
+	}
+
+	// Reset back to Fit
+	p.zoomSelect.SetSelected("Fit")
+	if p.zoomFactor != 0 {
+		t.Errorf("expected zoomFactor == 0 for Fit, got %g", p.zoomFactor)
+	}
+
+	// 2. Adding an off-screen Move spline expands stageStack.MinSize() even in Fit mode
+	tracks := mw.timelinePanel.CollectTracks()
+	var targetID string
+	for _, tr := range tracks {
+		if n := mw.editorState.NodeMap[tr.NodeID]; n != nil && !n.IsLinkedFile {
+			targetID = tr.NodeID
+			break
+		}
+	}
+	if targetID == "" {
+		t.Fatalf("expected a non-linked track node")
+	}
+	mw.timelinePanel.SelectTrack(targetID)
+	mw.timelinePanel.AddActionToActiveNode("Move")
+	objKey, objCfg, _ := mw.resolveNodeObjectConfig(mw.editorState.NodeMap[targetID])
+	objCfg.Actions[len(objCfg.Actions)-1].PathD = "M 50.0 50.0 L 1200.0 1200.0"
+	mw.timelinePanel.CommitTrackConfig(targetID, objKey, objCfg)
+	waitForPreview(mw)
+
+	minExpanded := p.stageStack.MinSize()
+	if minExpanded.Width <= vp.Width || minExpanded.Height <= vp.Height {
+		t.Errorf("expected off-screen spline to expand stageStack.MinSize() (%v) beyond viewport (%v)", minExpanded, vp)
+	}
+
+	// 3. Verify Inkscape-style Ctrl+MouseWheel custom zoom and Middle-Mouse drag panning
+	p.SetZoom(1.0)
+	gizmo := p.gizmoOverlay
+	gizmo.SetCtrlHeld(true)
+	gizmo.Scrolled(&fyne.ScrollEvent{
+		Position: fyne.NewPos(100, 100),
+		Scrolled: fyne.Delta{DY: 10},
+	})
+	if p.zoomFactor <= 1.0 {
+		t.Errorf("expected Ctrl+Wheel up to zoom in above 1.0, got %g", p.zoomFactor)
+	}
+	zoomedIn := p.zoomFactor
+
+	// Unmodified scroll forwards to stageScroll without changing zoom
+	gizmo.SetCtrlHeld(false)
+	gizmo.Scrolled(&fyne.ScrollEvent{
+		Position: fyne.NewPos(100, 100),
+		Scrolled: fyne.Delta{DY: -10},
+	})
+	if p.zoomFactor != zoomedIn {
+		t.Errorf("expected unmodified wheel scroll not to change zoomFactor (%g), got %g", zoomedIn, p.zoomFactor)
+	}
+
+	// Middle-mouse drag pans stageScroll.Offset
+	p.SetZoom(2.0)
+	mw.window.Content().Resize(fyne.NewSize(1200, 800))
+	p.stageScroll.Offset = fyne.NewPos(50, 50)
+	gizmo.MouseDown(&desktop.MouseEvent{
+		Position: fyne.NewPos(200, 200),
+		Button:   desktop.MouseButtonTertiary,
+	})
+	gizmo.Dragged(&fyne.DragEvent{
+		Position: fyne.NewPos(170, 180),
+		Dragged:  fyne.NewDelta(-30, -20),
+	})
+	gizmo.DragEnd()
+	gizmo.MouseUp(&desktop.MouseEvent{Button: desktop.MouseButtonTertiary})
+	if p.stageScroll.Offset.X <= 50 || p.stageScroll.Offset.Y <= 50 {
+		t.Errorf("expected middle-mouse drag (-30, -20) to pan scroll offset past (50, 50), got %v", p.stageScroll.Offset)
+	}
+}
