@@ -369,6 +369,7 @@ const (
 	gizmoDragPathAnchor // dragSegIdx = anchor index (0 .. len(segs)), where 0 is segs[0].Start and k>0 is segs[k-1].End
 	gizmoDragPathCtrl1  // dragSegIdx = segment index
 	gizmoDragPathCtrl2  // dragSegIdx = segment index
+	gizmoDragPan
 )
 
 // CanvasGizmoOverlay renders interactive stage placement, pivot crosshair, and motion path
@@ -389,16 +390,22 @@ type CanvasGizmoOverlay struct {
 	dragOrigSegs []GizmoSegment
 	lastDragPos  fyne.Position
 	hasLastDrag  bool
+	panStartOff  fyne.Position
+	mouseButton  desktop.MouseButton
 	ctrlHeld     bool
 	dragDirty    bool
 }
 
-var _ desktop.Mouseable = (*CanvasGizmoOverlay)(nil)
+var (
+	_ desktop.Mouseable = (*CanvasGizmoOverlay)(nil)
+	_ fyne.Scrollable   = (*CanvasGizmoOverlay)(nil)
+)
 
-// MouseDown syncs the Ctrl modifier state at click/drag start (also self-healing if key-up occurred unfocused).
+// MouseDown syncs the Ctrl modifier state and active mouse button at click/drag start.
 func (g *CanvasGizmoOverlay) MouseDown(ev *desktop.MouseEvent) {
 	if ev != nil {
 		g.ctrlHeld = (ev.Modifier & fyne.KeyModifierControl) != 0
+		g.mouseButton = ev.Button
 	}
 }
 
@@ -406,6 +413,70 @@ func (g *CanvasGizmoOverlay) MouseDown(ev *desktop.MouseEvent) {
 func (g *CanvasGizmoOverlay) MouseUp(ev *desktop.MouseEvent) {
 	if ev != nil {
 		g.ctrlHeld = (ev.Modifier & fyne.KeyModifierControl) != 0
+	}
+	g.mouseButton = 0
+}
+
+// Scrolled handles Inkscape-style Ctrl+MouseWheel custom zooming around the cursor,
+// forwarding unmodified scroll events to the enclosing stageScroll container.
+func (g *CanvasGizmoOverlay) Scrolled(ev *fyne.ScrollEvent) {
+	if ev == nil || g.mw == nil || g.mw.centerPanel == nil {
+		return
+	}
+	cp := g.mw.centerPanel
+	if g.ctrlHeld {
+		dy := ev.Scrolled.DY
+		if dy == 0 {
+			dy = ev.Scrolled.DX
+		}
+		if dy == 0 {
+			return
+		}
+
+		curZoom := cp.CurrentZoomScale()
+		factor := math.Pow(1.15, float64(dy)/10.0)
+		if math.Abs(float64(dy)) < 5 {
+			if dy > 0 {
+				factor = 1.15
+			} else {
+				factor = 1.0 / 1.15
+			}
+		}
+		newZoom := clampFloat(curZoom*factor, 0.25, 8.0)
+
+		var anchorSVG [2]float64
+		var vpPos fyne.Position
+		hasAnchor := false
+		if cp.stageScroll != nil && cp.stageStack != nil {
+			sz := g.Size()
+			if _, viewToSVG, ok := g.viewportTransform(float64(sz.Width), float64(sz.Height)); ok {
+				anchorSVG[0], anchorSVG[1] = viewToSVG(float64(ev.Position.X), float64(ev.Position.Y))
+				vpPos = ev.Position.Subtract(cp.stageScroll.Offset)
+				hasAnchor = true
+			}
+		}
+
+		cp.SetZoom(newZoom)
+
+		if hasAnchor && cp.stageScroll != nil && cp.stageStack != nil {
+			sz := g.Size()
+			if svgToView, _, ok := g.viewportTransform(float64(sz.Width), float64(sz.Height)); ok {
+				nx, ny := svgToView(anchorSVG[0], anchorSVG[1])
+				ss := cp.stageStack.Size()
+				scSz := cp.stageScroll.Size()
+				maxX := max(float32(0), ss.Width-scSz.Width)
+				maxY := max(float32(0), ss.Height-scSz.Height)
+				ox := min(max(float32(0), float32(nx)-vpPos.X), maxX)
+				oy := min(max(float32(0), float32(ny)-vpPos.Y), maxY)
+				cp.stageScroll.Offset = fyne.NewPos(ox, oy)
+				cp.stageScroll.Refresh()
+			}
+		}
+		return
+	}
+
+	if cp.stageScroll != nil {
+		cp.stageScroll.Scrolled(ev)
 	}
 }
 
@@ -488,6 +559,24 @@ func (g *CanvasGizmoOverlay) viewportTransform(viewW, viewH float64) (svgToView 
 	padX := (viewW - drawW) / 2.0
 	padY := (viewH - drawH) / 2.0
 
+	if g.mw.centerPanel != nil && g.mw.centerPanel.stageStack != nil && g.mw.centerPanel.mainCanvasStack != nil {
+		ss := g.mw.centerPanel.stageStack.Size()
+		mc := g.mw.centerPanel.mainCanvasStack
+		mcSize := mc.Size()
+		if ss.Width > 4 && ss.Height > 4 && mcSize.Width > 4 && mcSize.Height > 4 &&
+			math.Abs(viewW-float64(ss.Width)) < 1.0 && math.Abs(viewH-float64(ss.Height)) < 1.0 {
+			mcPos := mc.Position()
+			scale = min(float64(mcSize.Width)/dispW, float64(mcSize.Height)/dispH)
+			if scale <= 0 {
+				return nil, nil, false
+			}
+			drawW = dispW * scale
+			drawH = dispH * scale
+			padX = float64(mcPos.X) + (float64(mcSize.Width)-drawW)/2.0
+			padY = float64(mcPos.Y) + (float64(mcSize.Height)-drawH)/2.0
+		}
+	}
+
 	s2v := func(sx, sy float64) (float64, float64) {
 		rx := ((sx - pRect.X) / pRect.Width) * renderW
 		ry := ((sy - pRect.Y) / pRect.Height) * renderH
@@ -507,6 +596,70 @@ func (g *CanvasGizmoOverlay) viewportTransform(viewW, viewH float64) (svgToView 
 	}
 
 	return s2v, v2s, true
+}
+
+func (g *CanvasGizmoOverlay) extraStageBoundsSVG() (inksvg.Rect, bool) {
+	if g == nil || g.mw == nil || g.mw.session == nil || g.mw.session.Document == nil {
+		return inksvg.Rect{}, false
+	}
+	minX, minY := math.MaxFloat64, math.MaxFloat64
+	maxX, maxY := -math.MaxFloat64, -math.MaxFloat64
+	hasAny := false
+	includePt := func(x, y float64) {
+		if x < minX {
+			minX = x
+		}
+		if x > maxX {
+			maxX = x
+		}
+		if y < minY {
+			minY = y
+		}
+		if y > maxY {
+			maxY = y
+		}
+		hasAny = true
+	}
+
+	nodeID, _, objCfg, _, moveActIdx, moveSegs := g.activeSelection()
+	if nodeID != "" {
+		if rect, pivX, pivY, hasBounds := g.resolveObjectBoundsAndPivot(nodeID, objCfg); hasBounds {
+			includePt(rect.X, rect.Y)
+			includePt(rect.X+rect.Width, rect.Y+rect.Height)
+			includePt(pivX, pivY)
+		}
+	}
+	if moveActIdx >= 0 {
+		for _, seg := range moveSegs {
+			includePt(seg.StartX, seg.StartY)
+			includePt(seg.Ctrl1X, seg.Ctrl1Y)
+			includePt(seg.Ctrl2X, seg.Ctrl2Y)
+			includePt(seg.EndX, seg.EndY)
+		}
+	}
+	if g.mw.session.Objects != nil {
+		for _, cfg := range g.mw.session.Objects {
+			for _, act := range cfg.Actions {
+				if isEditablePathAction(act) {
+					for _, seg := range ParseGizmoPath(act.PathD) {
+						includePt(seg.StartX, seg.StartY)
+						includePt(seg.Ctrl1X, seg.Ctrl1Y)
+						includePt(seg.Ctrl2X, seg.Ctrl2Y)
+						includePt(seg.EndX, seg.EndY)
+					}
+				}
+			}
+		}
+	}
+	if !hasAny || maxX < minX || maxY < minY {
+		return inksvg.Rect{}, false
+	}
+	return inksvg.Rect{
+		X:      minX,
+		Y:      minY,
+		Width:  maxX - minX,
+		Height: maxY - minY,
+	}, true
 }
 
 func isEditablePathAction(act app.ActionConfig) bool {
@@ -874,30 +1027,73 @@ func (g *CanvasGizmoOverlay) Dragged(ev *fyne.DragEvent) {
 
 	if g.dragMode == gizmoDragNone {
 		startPos := fyne.NewPos(ev.Position.X-ev.Dragged.DX, ev.Position.Y-ev.Dragged.DY)
-		mode, segIdx := g.hitTest(startPos)
-		if mode == gizmoDragNone {
-			return
-		}
-		nodeID, objKey, objCfg, _, moveActIdx, moveSegs := g.activeSelection()
-		g.dragMode = mode
-		g.dragSegIdx = segIdx
-		g.dragNodeID = nodeID
-		g.dragObjKey = objKey
-		g.dragActIdx = moveActIdx
-		g.dragStartSVG[0], g.dragStartSVG[1] = viewToSVG(float64(startPos.X), float64(startPos.Y))
-		g.dragDirty = false
+		if g.mouseButton == desktop.MouseButtonTertiary {
+			if g.mw != nil && g.mw.centerPanel != nil && g.mw.centerPanel.stageScroll != nil && g.mw.centerPanel.stageStack != nil {
+				sc := g.mw.centerPanel.stageScroll
+				ss := g.mw.centerPanel.stageStack.Size()
+				if ss.Width > sc.Size().Width+1 || ss.Height > sc.Size().Height+1 {
+					g.dragMode = gizmoDragPan
+					g.panStartOff = sc.Offset
+					g.dragStartSVG = [2]float64{float64(startPos.X), float64(startPos.Y)}
+				}
+			}
+			if g.dragMode == gizmoDragNone {
+				return
+			}
+		} else {
+			mode, segIdx := g.hitTest(startPos)
+			if mode == gizmoDragNone {
+				if g.mw != nil && g.mw.centerPanel != nil && g.mw.centerPanel.stageScroll != nil && g.mw.centerPanel.stageStack != nil {
+					sc := g.mw.centerPanel.stageScroll
+					ss := g.mw.centerPanel.stageStack.Size()
+					if ss.Width > sc.Size().Width+1 || ss.Height > sc.Size().Height+1 {
+						g.dragMode = gizmoDragPan
+						g.panStartOff = sc.Offset
+						g.dragStartSVG = [2]float64{float64(startPos.X), float64(startPos.Y)}
+					}
+				}
+				if g.dragMode == gizmoDragNone {
+					return
+				}
+			}
+			if g.dragMode == gizmoDragNone {
+				nodeID, objKey, objCfg, _, moveActIdx, moveSegs := g.activeSelection()
+				g.dragMode = mode
+				g.dragSegIdx = segIdx
+				g.dragNodeID = nodeID
+				g.dragObjKey = objKey
+				g.dragActIdx = moveActIdx
+				g.dragStartSVG[0], g.dragStartSVG[1] = viewToSVG(float64(startPos.X), float64(startPos.Y))
+				g.dragDirty = false
 
-		switch mode {
-		case gizmoDragStagePos:
-			rect, _, _, _ := g.resolveObjectBoundsAndPivot(nodeID, objCfg)
-			g.dragInitPos = [2]float64{rect.X, rect.Y}
-		case gizmoDragPivot:
-			_, pivX, pivY, _ := g.resolveObjectBoundsAndPivot(nodeID, objCfg)
-			g.dragInitPos = [2]float64{pivX, pivY}
-		case gizmoDragPathAnchor, gizmoDragPathCtrl1, gizmoDragPathCtrl2:
-			g.dragSegs = slices.Clone(moveSegs)
-			g.dragOrigSegs = slices.Clone(moveSegs)
+				switch mode {
+				case gizmoDragStagePos:
+					rect, _, _, _ := g.resolveObjectBoundsAndPivot(nodeID, objCfg)
+					g.dragInitPos = [2]float64{rect.X, rect.Y}
+				case gizmoDragPivot:
+					_, pivX, pivY, _ := g.resolveObjectBoundsAndPivot(nodeID, objCfg)
+					g.dragInitPos = [2]float64{pivX, pivY}
+				case gizmoDragPathAnchor, gizmoDragPathCtrl1, gizmoDragPathCtrl2:
+					g.dragSegs = slices.Clone(moveSegs)
+					g.dragOrigSegs = slices.Clone(moveSegs)
+				}
+			}
 		}
+	}
+
+	if g.dragMode == gizmoDragPan {
+		if g.mw != nil && g.mw.centerPanel != nil && g.mw.centerPanel.stageScroll != nil && g.mw.centerPanel.stageStack != nil {
+			sc := g.mw.centerPanel.stageScroll
+			ss := g.mw.centerPanel.stageStack.Size()
+			scSz := sc.Size()
+			maxX := max(float32(0), ss.Width-scSz.Width)
+			maxY := max(float32(0), ss.Height-scSz.Height)
+			nx := min(max(float32(0), g.panStartOff.X-(ev.Position.X-float32(g.dragStartSVG[0]))), maxX)
+			ny := min(max(float32(0), g.panStartOff.Y-(ev.Position.Y-float32(g.dragStartSVG[1]))), maxY)
+			sc.Offset = fyne.NewPos(nx, ny)
+			sc.Refresh()
+		}
+		return
 	}
 
 	g.lastDragPos = ev.Position
@@ -1013,11 +1209,20 @@ func (g *CanvasGizmoOverlay) applyDragAtPosition(pos fyne.Position) {
 			g.raster.Refresh()
 		}
 	}
+	if g.dragDirty && g.mw != nil && g.mw.centerPanel != nil && g.mw.centerPanel.stageStack != nil {
+		if g.Size() == g.mw.centerPanel.stageStack.Size() {
+			g.mw.centerPanel.RefreshStageLayout()
+		}
+	}
 }
 
 // DragEnd commits the modified stage position, custom pivot, or motion path to .inka Objects and triggers a preview update.
 func (g *CanvasGizmoOverlay) DragEnd() {
 	if g.dragMode == gizmoDragNone {
+		return
+	}
+	if g.dragMode == gizmoDragPan {
+		g.dragMode = gizmoDragNone
 		return
 	}
 	mode := g.dragMode

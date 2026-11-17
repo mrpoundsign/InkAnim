@@ -6,6 +6,7 @@ import (
 	"image/color"
 	"image/draw"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -21,6 +22,7 @@ import (
 
 	"inkanim/internal/app"
 	"inkanim/internal/prof"
+	"inkanim/pkg/inksvg"
 )
 
 type cachedPreviewFrame struct {
@@ -67,9 +69,16 @@ type CenterPreviewPanel struct {
 	activeFrameIdx     int
 	bgContainer        *fyne.Container
 	stageStack         *fyne.Container
+	stageScroll        *container.Scroll
+	stageLayout        *previewStageLayout
 	gizmoOverlay       *CanvasGizmoOverlay
 	currentBg          PreviewBackground
 	bgSelect           *widget.Select
+	zoomSelect         *widget.Select
+	zoomOutBtn         *widget.Button
+	zoomInBtn          *widget.Button
+	zoomFactor         float64
+	isUpdatingZoom     bool
 	frameLabel         *widget.Label
 	durationInput      *FloatCommitInput
 	fpsSelect          *widget.Select
@@ -134,9 +143,9 @@ type CenterPreviewPanel struct {
 	progressBar     *widget.ProgressBar
 	progressBarInf  *widget.ProgressBarInfinite
 
-	mu              sync.Mutex
-	timer           *time.Timer
-	animGen         int
+	mu                        sync.Mutex
+	timer                     *time.Timer
+	animGen                   int
 	playStartTime             time.Time
 	playStartOffset           time.Duration
 	playLastCycle             int
@@ -329,9 +338,14 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 	p.progressOverlay = container.NewCenter(container.New(&fixedWidthLayout{width: 280}, progressCard))
 	p.progressOverlay.Hide()
 
-	p.stageStack = container.NewStack(
+	p.stageLayout = &previewStageLayout{panel: p}
+	p.stageStack = container.New(p.stageLayout,
 		p.bgContainer,
 		p.mainCanvasStack,
+	)
+	p.stageScroll = container.NewScroll(p.stageStack)
+	stageViewport := container.NewStack(
+		p.stageScroll,
 		p.progressOverlay,
 	)
 
@@ -476,9 +490,42 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 
 	p.totalFramesLabel = widget.NewLabelWithStyle("Total: 0 frames (0ms)", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 
+	zoomPresets := []string{"Fit", "50%", "75%", "100%", "150%", "200%", "300%"}
+	p.zoomSelect = widget.NewSelect(zoomPresets, func(s string) {
+		if p.isUpdatingZoom {
+			return
+		}
+		if s == "Fit" {
+			p.SetZoom(0)
+			return
+		}
+		pctStr := strings.TrimSuffix(s, "%")
+		if pct, err := strconv.ParseFloat(pctStr, 64); err == nil && pct > 0 {
+			p.SetZoom(pct / 100.0)
+		}
+	})
+	p.isUpdatingZoom = true
+	p.zoomSelect.SetSelected("Fit")
+	p.isUpdatingZoom = false
+
+	p.zoomOutBtn = widget.NewButtonWithIcon("", theme.ZoomOutIcon(), func() {
+		p.StepZoom(-1)
+	})
+	p.zoomOutBtn.Importance = widget.LowImportance
+	p.zoomInBtn = widget.NewButtonWithIcon("", theme.ZoomInIcon(), func() {
+		p.StepZoom(1)
+	})
+	p.zoomInBtn.Importance = widget.LowImportance
+
 	topViewRow := container.NewHBox(
 		widget.NewLabel("BG:"),
 		p.bgSelect,
+		widget.NewSeparator(),
+		widget.NewLabel("Zoom:"),
+		p.zoomOutBtn,
+		p.zoomSelect,
+		p.zoomInBtn,
+		widget.NewSeparator(),
 		p.cropGuidesCheck,
 		p.motionLinesCheck,
 		p.inspectorCheck,
@@ -573,7 +620,7 @@ func NewCenterPreviewPanel(sess *app.Session) *CenterPreviewPanel {
 		playbackControls,
 		nil,
 		nil,
-		p.stageStack,
+		stageViewport,
 	)
 
 	p.container = container.NewBorder(
@@ -597,15 +644,231 @@ func (p *CenterPreviewPanel) SetGizmoOverlay(gizmo *CanvasGizmoOverlay) {
 		p.bgContainer,
 		p.mainCanvasStack,
 		p.gizmoOverlay,
-		p.progressOverlay,
 	}
-	p.stageStack.Refresh()
+	p.RefreshStageLayout()
+}
+
+// RefreshStageLayout recalculates the scrollable stage bounds and refreshes the stage and scrollbars.
+func (p *CenterPreviewPanel) RefreshStageLayout() {
+	if p == nil {
+		return
+	}
+	if p.stageStack != nil {
+		p.stageStack.Refresh()
+	}
+	if p.stageScroll != nil {
+		p.stageScroll.Refresh()
+	}
+	if p.gizmoOverlay != nil {
+		p.gizmoOverlay.Refresh()
+	}
+}
+
+// SetZoom sets the preview canvas zoom multiplier (0 = Fit to viewport).
+func (p *CenterPreviewPanel) SetZoom(factor float64) {
+	if p == nil {
+		return
+	}
+	if factor > 0 {
+		if factor < 0.25 {
+			factor = 0.25
+		}
+		if factor > 8.0 {
+			factor = 8.0
+		}
+	} else {
+		factor = 0
+	}
+	p.zoomFactor = factor
+	if p.zoomSelect != nil {
+		p.isUpdatingZoom = true
+		if factor == 0 {
+			p.zoomSelect.SetSelected("Fit")
+		} else {
+			label := fmt.Sprintf("%d%%", int(math.Round(factor*100)))
+			p.zoomSelect.SetSelected(label)
+		}
+		p.isUpdatingZoom = false
+	}
+	p.RefreshStageLayout()
+}
+
+// CurrentZoomScale returns the active effective zoom multiplier (converting Fit mode to its current scale).
+func (p *CenterPreviewPanel) CurrentZoomScale() float64 {
+	if p == nil {
+		return 1.0
+	}
+	if p.zoomFactor > 0 {
+		return p.zoomFactor
+	}
+	_, _, _, canvasW, dispW := p.stageMetrics()
+	if dispW > 0 && canvasW > 0 {
+		return float64(canvasW) / dispW
+	}
+	return 1.0
+}
+
+// StepZoom steps the zoom level down (dir < 0) or up (dir > 0) through standard presets.
+func (p *CenterPreviewPanel) StepZoom(dir int) {
+	if p == nil {
+		return
+	}
+	steps := []float64{0.5, 0.75, 1.0, 1.5, 2.0, 3.0}
+	cur := p.zoomFactor
+	if cur <= 0 {
+		_, _, _, canvasW, dispW := p.stageMetrics()
+		if dispW > 0 {
+			cur = float64(canvasW) / dispW
+		} else {
+			cur = 1.0
+		}
+	}
+	if dir > 0 {
+		for _, s := range steps {
+			if s > cur+0.05 {
+				p.SetZoom(s)
+				return
+			}
+		}
+		p.SetZoom(steps[len(steps)-1])
+		return
+	}
+	for _, step := range slices.Backward(steps) {
+		if step < cur-0.05 {
+			p.SetZoom(step)
+			return
+		}
+	}
+	p.SetZoom(0)
+}
+
+func (p *CenterPreviewPanel) stageMetrics() (stageSize fyne.Size, canvasPos fyne.Position, canvasSize fyne.Size, canvasW float32, dispW float64) {
+	vp := fyne.NewSize(300, 300)
+	if p.stageScroll != nil && p.stageScroll.Size().Width > 4 && p.stageScroll.Size().Height > 4 {
+		vp = p.stageScroll.Size()
+	}
+
+	pRect := inksvg.Rect{X: 0, Y: 0, Width: 512, Height: 512}
+	if p.session != nil && p.session.Document != nil {
+		if r := p.session.GetPreviewBoundaryRect(); r.Width > 0 && r.Height > 0 {
+			pRect = r
+		}
+	}
+
+	boundW := pRect.Width
+	boundH := pRect.Height
+	maxDim := max(boundW, boundH)
+	renderW := math.Round(boundW * (512.0 / maxDim))
+	renderH := math.Round(boundH * (512.0 / maxDim))
+	if renderW <= 0 {
+		renderW = 512
+	}
+	if renderH <= 0 {
+		renderH = 512
+	}
+
+	dispW, dispH := renderW, renderH
+	var sqOffX, sqOffY float64
+	if p.session != nil && p.session.ExportOptions.ExportSquare {
+		sqSide := max(renderW, renderH)
+		sqOffX = (sqSide - renderW) / 2.0
+		sqOffY = (sqSide - renderH) / 2.0
+		dispW, dispH = sqSide, sqSide
+	}
+
+	var scale float64
+	var canvasH float32
+	if p.zoomFactor > 0 {
+		scale = p.zoomFactor
+		canvasW = float32(dispW * scale)
+		canvasH = float32(dispH * scale)
+	} else {
+		scale = min(float64(vp.Width)/dispW, float64(vp.Height)/dispH)
+		if scale <= 0 {
+			scale = 1.0
+		}
+		canvasW = vp.Width
+		canvasH = vp.Height
+	}
+	canvasSize = fyne.NewSize(canvasW, canvasH)
+
+	var padLeft, padTop, padRight, padBottom float32
+	if p.gizmoOverlay != nil && pRect.Width > 0 && pRect.Height > 0 {
+		if extra, hasExtra := p.gizmoOverlay.extraStageBoundsSVG(); hasExtra {
+			svgToPxX := (renderW / pRect.Width) * scale
+			svgToPxY := (renderH / pRect.Height) * scale
+			sqPadX := float32(sqOffX*scale) + max(float32(0), (canvasW-float32(dispW*scale))/2)
+			sqPadY := float32(sqOffY*scale) + max(float32(0), (canvasH-float32(dispH*scale))/2)
+			if extra.X < pRect.X {
+				need := float32((pRect.X-extra.X)*svgToPxX) + 36
+				padLeft = max(0, need-sqPadX)
+			}
+			if extra.X+extra.Width > pRect.X+pRect.Width {
+				need := float32(((extra.X+extra.Width)-(pRect.X+pRect.Width))*svgToPxX) + 36
+				padRight = max(0, need-sqPadX)
+			}
+			if extra.Y < pRect.Y {
+				need := float32((pRect.Y-extra.Y)*svgToPxY) + 36
+				padTop = max(0, need-sqPadY)
+			}
+			if extra.Y+extra.Height > pRect.Y+pRect.Height {
+				need := float32(((extra.Y+extra.Height)-(pRect.Y+pRect.Height))*svgToPxY) + 36
+				padBottom = max(0, need-sqPadY)
+			}
+		}
+	}
+
+	reqW := canvasW + padLeft + padRight
+	reqH := canvasH + padTop + padBottom
+	stageW := max(vp.Width, reqW)
+	stageH := max(vp.Height, reqH)
+	stageSize = fyne.NewSize(stageW, stageH)
+
+	extraX := max(float32(0), (stageW-reqW)/2)
+	extraY := max(float32(0), (stageH-reqH)/2)
+	canvasPos = fyne.NewPos(padLeft+extraX, padTop+extraY)
+	return stageSize, canvasPos, canvasSize, canvasW, dispW
+}
+
+type previewStageLayout struct {
+	panel *CenterPreviewPanel
+}
+
+func (l *previewStageLayout) MinSize(_ []fyne.CanvasObject) fyne.Size {
+	if l.panel == nil {
+		return fyne.NewSize(150, 150)
+	}
+	stageSize, _, canvasSize, _, _ := l.panel.stageMetrics()
+	if l.panel.zoomFactor <= 0 && stageSize.Width <= canvasSize.Width+1 && stageSize.Height <= canvasSize.Height+1 {
+		return fyne.NewSize(150, 150)
+	}
+	return stageSize
+}
+
+func (l *previewStageLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) {
+	if l.panel == nil {
+		return
+	}
+	_, canvasPos, canvasSize, _, _ := l.panel.stageMetrics()
+	for _, obj := range objects {
+		if obj == l.panel.mainCanvasStack {
+			obj.Move(canvasPos)
+			obj.Resize(canvasSize)
+		} else {
+			obj.Move(fyne.NewPos(0, 0))
+			obj.Resize(size)
+		}
+	}
 }
 
 // RefreshGizmos redraws the interactive canvas gizmo overlay if attached.
 func (p *CenterPreviewPanel) RefreshGizmos() {
 	if p != nil && p.gizmoOverlay != nil {
-		p.gizmoOverlay.Refresh()
+		if p.stageStack != nil && p.gizmoOverlay.Size() == p.stageStack.Size() {
+			p.RefreshStageLayout()
+		} else {
+			p.gizmoOverlay.Refresh()
+		}
 	}
 }
 
