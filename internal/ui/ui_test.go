@@ -2793,3 +2793,232 @@ func TestActionEditModalLiveUpdateAndDeleteLayerWithChildren(t *testing.T) {
 		t.Errorf("expected Redo to remove layer4 from rawSourceBytes again")
 	}
 }
+
+func TestTimelineDragReorderAndCrossTrackMove(t *testing.T) {
+	fyneApp := test.NewApp()
+	defer fyneApp.Quit()
+
+	mw := NewMainWindow(fyneApp)
+	defer func() {
+		waitForPreview(mw)
+		mw.centerPanel.Pause()
+	}()
+
+	svgData := []byte(`<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="200" height="200" viewBox="0 0 200 200">
+  <g id="layer1" inkscape:groupmode="layer" inkscape:label="Red Box">
+    <rect id="rect1" x="10" y="10" width="30" height="30" fill="#ff0000" />
+  </g>
+  <g id="layer2" inkscape:groupmode="layer" inkscape:label="Blue Box">
+    <rect id="rect2" x="110" y="110" width="30" height="30" fill="#0000ff" />
+  </g>
+</svg>`)
+
+	tmpDir := t.TempDir()
+	svgPath := filepath.Join(tmpDir, "drag_actions.svg")
+	if err := os.WriteFile(svgPath, svgData, 0644); err != nil {
+		t.Fatalf("failed to write test SVG: %v", err)
+	}
+	if err := mw.AddSVGFile(svgPath); err != nil {
+		t.Fatalf("AddSVGFile failed: %v", err)
+	}
+	waitForPreview(mw)
+	mw.centerPanel.Pause()
+
+	tp := mw.timelinePanel
+	tracks := tp.CollectTracks()
+	var lane1Idx, lane2Idx = -1, -1
+	for i, tr := range tracks {
+		switch tr.NodeID {
+		case "layer1":
+			lane1Idx = i
+		case "layer2":
+			lane2Idx = i
+		}
+	}
+	if lane1Idx < 0 || lane2Idx < 0 {
+		t.Fatalf("expected layer1 and layer2 in timeline tracks, got %+v", tracks)
+	}
+
+	// 1. Add 3 actions (Move, Rot, Scale) to layer1 and drag action 0 (Move) down to sub-row 2
+	tp.SelectTrack("layer1")
+	tp.AddActionToActiveNode("Move")
+	tp.AddActionToActiveNode("Rot")
+	tp.AddActionToActiveNode("Scale")
+	waitForPreview(mw)
+
+	_, cfgBefore, _ := mw.resolveNodeObjectConfig(mw.editorState.NodeMap["layer1"])
+	if len(cfgBefore.Actions) != 3 {
+		t.Fatalf("expected 3 actions on layer1, got %d", len(cfgBefore.Actions))
+	}
+	moveID := cfgBefore.Actions[0].ID
+	rotID := cfgBefore.Actions[1].ID
+	scaleID := cfgBefore.Actions[2].ID
+
+	lane1 := tp.lanes[lane1Idx]
+	laneH := lane1.MinSize().Height
+	lane1.Resize(fyne.NewSize(400, laneH))
+
+	// Start drag in middle of sub-row 0, drag vertically to sub-row 2
+	y0 := float32(10)
+	y2 := laneH - 10
+	lane1.Dragged(&fyne.DragEvent{
+		Position: fyne.NewPos(200, y2),
+		Dragged:  fyne.NewDelta(0, y2-y0),
+	})
+	lane1.DragEnd()
+	waitForPreview(mw)
+
+	_, cfgReordered, _ := mw.resolveNodeObjectConfig(mw.editorState.NodeMap["layer1"])
+	if cfgReordered.Actions[0].ID != rotID || cfgReordered.Actions[1].ID != scaleID || cfgReordered.Actions[2].ID != moveID {
+		t.Fatalf("expected intra-object drag reorder to [rot, scale, move], got [%s, %s, %s]",
+			cfgReordered.Actions[0].ID, cfgReordered.Actions[1].ID, cfgReordered.Actions[2].ID)
+	}
+
+	// Undo/Redo intra-object reorder
+	mw.doUndo()
+	waitForPreview(mw)
+	_, cfgUndoReorder, _ := mw.resolveNodeObjectConfig(mw.editorState.NodeMap["layer1"])
+	if cfgUndoReorder.Actions[0].ID != moveID {
+		t.Errorf("expected Undo to restore Move at index 0, got %s", cfgUndoReorder.Actions[0].ID)
+	}
+	mw.doRedo()
+	waitForPreview(mw)
+
+	// 2. Add a Fade action to layer2 so layer2 has an existing sub-row, then drag Move from layer1 (sub-row 2) down onto layer2
+	tp.SelectTrack("layer2")
+	tp.AddActionToActiveNode("Fade")
+	waitForPreview(mw)
+
+	lane1 = tp.lanes[lane1Idx]
+	lane2 := tp.lanes[lane2Idx]
+	h1 := lane1.MinSize().Height
+	h2 := lane2.MinSize().Height
+	lane1.Resize(fyne.NewSize(400, h1))
+	lane2.Resize(fyne.NewSize(400, h2))
+
+	// Drag Move (sub-row 2 on lane1) down into lane2 (localY = h1 + h2 - 4 -> inserts after Fade)
+	// First resize Move on layer1 to 0.0s..0.5s so horizontal shift is also verifiable
+	_, l1Cfg, _ := mw.resolveNodeObjectConfig(mw.editorState.NodeMap["layer1"])
+	l1Cfg.Actions[2].StartSec = 0.0
+	l1Cfg.Actions[2].EndSec = 0.5
+	tp.CommitTrackConfig("layer1", "", l1Cfg)
+	tp.Refresh()
+	waitForPreview(mw)
+
+	lane1 = tp.lanes[lane1Idx]
+	lane2 = tp.lanes[lane2Idx]
+	h1 = lane1.MinSize().Height
+	h2 = lane2.MinSize().Height
+	lane1.Resize(fyne.NewSize(400, h1))
+	lane2.Resize(fyne.NewSize(400, h2))
+
+	startX := float32(100) // inside 0..133px (0.0s..0.5s of 1.5s)
+	startY := h1 - 10      // sub-row 2 on lane1
+	endX := float32(180)   // +80px = +0.3s
+	endY := h1 + h2 - 4
+	if lane2Idx < lane1Idx {
+		// layer2 is above layer1 in visual Z-order; -8 lands in the bottom half of lane2 (after Fade)
+		endY = -8
+	}
+
+	lane1.Dragged(&fyne.DragEvent{
+		Position: fyne.NewPos(endX, endY),
+		Dragged:  fyne.NewDelta(endX-startX, endY-startY),
+	})
+	if tp.dragTargetLane != lane2 || tp.dragGhostAction == nil {
+		t.Fatalf("expected active cross-track drop preview targeting lane2, got target=%v ghost=%v", tp.dragTargetLane == lane2, tp.dragGhostAction != nil)
+	}
+	// Ensure drawing source and target lanes mid-drag renders cleanly without panics
+	_ = lane1.draw(400, int(h1))
+	_ = lane2.draw(400, int(h2))
+
+	lane1.DragEnd()
+	waitForPreview(mw)
+
+	_, l1After, _ := mw.resolveNodeObjectConfig(mw.editorState.NodeMap["layer1"])
+	_, l2After, _ := mw.resolveNodeObjectConfig(mw.editorState.NodeMap["layer2"])
+	if len(l1After.Actions) != 2 {
+		t.Errorf("expected layer1 to have 2 actions after cross-track drag, got %d", len(l1After.Actions))
+	}
+	if len(l2After.Actions) != 2 {
+		t.Fatalf("expected layer2 to have 2 actions after cross-track drag, got %d", len(l2After.Actions))
+	}
+	movedAct := l2After.Actions[1]
+	if movedAct.ID != moveID || movedAct.Type != "move" {
+		t.Errorf("expected Move action (%s) inserted at index 1 on layer2, got %+v", moveID, movedAct)
+	}
+	if math.Abs(movedAct.StartSec-0.2) > 0.05 || math.Abs(movedAct.EndSec-0.7) > 0.05 {
+		t.Errorf("expected moved action time range ~0.2s..0.7s, got %.2fs..%.2fs", movedAct.StartSec, movedAct.EndSec)
+	}
+	// Verify PathD was re-anchored from layer1 center (25, 25) to layer2 center (125, 125)
+	segs := ParseGizmoPath(movedAct.PathD)
+	if len(segs) == 0 || math.Abs(segs[0].StartX-125.0) > 1.0 || math.Abs(segs[0].StartY-125.0) > 1.0 {
+		t.Errorf("expected Move PathD re-anchored to layer2 center (125, 125), got %q", movedAct.PathD)
+	}
+	if mw.editorState.ActiveNode == nil || mw.editorState.ActiveNode.ID != "layer2" {
+		t.Errorf("expected ActiveNode to follow moved action to layer2, got %+v", mw.editorState.ActiveNode)
+	}
+	if mw.selectedActionID != moveID {
+		t.Errorf("expected selectedActionID %q, got %q", moveID, mw.selectedActionID)
+	}
+
+	// Undo cross-track move -> action returns to layer1
+	mw.doUndo()
+	waitForPreview(mw)
+	_, l1Undo, _ := mw.resolveNodeObjectConfig(mw.editorState.NodeMap["layer1"])
+	_, l2Undo, _ := mw.resolveNodeObjectConfig(mw.editorState.NodeMap["layer2"])
+	if len(l1Undo.Actions) != 3 || len(l2Undo.Actions) != 1 {
+		t.Errorf("expected Undo to restore layer1=3 actions, layer2=1 action; got %d, %d", len(l1Undo.Actions), len(l2Undo.Actions))
+	}
+
+	// Redo cross-track move -> action moves back to layer2
+	mw.doRedo()
+	waitForPreview(mw)
+	_, l1Redo, _ := mw.resolveNodeObjectConfig(mw.editorState.NodeMap["layer1"])
+	_, l2Redo, _ := mw.resolveNodeObjectConfig(mw.editorState.NodeMap["layer2"])
+	if len(l1Redo.Actions) != 2 || len(l2Redo.Actions) != 2 {
+		t.Errorf("expected Redo to restore layer1=2 actions, layer2=2 actions; got %d, %d", len(l1Redo.Actions), len(l2Redo.Actions))
+	}
+
+	// 3. Regression test: dragging a NON-LAST action (index 0: Rot) across intermediate sub-rows of layer1
+	// onto another track must remove Rot (not Scale) from layer1 and move Rot onto layer2.
+	lane1 = tp.lanes[lane1Idx]
+	lane2 = tp.lanes[lane2Idx]
+	h1 = lane1.MinSize().Height
+	h2 = lane2.MinSize().Height
+	lane1.Resize(fyne.NewSize(400, h1))
+	lane2.Resize(fyne.NewSize(400, h2))
+
+	// Simulate dragging from sub-row 0 (y=10) through sub-row 1 (y=h1-8) and then onto lane2
+	lane1.Dragged(&fyne.DragEvent{
+		Position: fyne.NewPos(200, h1-8),
+		Dragged:  fyne.NewDelta(0, (h1-8)-10),
+	})
+	targetY := h1 + 10
+	if lane2Idx < lane1Idx {
+		targetY = -10
+	}
+	lane1.Dragged(&fyne.DragEvent{
+		Position: fyne.NewPos(200, targetY),
+		Dragged:  fyne.NewDelta(0, targetY-(h1-8)),
+	})
+	lane1.DragEnd()
+	waitForPreview(mw)
+
+	_, l1Final, _ := mw.resolveNodeObjectConfig(mw.editorState.NodeMap["layer1"])
+	_, l2Final, _ := mw.resolveNodeObjectConfig(mw.editorState.NodeMap["layer2"])
+	if len(l1Final.Actions) != 1 || l1Final.Actions[0].ID != scaleID {
+		t.Fatalf("expected layer1 to keep Scale (%s) and remove Rot (%s), got %+v", scaleID, rotID, l1Final.Actions)
+	}
+	hasRotOnLayer2 := false
+	for _, a := range l2Final.Actions {
+		if a.ID == rotID {
+			hasRotOnLayer2 = true
+			break
+		}
+	}
+	if !hasRotOnLayer2 {
+		t.Errorf("expected Rot (%s) to be moved onto layer2, got %+v", rotID, l2Final.Actions)
+	}
+}
