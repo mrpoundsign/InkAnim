@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1] - 2026-11-24
+
+### Added
+- **Timeline Action Drag Reordering & Cross-Object Transfer**:
+  - Dragging an action clip vertically within a multi-action track reorders it live across sub-rows while preserving horizontal time adjustments (`StartSec`/`EndSec`) and Undo/Redo support.
+  - Dragging an action clip vertically onto another Stage Object's track displays a live drop-target highlight, ghost clip preview, and insertion line, transferring the action on drop and re-anchoring any `Move`/`Push` path coordinates to the target object's center.
+- **Scrollable & Zoomable Main Canvas with Inkscape Controls**:
+  - Wrapped the Studio preview stage in a scrollable viewport with zoom presets (`Fit`, `50%`–`300%`, `-`/`+` buttons) and automatic stage expansion when splines or object bounds extend outside the viewable area.
+  - Added Inkscape-style **`Ctrl + Mouse Wheel`** cursor-anchored custom zooming (`25%`–`800%`) and **`Middle Mouse Drag`** canvas panning.
+
 ## [0.7.0] - 2026-11-15
 
 ### Added
